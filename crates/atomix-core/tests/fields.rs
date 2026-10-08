@@ -525,6 +525,7 @@ mod tests {
         );
         assert_eq!(value.load_rmw(Acquire), 5, "the value, by a compare-exchange");
         assert_eq!(seq.load_rmw(Acquire), 2, "and the sequence after");
+        assert_eq!(format!("{seq:?}"), "2", "printed, on every target");
     }
 
     #[test]

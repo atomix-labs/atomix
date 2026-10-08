@@ -9,7 +9,7 @@ pub use self::path::{Field, FieldPath, Join, Then, TopField, Whole};
 pub use self::path::{HasPackedField, Reach};
 use super::Atomic;
 use crate::atom::{Atom, FieldAdd, FieldBitwise};
-use crate::ordering::{LoadOrdering, Relaxed, RmwOrdering, StoreOrdering};
+use crate::ordering::{LoadOrdering, RmwOrdering, StoreOrdering};
 use crate::primitive::{
     BitTest, CellAccess, CompareExchange, ExactBits, FetchAdd, FetchBitwise, Load, MaskBitwise,
     Primitive, ReadByExchange,
@@ -221,11 +221,11 @@ where
 ///   [`fetch_add`](Self::fetch_add) and [`fetch_sub`](Self::fetch_sub), where it has [`FetchAdd`].
 ///
 /// Each `fetch_` form returns the container before: the one snapshot of every field that the
-/// instruction reads. Each operation is `const` where its container's is, as [`Atomic`] says. A
-/// pointer word's tag field has each operation its value gives it but the add, since the pointer
-/// lies above it, and each keeps the pointer's provenance. Its pointer field has
-/// only [`load`](Self::load), which reads it through the word, and, where the pointer is a word
-/// too, [`fields`](Self::fields).
+/// instruction reads. Each operation is `const` where its container's is, as [`Atomic`] says, and
+/// `Debug` reads the field as `Atomic`'s reads the word. A pointer word's tag field has each
+/// operation its value gives it but the add, since the pointer lies above it, and each keeps the
+/// pointer's provenance. Its pointer field has only [`load`](Self::load), which reads it through
+/// the word, and, where the pointer is a word too, [`fields`](Self::fields).
 ///
 /// # Examples
 /// [`#[derive(Atom)]`'s example][derive] claims a ring buffer slot with one field's
@@ -640,11 +640,10 @@ impl<P: FieldPath> AtomicField<P> {
 impl<P: FieldPath> fmt::Debug for AtomicField<P>
 where
     P::Value: fmt::Debug,
-    ContainerRepr<P>: Load,
 {
+    #[expect(unsafe_code, reason = "decodes a field of a repr read from the cell")]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // ORDERING: Relaxed, as `Atomic`'s `Debug`: printing publishes nothing and pairs with no
-        // store.
-        self.load(Relaxed).fmt(f)
+        // SAFETY: by `Atomic`'s field INVARIANT, the repr read from the cell decodes.
+        unsafe { decode_repr::<P>(self.atomic.load_or_exchange_repr()) }.fmt(f)
     }
 }

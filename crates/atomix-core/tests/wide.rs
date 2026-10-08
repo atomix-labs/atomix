@@ -116,6 +116,17 @@ mod tests {
         assert!(value.into_inner() == i128::MIN, "into_inner reads what get_mut wrote, in const");
     };
 
+    #[test]
+    fn a_wide_atomic_prints_on_every_target() {
+        let wide = AtomicI128::new(i128::MIN);
+        assert_eq!(
+            format!("{wide:?}"),
+            format!("{:?}", i128::MIN),
+            "by a load or a compare-exchange"
+        );
+        assert_eq!(wide.load_rmw(Relaxed), i128::MIN, "which leaves the value as it was");
+    }
+
     // A compare-exchange and `update` run in a constant.
     const _: () = {
         /// The bits one place up.

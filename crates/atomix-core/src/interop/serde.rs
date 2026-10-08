@@ -9,22 +9,14 @@ use serde_core::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::atom::Atom;
 use crate::atomic::Atomic;
-use crate::ordering::Relaxed;
-use crate::primitive::Load;
 use crate::ranged::{self, each_ranged_integer};
 
-/// Serializes the value a `Relaxed` load reads, as serde does core's atomics.
-///
-/// A 128-bit value has it only where its repr has [`Load`], as with `Debug`: elsewhere its only
-/// read is a compare-exchange, which writes.
-impl<T: Atom + Serialize> Serialize for Atomic<T>
-where
-    T::Repr: Load,
-{
+/// Serializes the value a `Relaxed` read gives, as serde does core's atomics, reading it as `Debug`
+/// does: a load where the target has one, else the compare-exchange `load_rmw` is, which writes the
+/// cache line.
+impl<T: Atom + Serialize> Serialize for Atomic<T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // ORDERING: Relaxed, as serde's impls for core's atomics: a snapshot publishes nothing and
-        // pairs with no store.
-        self.load(Relaxed).serialize(serializer)
+        self.load_or_exchange().serialize(serializer)
     }
 }
 
