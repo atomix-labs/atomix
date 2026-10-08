@@ -324,6 +324,7 @@ impl<T: Atom> Atomic<T> {
     /// assert_eq!(owner.compare_exchange(0, 7, AcqRel, Acquire), Ok(0), "session 7 claims it");
     /// assert_eq!(owner.compare_exchange(0, 9, AcqRel, Acquire), Err(7), "9 finds 7's claim");
     /// ```
+    #[doc(alias = "compare_and_swap")]
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
     #[track_caller]
@@ -445,6 +446,7 @@ impl<T: Atom> Atomic<T> {
     /// assert_eq!(seats.try_update(AcqRel, Acquire, book), Ok(1), "the last seat booked");
     /// assert_eq!(seats.try_update(AcqRel, Acquire, book), Err(0), "none left: nothing written");
     /// ```
+    #[doc(alias = "fetch_update")]
     #[expect(unsafe_code, reason = "decodes reprs read from the cell")]
     #[inline]
     #[track_caller]

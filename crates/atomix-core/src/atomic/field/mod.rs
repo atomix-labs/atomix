@@ -352,6 +352,7 @@ impl<P: FieldPath> AtomicField<P> {
     ///
     /// # Errors
     /// The container seen, when `f` declined its field.
+    #[doc(alias = "fetch_update")]
     #[expect(unsafe_code, reason = "decodes reprs read from the cell")]
     #[inline]
     pub const fn try_update<

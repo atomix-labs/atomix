@@ -972,6 +972,9 @@ mod tests {
         for line in [
             "= help: the trait `FetchBitwise` is not implemented for `u64`",
             "= note: x86_64's `lock and`, `lock or` and `lock xor` cannot return the value before",
+            "= note: for one bit of a 16- to 64-bit word, `bit_set`, `bit_clear` and `bit_toggle` \
+             return it",
+            "= note: for a `bool`, `swap(true)` returns what `fetch_or(true)` would",
             "= help: the trait `MinMax` is not implemented for `i64`",
             "= note: x86_64 has no atomic maximum or minimum",
             "= help: the trait `BitTest` is not implemented for `u8`",
