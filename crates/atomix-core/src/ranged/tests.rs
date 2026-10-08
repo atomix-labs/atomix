@@ -95,6 +95,22 @@ const _: () = {
     each_ranged_integer!(check);
 };
 
+// A range error compares and clones in a constant.
+const _: () = {
+    use core::marker::Destruct;
+
+    /// Whether `refused` equals its clone, run as `const`: through a bound, so no lint rewrites the
+    /// clone of a `Copy` value into the value.
+    const fn is_its_clone<E: [const] Clone + [const] PartialEq + [const] Destruct>(
+        refused: &E,
+    ) -> bool {
+        refused.clone() == *refused
+    }
+    let refused = RangeError::new(11_u8, 1, 10);
+    assert!(is_its_clone(&refused), "equal to its clone, in const");
+    assert!(refused != RangeError::new(12, 1, 10), "and to no other refusal");
+};
+
 #[cfg(debug_assertions)]
 #[test]
 #[should_panic(expected = "an integer outside `MIN..=MAX`")]

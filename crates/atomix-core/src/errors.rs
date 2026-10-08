@@ -15,7 +15,8 @@ use core::num::ParseIntError;
 use core::ops::RangeInclusive;
 
 /// Why an integer is no ranged integer: it lies outside the range.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, PartialEq, Eq)]
 pub struct RangeError<T> {
     /// The integer refused.
     integer: T,

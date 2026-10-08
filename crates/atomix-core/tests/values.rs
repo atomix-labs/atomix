@@ -4,17 +4,45 @@
 // Above the `cfg`, which under loom drops every attribute after it: the parser refuses a `const`
 // impl without the feature before the `cfg` drops the impl.
 #![feature(const_trait_impl)]
+#![cfg_attr(not(loom), feature(const_clone, const_cmp, const_destruct))]
 // Loom's cells exist only inside a model; `model.rs` holds the loom tests.
 #![cfg(not(loom))]
 
 #[cfg(test)]
 mod tests {
+    use core::hash::BuildHasher;
     use core::num::{NonZero, Saturating, Wrapping};
     use core::ptr::{self, NonNull};
+    use std::hash::RandomState;
 
     use atomix_core::ordering::{AcqRel, Acquire, Relaxed, Release};
     use atomix_core::validity::{TotalZeroNiche, ZeroNiche};
     use atomix_core::{Atom, Atomic, AtomicPtr, ReprRange};
+
+    // A repr range compares and clones in a constant.
+    const _: () = {
+        use core::marker::Destruct;
+
+        /// Whether `range` equals its clone, run as `const`: through a bound, so no lint rewrites
+        /// the clone of a `Copy` value into the value.
+        const fn is_its_clone<R>(range: &R) -> bool
+        where
+            R: [const] Clone + [const] PartialEq + [const] Destruct,
+        {
+            range.clone() == *range
+        }
+        let signs = ReprRange::<i8>::from_signed(-1, 1);
+        assert!(is_its_clone(&signs), "equal to its clone, in const");
+        assert!(signs != ReprRange::FULL, "and to no other range");
+    };
+
+    #[test]
+    fn a_repr_range_hashes_as_it_compares() {
+        let hasher = RandomState::new();
+        let (full, again) = (ReprRange::<u8>::FULL, ReprRange::new(0, 0xFF));
+        assert_eq!(full, again, "the same reprs, built either way");
+        assert_eq!(hasher.hash_one(full), hasher.hash_one(again), "hash alike");
+    }
 
     #[test]
     fn an_opaque_cell_has_the_layout_of_its_primitive() {

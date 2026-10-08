@@ -6,23 +6,29 @@
 use core::sync::atomic::Ordering as CoreOrdering;
 
 /// Orders nothing beyond the operation's own atomicity.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct Relaxed;
 /// Sees every write published by the [`Release`] it reads from.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct Acquire;
 /// Publishes every earlier write to the [`Acquire`] that reads it.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct Release;
 /// [`Acquire`] and [`Release`] at once, for a read-modify-write or a fence.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct AcqRel;
 /// [`Acquire`], [`Release`] or both, as the operation allows, in one order of every `SeqCst`
 /// operation and fence that all threads agree on.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct SeqCst;
 /// A [`fence`](fn@crate::fence) that orders earlier stores before later ones, and nothing else.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct StoreStore;
 
 /// An ordering a read-modify-write may take: every ordering but [`StoreStore`], which
@@ -98,6 +104,7 @@ impl StoreOrdering for SeqCst {}
 
 #[cfg(test)]
 mod tests {
+    use core::marker::Destruct;
     use core::sync::atomic::{AtomicU8, compiler_fence, fence};
 
     use super::{
@@ -129,6 +136,28 @@ mod tests {
         fence(O::CORE_FENCE);
         compiler_fence(O::CORE_FENCE);
     }
+
+    /// Whether `ordering` equals its clone and its type's default, each run as `const`: through a
+    /// bound, so no lint rewrites a clone or a default of a unit into the unit.
+    const fn is_its_clone_and_default<O>(ordering: &O) -> bool
+    where
+        O: [const] Clone + [const] Default + [const] PartialEq + [const] Destruct,
+    {
+        ordering.clone() == *ordering && O::default() == *ordering
+    }
+
+    // Each ordering compares, clones and defaults in a constant.
+    const _: () = {
+        assert!(
+            is_its_clone_and_default(&Relaxed),
+            "`Relaxed` equals its clone and its default, in const"
+        );
+        assert!(is_its_clone_and_default(&Acquire), "`Acquire`");
+        assert!(is_its_clone_and_default(&Release), "`Release`");
+        assert!(is_its_clone_and_default(&AcqRel), "`AcqRel`");
+        assert!(is_its_clone_and_default(&SeqCst), "`SeqCst`");
+        assert!(is_its_clone_and_default(&StoreStore), "and `StoreStore`");
+    };
 
     #[test]
     fn core_accepts_each_ordering_an_operation_admits() {

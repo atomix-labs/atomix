@@ -68,6 +68,7 @@
     const_closures,
     const_cmp,
     const_convert,
+    const_default,
     const_destruct,
     const_eval_select,
     const_index,
@@ -90,7 +91,7 @@
     structural_match,
     transmute_neo
 )]
-#![cfg_attr(not(loom), feature(const_default))]
+#![cfg_attr(not(loom), feature(const_precise_live_drops))]
 #![cfg_attr(wide, feature(f128))]
 #![cfg_attr(core_atomic_u128, feature(integer_atomics))]
 #![expect(

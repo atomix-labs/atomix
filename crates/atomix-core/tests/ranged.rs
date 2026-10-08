@@ -206,6 +206,15 @@ mod tests {
     }
 
     #[test]
+    fn a_range_error_hashes_as_it_compares() {
+        let hasher = RandomState::new();
+        let refused = Depth::try_from(11).expect_err("11 is past 10");
+        let again = Depth::try_from(11).expect_err("and still is");
+        assert_eq!(refused, again, "the same refusal");
+        assert_eq!(hasher.hash_one(refused), hasher.hash_one(again), "hashes alike");
+    }
+
+    #[test]
     fn a_range_error_names_the_integer_and_the_range() {
         let message = |error: RangeError<i64>| error.to_string();
         assert_eq!(
