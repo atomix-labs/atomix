@@ -5,6 +5,9 @@
 //! | [`RangeError`]      | is the integer in the range?         | `try_from`  |
 //! | [`ParseRangeError`] | is the text an integer in the range? | `from_str`  |
 //!
+//! A `RangeError` from another ranged integer, or from a `NonZero` of another integer, holds that
+//! integer, of its own type, beside the range, of the range's: neither type need hold the other.
+//!
 //! `Display` and `Error` are written by hand: atomix-core depends on no crate outside loom's
 //! model, so no derive writes them.
 
@@ -14,47 +17,49 @@ use core::fmt::{self, Debug, Display, Formatter};
 use core::num::ParseIntError;
 use core::ops::RangeInclusive;
 
-/// Why an integer is no ranged integer: it lies outside the range.
+/// Why an integer `I` is no ranged integer of `B`: it lies outside the range.
+///
+/// `I` is `B` where the integer was the range's own type, as `try_from` of one is.
 #[derive(Debug, Copy, Hash)]
 #[derive_const(Clone, PartialEq, Eq)]
-pub struct RangeError<T> {
+pub struct RangeError<I, B = I> {
     /// The integer refused.
-    integer: T,
+    integer: I,
     /// The range's smallest integer, `MIN`.
-    min: T,
+    min: B,
     /// The range's largest integer, `MAX`.
-    max: T,
+    max: B,
 }
 
-impl<T: Copy> RangeError<T> {
+impl<I: Copy, B: Copy> RangeError<I, B> {
     /// The refusal of `integer`, which lies outside `min..=max`.
-    pub(crate) const fn new(integer: T, min: T, max: T) -> Self {
+    pub(crate) const fn new(integer: I, min: B, max: B) -> Self {
         Self { integer, min, max }
     }
 
     /// The integer refused.
     #[inline]
     #[must_use]
-    pub const fn integer(self) -> T {
+    pub const fn integer(self) -> I {
         self.integer
     }
 
     /// The range the integer lies outside, `MIN..=MAX`.
     #[inline]
     #[must_use]
-    pub const fn bounds(self) -> RangeInclusive<T> {
+    pub const fn bounds(self) -> RangeInclusive<B> {
         RangeInclusive::new(self.min, self.max)
     }
 }
 
-impl<T: Display> Display for RangeError<T> {
+impl<I: Display, B: Display> Display for RangeError<I, B> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         let Self { integer, min, max } = self;
         write!(formatter, "range error: {integer} is not in {min}..={max}")
     }
 }
 
-impl<T: Debug + Display> Error for RangeError<T> {}
+impl<I: Debug + Display, B: Debug + Display> Error for RangeError<I, B> {}
 
 /// Why a text is no ranged integer: it is no `T`, or a `T` outside the range.
 ///

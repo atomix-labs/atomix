@@ -8,27 +8,50 @@ use core::hash::{Hash, Hasher};
 use core::iter::Step;
 use core::marker::StructuralPartialEq;
 use core::mem::transmute_neo;
+use core::num::{NonZero, TryFromIntError};
 use core::pattern_type;
 use core::str::FromStr;
 
 use crate::errors::{ParseRangeError, RangeError};
 
-/// Calls `$macro!($name($int))` for each ranged integer, `$name`, over its integer, `$int`: the
-/// one list of the twelve, which defines them and gives them each integration's traits.
+/// Calls `$macro!($name($int))` for each ranged integer, `$name`, over its integer, `$int`, or,
+/// with `pairs`, `$macro!($source($source_integer) => $target($target_integer))` for each pair of
+/// two of them: the one list of the twelve, which defines them, converts each to each other, and
+/// gives them each integration's traits.
 macro_rules! each_ranged_integer {
+    (@list [$($pairs:ident)?] $macro:ident) => {
+        each_ranged_integer! {
+            @each [$($pairs)?] $macro
+            RangedU8(u8) RangedU16(u16) RangedU32(u32) RangedU64(u64) RangedU128(u128)
+            RangedUsize(usize) RangedI8(i8) RangedI16(i16) RangedI32(i32) RangedI64(i64)
+            RangedI128(i128) RangedIsize(isize)
+        }
+    };
+    (@each [] $macro:ident $($name:ident($int:ident))+) => {
+        $($macro!($name($int));)+
+    };
+    (@each [pairs] $macro:ident $($list:tt)+) => {
+        each_ranged_integer!(@pairs $macro [] $($list)+);
+    };
+    // Each ranged integer as the target of each one before or after it in the list.
+    (
+        @pairs $macro:ident [$($before:tt)*] $target:ident($target_integer:ident) $($after:tt)*
+    ) => {
+        each_ranged_integer!(@sources $macro $target($target_integer) $($before)* $($after)*);
+        each_ranged_integer!(@pairs $macro [$($before)* $target($target_integer)] $($after)*);
+    };
+    (@pairs $macro:ident [$($before:tt)*]) => {};
+    (
+        @sources $macro:ident $target:ident($target_integer:ident)
+        $($source:ident($source_integer:ident))*
+    ) => {
+        $($macro!($source($source_integer) => $target($target_integer));)*
+    };
+    (pairs $macro:ident) => {
+        each_ranged_integer!(@list [pairs] $macro);
+    };
     ($macro:ident) => {
-        $macro!(RangedU8(u8));
-        $macro!(RangedU16(u16));
-        $macro!(RangedU32(u32));
-        $macro!(RangedU64(u64));
-        $macro!(RangedU128(u128));
-        $macro!(RangedUsize(usize));
-        $macro!(RangedI8(i8));
-        $macro!(RangedI16(i16));
-        $macro!(RangedI32(i32));
-        $macro!(RangedI64(i64));
-        $macro!(RangedI128(i128));
-        $macro!(RangedIsize(isize));
+        each_ranged_integer!(@list [] $macro);
     };
 }
 
@@ -46,6 +69,7 @@ macro_rules! ranged {
     ($name:ident($int:ident)) => {
         ranged!(@type $name $int);
         ranged!(@construct $name $int);
+        ranged!(@convert_within $name $int);
         ranged!(@arithmetic $name $int);
         // The traits are written over `get()`: the field's pattern type implements only `Clone`
         // and `Copy`, so no derive, std's or derive_more's, can read it. Each is `const` where
@@ -70,6 +94,18 @@ macro_rules! ranged {
         /// `saturating_`. There is no `Default`, since zero may lie outside the range. Its
         /// comparisons, conversions and steps are `const`, as `NonZero`'s are.
         ///
+        /// It converts to its integer with `From`, and with `TryFrom` from its integer, from any
+        /// `NonZero` and from any other ranged integer, and to any `NonZero`, each checked, as core
+        /// converts integers of two types: whether a value is lost depends on the ranges, which no
+        /// trait bound states without `generic_const_exprs`. Within its integer,
+        /// [`expand`](Self::expand) moves it to a range that holds its own,
+        /// [`narrow`](Self::narrow) to one inside its own, checking the value, and
+        /// [`to_range`](Self::to_range) to any other, checking it too; and
+        /// [`to_non_zero`](Self::to_non_zero) and [`from_non_zero`](Self::from_non_zero) convert
+        /// where no value is lost. `expand`, `narrow` and those two refuse the build where the
+        /// ranges do not fit so: `cargo build` reports it, and `cargo check` only where a constant
+        /// makes the call, since it evaluates constants but builds no function.
+        ///
         /// Wherever its integer is an [`Atom`](crate::Atom), so is it: an [`Atomic`](crate::Atomic)
         /// stores it as its integer, and an `Option`'s `None` as an integer outside the range, so
         /// an atomic of a full range's `Option` is refused. It has [`AtomOrd`](crate::AtomOrd), as
@@ -79,8 +115,9 @@ macro_rules! ranged {
         ///
         #[doc = concat!(
             "`MAX` defaults to [`", stringify!($int), "::MAX`]. ",
-            "A `MIN` above `MAX` names no type: rustc refuses it where it is used, in a message ",
-            "that quotes the bounds but names no file or line, so search the code for them. ",
+            "A `MIN` above `MAX` names no type: rustc refuses it where it is used, at ",
+            "`cargo build`, and at `cargo check` only where a constant uses it, in a message that ",
+            "quotes the bounds but names no file or line, so search the code for them. ",
             "A crate that uses the type needs no `#![feature]`."
         )]
         ///
@@ -181,6 +218,145 @@ macro_rules! ranged {
                 // SAFETY: `Self` is a transparent pattern type over the integer, so of its size,
                 // and each of its values is one of the integer's.
                 unsafe { transmute_neo::<Self, $int>(self) }
+            }
+        }
+    };
+
+    // Between ranges of the integer, and to and from its `NonZero` where no value is lost: each a
+    // method, since no trait bound states a range's bounds without `generic_const_exprs`, and each
+    // but `to_range` refuses the build where the ranges do not fit.
+    (@convert_within $name:ident $int:ident) => {
+        impl<const MIN: $int, const MAX: $int> $name<MIN, MAX> {
+            /// The value in `NEW_MIN..=NEW_MAX`, a range that holds `MIN..=MAX`.
+            ///
+            /// A range that does not hold it fails `cargo build`, and `cargo check` only where a
+            /// constant makes the call; [`narrow`](Self::narrow) and [`to_range`](Self::to_range)
+            /// check the value instead.
+            /// None of the three is a `From` or a `TryFrom`: no bound states that one range holds
+            /// another without `generic_const_exprs`, and a conversion between two ranges of one
+            /// integer would overlap core's `From<T> for T` where they match.
+            ///
+            /// # Examples
+            /// ```
+            /// # extern crate atomix_core as atomix;
+            #[doc = concat!("use atomix::", stringify!($name), ";")]
+            ///
+            /// // How many levels of an order book a feed sends, and how many a book keeps.
+            #[doc = concat!("let depth = ", stringify!($name), "::<1, 10>::new(4).expect(\"4 is from 1 to 10\");")]
+            #[doc = concat!("let kept: ", stringify!($name), "<0, 50> = depth.expand();")]
+            /// assert_eq!(kept.get(), 4, "the same levels, in the wider range");
+            /// assert_eq!(kept.narrow::<1, 3>(), None, "and none in a range that misses them");
+            /// ```
+            #[expect(unsafe_code, reason = "builds the value in a range the build checks holds it")]
+            #[inline]
+            #[must_use]
+            pub const fn expand<const NEW_MIN: $int, const NEW_MAX: $int>(
+                self,
+            ) -> $name<NEW_MIN, NEW_MAX> {
+                const {
+                    assert!(
+                        NEW_MIN <= MIN && MAX <= NEW_MAX,
+                        "a ranged integer expands only to a range that holds its own: call \
+                         `to_range`, which checks the value, or `narrow` for a range inside it"
+                    );
+                }
+                // SAFETY: the value lies from `MIN` to `MAX`, which `NEW_MIN..=NEW_MAX` holds, as
+                // the assertion above checks.
+                unsafe { $name::new_unchecked(self.get()) }
+            }
+
+            /// The value in `NEW_MIN..=NEW_MAX`, a range inside `MIN..=MAX`, or `None` where it
+            /// lies outside that range.
+            ///
+            /// A range not inside fails `cargo build`, and `cargo check` only where a constant
+            /// makes the call, as deranged's `narrow` does. [`expand`](Self::expand) takes a range
+            /// that holds `MIN..=MAX`, and [`to_range`](Self::to_range) any range; `expand`'s
+            /// example shows `narrow` too.
+            #[inline]
+            #[must_use]
+            pub const fn narrow<const NEW_MIN: $int, const NEW_MAX: $int>(
+                self,
+            ) -> Option<$name<NEW_MIN, NEW_MAX>> {
+                const {
+                    assert!(
+                        MIN <= NEW_MIN && NEW_MAX <= MAX,
+                        "a ranged integer narrows only to a range inside its own: call `expand` \
+                         for one that holds it, or `to_range`, which checks the value, for any \
+                         other"
+                    );
+                }
+                $name::new(self.get())
+            }
+
+            /// The value in `NEW_MIN..=NEW_MAX`, any range of the integer, or `None` where it lies
+            /// outside that range.
+            ///
+            /// It takes a range that only overlaps `MIN..=MAX`, which [`expand`](Self::expand) and
+            /// [`narrow`](Self::narrow) each refuse. Where the new range holds `MIN..=MAX` or lies
+            /// inside it, call `expand` or `narrow`, and the build checks that it does.
+            ///
+            /// # Examples
+            /// ```
+            /// # extern crate atomix_core as atomix;
+            #[doc = concat!("use atomix::", stringify!($name), ";")]
+            ///
+            /// // The levels of an order book a feed sends, and the deeper levels a book keeps.
+            #[doc = concat!("let depth = ", stringify!($name), "::<1, 10>::new(7).expect(\"7 is from 1 to 10\");")]
+            #[doc = concat!("let kept: Option<", stringify!($name), "<5, 20>> = depth.to_range();")]
+            /// assert_eq!(kept.map(|levels| levels.get()), Some(7), "7 is from 5 to 20 too");
+            #[doc = concat!("let shallow = ", stringify!($name), "::<1, 10>::MIN;")]
+            /// assert_eq!(shallow.to_range::<5, 20>(), None, "and 1 is not");
+            /// ```
+            #[inline]
+            #[must_use]
+            pub const fn to_range<const NEW_MIN: $int, const NEW_MAX: $int>(
+                self,
+            ) -> Option<$name<NEW_MIN, NEW_MAX>> {
+                $name::new(self.get())
+            }
+
+            /// The value as a `NonZero`, where the range holds no zero; any other range fails
+            /// `cargo build`, and `cargo check` only where a constant makes the call, and converts
+            /// with `NonZero::try_from`.
+            ///
+            /// No `From` says so, since no bound states that a range misses zero without
+            /// `generic_const_exprs`.
+            #[expect(unsafe_code, reason = "builds a nonzero once the build checks the range misses zero")]
+            #[inline]
+            #[must_use]
+            pub const fn to_non_zero(self) -> NonZero<$int> {
+                const {
+                    assert!(
+                        Self::new(0).is_none(),
+                        "only a range that holds no zero converts to `NonZero` unchecked: call \
+                         `NonZero::try_from`"
+                    );
+                }
+                // SAFETY: the value lies in the range, which holds no zero, as the assertion above
+                // checks.
+                unsafe { NonZero::new_unchecked(self.get()) }
+            }
+
+            /// The value of `non_zero`, where the range holds every nonzero integer; any other
+            /// range fails `cargo build`, and `cargo check` only where a constant makes the call,
+            /// and converts with `try_from`.
+            ///
+            /// No `From` says so, as for [`to_non_zero`](Self::to_non_zero).
+            #[expect(unsafe_code, reason = "builds the value once the build checks the range holds it")]
+            #[inline]
+            #[must_use]
+            pub const fn from_non_zero(non_zero: NonZero<$int>) -> Self {
+                const {
+                    assert!(
+                        Self::new(NonZero::<$int>::MIN.get()).is_some()
+                            && Self::new(NonZero::<$int>::MAX.get()).is_some(),
+                        "only a range that holds every nonzero integer converts from `NonZero` \
+                         unchecked: call `try_from`"
+                    );
+                }
+                // SAFETY: the range holds the smallest and the largest nonzero integer, as the
+                // assertion above checks, so each one between, `non_zero` among them.
+                unsafe { Self::new_unchecked(non_zero.get()) }
             }
         }
     };
@@ -295,6 +471,24 @@ macro_rules! ranged {
             }
         }
 
+        const impl<const MIN: $int, const MAX: $int> TryFrom<NonZero<$int>> for $name<MIN, MAX> {
+            type Error = RangeError<$int>;
+
+            #[inline]
+            fn try_from(non_zero: NonZero<$int>) -> Result<Self, Self::Error> {
+                Self::try_from(non_zero.get())
+            }
+        }
+
+        const impl<const MIN: $int, const MAX: $int> TryFrom<$name<MIN, MAX>> for NonZero<$int> {
+            type Error = TryFromIntError;
+
+            #[inline]
+            fn try_from(value: $name<MIN, MAX>) -> Result<Self, Self::Error> {
+                Self::try_from(value.get())
+            }
+        }
+
         const impl<const MIN: $int, const MAX: $int> FromStr for $name<MIN, MAX> {
             type Err = ParseRangeError<$int>;
 
@@ -357,7 +551,85 @@ macro_rules! ranged {
     };
 }
 
+/// Converts the ranged integer `$source` of `$source_integer` to `$target` of `$target_integer`,
+/// each to the other's `NonZero` too: `TryFrom`, checked, as core converts integers of two types,
+/// since whether a value is lost depends on the ranges. A refused value comes back as it was,
+/// beside the target's range.
+macro_rules! convert_between {
+    ($source:ident($source_integer:ident) => $target:ident($target_integer:ident)) => {
+        const impl<
+            const SOURCE_MIN: $source_integer,
+            const SOURCE_MAX: $source_integer,
+            const MIN: $target_integer,
+            const MAX: $target_integer,
+        > TryFrom<$source<SOURCE_MIN, SOURCE_MAX>> for $target<MIN, MAX>
+        {
+            type Error = RangeError<$source_integer, $target_integer>;
+
+            #[inline]
+            fn try_from(value: $source<SOURCE_MIN, SOURCE_MAX>) -> Result<Self, Self::Error> {
+                let integer = value.get();
+                // An integer no `$target_integer` holds lies outside every range of it.
+                if let Ok(converted) = <$target_integer>::try_from(integer)
+                    && let Some(value) = Self::new(converted)
+                {
+                    Ok(value)
+                } else {
+                    Err(RangeError::new(integer, MIN, MAX))
+                }
+            }
+        }
+
+        const impl<const MIN: $target_integer, const MAX: $target_integer>
+            TryFrom<NonZero<$source_integer>> for $target<MIN, MAX>
+        {
+            type Error = RangeError<$source_integer, $target_integer>;
+
+            #[inline]
+            fn try_from(non_zero: NonZero<$source_integer>) -> Result<Self, Self::Error> {
+                let integer = non_zero.get();
+                if let Ok(converted) = <$target_integer>::try_from(integer)
+                    && let Some(value) = Self::new(converted)
+                {
+                    Ok(value)
+                } else {
+                    Err(RangeError::new(integer, MIN, MAX))
+                }
+            }
+        }
+
+        const impl<const MIN: $source_integer, const MAX: $source_integer>
+            TryFrom<$source<MIN, MAX>> for NonZero<$target_integer>
+        {
+            type Error = TryFromIntError;
+
+            #[inline]
+            fn try_from(value: $source<MIN, MAX>) -> Result<Self, Self::Error> {
+                match NonZero::try_from(value.get()) {
+                    Ok(non_zero) => {
+                        with_try_from_int_error(NonZero::<$target_integer>::try_from(non_zero))
+                    },
+                    Err(refused) => Err(refused),
+                }
+            }
+        }
+    };
+}
+
+/// `result`, its refusal as core's `TryFromIntError`: a conversion of `NonZero`s that cannot fail,
+/// whose error is `!`, and one that can read alike.
+#[inline]
+const fn with_try_from_int_error<T, E: [const] Into<TryFromIntError>>(
+    result: Result<T, E>,
+) -> Result<T, TryFromIntError> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(refused) => Err(refused.into()),
+    }
+}
+
 each_ranged_integer!(ranged);
+each_ranged_integer!(pairs convert_between);
 
 #[cfg(test)]
 mod tests;

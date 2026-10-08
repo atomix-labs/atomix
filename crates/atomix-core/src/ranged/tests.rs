@@ -4,6 +4,7 @@
 
 use core::cmp::Ordering;
 use core::iter::Step;
+use core::num::NonZero;
 use core::str::FromStr;
 
 use super::{
@@ -94,6 +95,117 @@ const _: () = {
     }
     each_ranged_integer!(check);
 };
+
+// Each ranged integer expands and narrows in a constant.
+const _: () = {
+    macro_rules! check {
+        ($name:ident($int:ident)) => {{
+            let depth = $name::<1, 10>::MIN.saturating_add(3);
+            let kept: $name<0, 50> = depth.expand();
+            assert!(kept.get() == 4, "expanded, the value kept, in const");
+            assert!(depth.narrow::<5, 10>().is_none(), "narrowed past it, none");
+            assert!(depth.narrow::<1, 4>() == Some($name::<1, 4>::MAX), "else the value");
+        }};
+    }
+    each_ranged_integer!(check);
+};
+
+#[test]
+fn each_ranged_integer_moves_to_any_range_checking_the_value() {
+    macro_rules! check {
+        ($name:ident($int:ident)) => {{
+            type Depth = $name<1, 10>;
+            let name = stringify!($name);
+            let seven = Depth::MIN.saturating_add(6);
+            let kept = seven.to_range::<5, 20>().map($name::get);
+            assert_eq!(kept, Some(7), "{name}: 7 lies in 1..=10 and in 5..=20");
+            assert_eq!(Depth::MIN.to_range::<5, 20>(), None, "{name}: 1 lies below 5");
+            assert_eq!($name::<5, 20>::MAX.to_range::<1, 10>(), None, "{name}: 20 lies above 10");
+            let (four, five) = (Depth::MIN.saturating_add(3), Depth::MIN.saturating_add(4));
+            let bottom = five.to_range::<5, 20>().map($name::get);
+            assert_eq!(bottom, Some(5), "{name}: 5, the new range's bottom");
+            let top = Depth::MAX.to_range::<5, 10>().map($name::get);
+            assert_eq!(top, Some(10), "{name}: 10, its top");
+            assert_eq!(four.to_range::<5, 20>(), None, "{name}: but not 4, one below it");
+            assert_eq!(Depth::MAX.to_range::<0, 9>(), None, "{name}: nor 10, one above 9");
+            let wider = seven.to_range::<0, 50>().map($name::get);
+            assert_eq!(wider, Some(7), "{name}: a range that holds it, as `expand` takes");
+            assert_eq!(seven.to_range::<20, 30>(), None, "{name}: and none in a range apart");
+        }};
+    }
+    each_ranged_integer!(check);
+}
+
+// Each ranged integer moves to a range that only overlaps its own in a constant.
+const _: () = {
+    macro_rules! check {
+        ($name:ident($int:ident)) => {{
+            let seven = $name::<1, 10>::MIN.saturating_add(6);
+            let kept = seven.to_range::<5, 20>();
+            assert!(matches!(kept, Some(levels) if levels.get() == 7), "7 kept, in const");
+            assert!($name::<1, 10>::MIN.to_range::<5, 20>().is_none(), "and 1 refused");
+        }};
+    }
+    each_ranged_integer!(check);
+};
+
+// Each ranged integer converts to and from its `NonZero` in a constant.
+const _: () = {
+    macro_rules! check {
+        ($name:ident($int:ident)) => {{
+            type Depth = $name<1, 10>;
+            type Full = $name<{ NonZero::<$int>::MIN.get() }>;
+            let four = NonZero::<$int>::new(4).expect("4 is not zero");
+            let eleven = NonZero::<$int>::new(11).expect("11 is not zero");
+            let depth = Depth::MIN.saturating_add(3);
+            assert!(Depth::try_from(four) == Ok(depth), "from a nonzero, in const");
+            let refused = Err(RangeError::new(11, 1, 10));
+            assert!(Depth::try_from(eleven) == refused, "or refused, whole");
+            let Ok(ten) = NonZero::<$int>::try_from(Depth::MAX) else {
+                panic!("to a nonzero, checked");
+            };
+            assert!(ten.get() == 10, "the value kept");
+            assert!(NonZero::<$int>::try_from($name::<0, 10>::MIN).is_err(), "refusing zero");
+            assert!(Depth::MAX.to_non_zero().get() == 10, "unchecked, with no zero in range");
+            assert!(Full::from_non_zero(four).get() == 4, "and from one into every nonzero");
+        }};
+    }
+    each_ranged_integer!(check);
+};
+
+// Each ranged integer converts to and from every other, and every other's `NonZero`, in a constant.
+const _: () = {
+    macro_rules! check {
+        ($source:ident($source_integer:ident) => $target:ident($target_integer:ident)) => {{
+            type Source = $source<1, 100>;
+            type Target = $target<1, 10>;
+            let (five, fifty) = (Source::MIN.saturating_add(4), Source::MIN.saturating_add(49));
+            let target_five = Target::MIN.saturating_add(4);
+            assert!(Target::try_from(five) == Ok(target_five), "from another, in const");
+            let refused = Err(RangeError::<$source_integer, $target_integer>::new(50, 1, 10));
+            assert!(Target::try_from(fifty) == refused, "or refused, whole");
+            let non_zero = NonZero::<$source_integer>::new(5).expect("5 is not zero");
+            assert!(Target::try_from(non_zero) == Ok(target_five), "from another's nonzero");
+            let Ok(non_zero_five) = NonZero::<$target_integer>::try_from(five) else {
+                panic!("to another's nonzero, checked");
+            };
+            assert!(non_zero_five.get() == 5, "the value kept");
+            let zero = $source::<0, 10>::MIN;
+            assert!(NonZero::<$target_integer>::try_from(zero).is_err(), "refusing zero");
+        }};
+    }
+    each_ranged_integer!(pairs check);
+};
+
+#[test]
+fn a_value_no_integer_of_the_range_holds_comes_back_as_it_was() {
+    let wide = RangedU16::<0, 300>::MAX;
+    let refused = Err(RangeError::new(300_u16, 0_u8, 255));
+    assert_eq!(RangedU8::<0, 255>::try_from(wide), refused, "300, past every `u8`");
+    let negative = RangedI8::<-5, 5>::MIN;
+    let refused = Err(RangeError::new(-5_i8, 0_u8, 10));
+    assert_eq!(RangedU8::<0, 10>::try_from(negative), refused, "and -5, below every `u8`");
+}
 
 // A range error compares and clones in a constant.
 const _: () = {
