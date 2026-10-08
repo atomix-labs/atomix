@@ -8,24 +8,6 @@ error[E0080]: evaluation panicked: a constant reads no pointer's address but nul
    |
    | macro_rules! pointer_word {
    |
-note: inside `atomix_core::Atomic::<Link>::new`
-  --> src/atomic/mod.rs
-   |
-   |             cell: T::Validity::wrap::<T::Repr>(value.to_repr().into_cell()),
-   |                                                ^^^^^^^^^^^^^^^
-note: inside `_::<impl Atom for Link>::to_repr`
-  --> tests/compile_fail/../testing/pointer_word.rs
-   |
-   |                       let (repr, misaligned) = to_tagged_repr::<Self>(self, Tags::EMPTY);
-   |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-  ::: tests/compile_fail/pointer_word_of_a_pointer_to_a_static_built_in_a_constant.rs:17:1
-   |
-17 | / pointer_word::pointer_word! {
-18 | |     /// A link, never null, and its mark.
-19 | |     struct Link, projected as LinkFields { 0 => next: NonNull<Node>, 1 => deleted: bool }
-20 | | }
-   | |_- in this macro invocation
 note: inside `atomix_core::__private::to_tagged_repr::<Link>`
   --> src/__private.rs
    |

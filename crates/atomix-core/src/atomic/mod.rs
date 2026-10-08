@@ -197,6 +197,7 @@ impl<T: Atom> Atomic<T> {
     #[cfg(not(loom))]
     #[inline]
     #[must_use]
+    #[track_caller]
     pub const fn new(value: T) -> Self
     where
         T: const Atom,
@@ -214,6 +215,7 @@ impl<T: Atom> Atomic<T> {
     #[cfg(loom)]
     #[inline]
     #[must_use]
+    #[track_caller]
     pub fn new(value: T) -> Self {
         Self::from(value)
     }
@@ -272,6 +274,7 @@ impl<T: Atom> Atomic<T> {
     /// Where `T` is a tagged pointer, a derived pointer word or pointer enum, and `value`'s pointer
     /// has a bit set where its tags go.
     #[inline]
+    #[track_caller]
     pub const fn store<O: StoreOrdering>(&self, value: T, order: O)
     where
         T: [const] Atom,
@@ -287,6 +290,7 @@ impl<T: Atom> Atomic<T> {
     /// As [`store`](Self::store).
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
+    #[track_caller]
     pub const fn swap<O: RmwOrdering>(&self, value: T, order: O) -> T
     where
         T: [const] Atom,
@@ -396,6 +400,7 @@ impl<T: Atom> Atomic<T> {
     /// ```
     #[expect(unsafe_code, reason = "decodes reprs read from the cell")]
     #[inline]
+    #[track_caller]
     pub const fn update<
         S: RmwOrdering,
         F: LoadOrdering,
@@ -407,7 +412,8 @@ impl<T: Atom> Atomic<T> {
         T: [const] Atom,
         T::Repr: [const] CompareExchange,
     {
-        let replace = const |seen| {
+        let replace = #[track_caller]
+        const |seen| {
             // SAFETY: by the field INVARIANT, the repr read from the cell decodes.
             Some(f(unsafe { T::from_repr_unchecked(seen) }).to_repr())
         };
@@ -441,6 +447,7 @@ impl<T: Atom> Atomic<T> {
     /// ```
     #[expect(unsafe_code, reason = "decodes reprs read from the cell")]
     #[inline]
+    #[track_caller]
     pub const fn try_update<
         S: RmwOrdering,
         F: LoadOrdering,
@@ -452,9 +459,13 @@ impl<T: Atom> Atomic<T> {
         T: [const] Atom,
         T::Repr: [const] CompareExchange,
     {
-        let replace = const |seen| {
+        let replace = #[track_caller]
+        const |seen| {
             // SAFETY: by the field INVARIANT, the repr read from the cell decodes.
-            f(unsafe { T::from_repr_unchecked(seen) }).map(Atom::to_repr)
+            match f(unsafe { T::from_repr_unchecked(seen) }) {
+                Some(value) => Some(value.to_repr()),
+                None => None,
+            }
         };
         // SAFETY: each repr `replace` returns is a value's own, which decodes.
         let replaced = unsafe { self.try_update_repr(set_order, fetch_order, replace) };
@@ -476,6 +487,7 @@ impl<T: Atom> Atomic<T> {
     /// Each repr `f` returns decodes, as the field INVARIANT asks of each repr the cell holds.
     #[expect(unsafe_code, reason = "writes each repr its closure returns to the cell")]
     #[inline]
+    #[track_caller]
     const unsafe fn try_update_repr<
         S: RmwOrdering,
         F: LoadOrdering,
@@ -541,15 +553,21 @@ impl<T: Atom> Atomic<T> {
     ///
     /// # Panics
     /// As [`store`](Self::store).
+    #[expect(unsafe_code, reason = "writes a value's repr to the cell")]
     #[inline]
+    #[track_caller]
     pub const fn store_rmw<O: StoreOrdering>(&self, value: T, order: O)
     where
         T: [const] Atom,
         T::Repr: [const] CompareExchange,
     {
+        // Encoded once, so its refusal stands before the loop.
+        let repr = value.to_repr();
         // ORDERING: `order` on the exchange that lands, pairing as the caller's store would;
         // Relaxed on the reads before it, which only feed the comparison and pair with nothing.
-        let _ = self.update(order, Relaxed, const |_| value);
+        //
+        // SAFETY: the one repr the closure returns is `value`'s own, which decodes.
+        let _repr_before = unsafe { self.try_update_repr(order, Relaxed, const |_| Some(repr)) };
     }
 
     /// The repr's address, for interop.
@@ -616,6 +634,7 @@ impl<T: Atom> Atomic<T> {
 #[cfg(not(loom))]
 const impl<T: [const] Atom> From<T> for Atomic<T> {
     #[inline]
+    #[track_caller]
     fn from(value: T) -> Self {
         Self {
             cell: T::Validity::wrap::<T::Repr>(value.to_repr().into_cell()),
@@ -627,6 +646,7 @@ const impl<T: [const] Atom> From<T> for Atomic<T> {
 #[cfg(loom)]
 impl<T: Atom> From<T> for Atomic<T> {
     #[inline]
+    #[track_caller]
     fn from(value: T) -> Self {
         Self {
             cell: T::Validity::wrap::<T::Repr>(value.to_repr().into_cell()),
@@ -639,6 +659,7 @@ impl<T: Atom> From<T> for Atomic<T> {
 #[cfg(not(loom))]
 const impl<T: [const] Atom + [const] Default> Default for Atomic<T> {
     #[inline]
+    #[track_caller]
     fn default() -> Self {
         Self::from(T::default())
     }
@@ -647,6 +668,7 @@ const impl<T: [const] Atom + [const] Default> Default for Atomic<T> {
 #[cfg(loom)]
 impl<T: Atom + Default> Default for Atomic<T> {
     #[inline]
+    #[track_caller]
     fn default() -> Self {
         Self::from(T::default())
     }

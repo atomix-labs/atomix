@@ -70,6 +70,7 @@ pub(crate) fn newtype(implementor: &Implementor, newtype: &Newtype, def_site: Sp
             const POINTEE_ALIGNMENT: #atomix::__private::PointeeAlignment =
                 <#ty as #atomix::Atom>::POINTEE_ALIGNMENT;
             #[inline]
+            #[track_caller]
             fn to_repr(self) -> #repr_type {
                 #to_repr(self.#member)
             }

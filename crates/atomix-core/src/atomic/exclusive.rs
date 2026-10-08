@@ -35,8 +35,12 @@ impl<T: Atom> Atomic<T> {
     }
 
     /// Writes `value` without an atomic operation.
+    ///
+    /// # Panics
+    /// As [`store`](Self::store).
     #[cfg(not(loom))]
     #[inline]
+    #[track_caller]
     pub const fn set(&mut self, value: T)
     where
         T: [const] Atom,
@@ -45,14 +49,22 @@ impl<T: Atom> Atomic<T> {
     }
 
     /// Writes `value` without an atomic operation.
+    ///
+    /// # Panics
+    /// As [`store`](Self::store).
     #[cfg(loom)]
     #[inline]
+    #[track_caller]
     pub fn set(&mut self, value: T) {
         T::Repr::set(T::Validity::get_mut::<T::Repr>(&mut self.cell), value.to_repr());
     }
 
     /// Lends the value to `f` and writes back what `f` leaves, unless `f` panics.
+    ///
+    /// # Panics
+    /// Where `f` panics; or, as [`store`](Self::store), on the value `f` leaves.
     #[inline]
+    #[track_caller]
     pub fn with_mut<R, U: FnOnce(&mut T) -> R>(&mut self, f: U) -> R {
         let mut value = self.get();
         let result = f(&mut value);

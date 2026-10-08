@@ -62,6 +62,7 @@
 #![no_std]
 #![feature(
     associated_type_defaults,
+    closure_track_caller,
     const_atomic,
     const_closures,
     const_convert,
@@ -82,6 +83,7 @@
     ptr_mask,
     ptr_metadata,
     step_trait,
+    stmt_expr_attributes,
     structural_match,
     transmute_neo
 )]
