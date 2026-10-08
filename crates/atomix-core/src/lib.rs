@@ -11,7 +11,7 @@
 //! A pointer keeps small fields as tags in the low bits its pointee's alignment leaves clear, and
 //! keeps its provenance through every operation: `HEAD.fields().closed.test_and_set(AcqRel)`
 //! closes a derived Treiber stack's `Head` with `lock bts`, or `ldsetal`, on its top node's
-//! pointer. [`PtrAtom`] is any value stored as a pointer.
+//! pointer. [`PointerAtom`] is any value stored as a pointer.
 //!
 //! Two pointers, or one beside a counter or a slice's length, share a 16-byte atomic, a
 //! [`DoubleWord`], which exposes each pointer's provenance, as no Rust operation keeps one through
@@ -141,7 +141,7 @@ pub mod validity;
     all(target_arch = "x86_64", target_feature = "cmpxchg16b")
 )))]
 pub use crate::atom::VtablePointer;
-pub use crate::atom::{Atom, AtomAdd, AtomBitwise, AtomOrd, FieldAdd, FieldBitwise, PtrAtom};
+pub use crate::atom::{Atom, AtomAdd, AtomBitwise, AtomOrd, FieldAdd, FieldBitwise, PointerAtom};
 pub use crate::atomic::{
     Atomic, AtomicBool, AtomicField, AtomicI8, AtomicI16, AtomicI32, AtomicI64, AtomicIsize,
     AtomicPtr, AtomicU8, AtomicU16, AtomicU32, AtomicU64, AtomicUsize, Field, FieldPath, Join,

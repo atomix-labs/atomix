@@ -16,7 +16,7 @@ use loom::sync::atomic;
 
 use super::{
     BitTest, Bitwise, CellAccess, CompareExchange, ExactBits, FetchAdd, Load, MaskBitwise,
-    Primitive, PtrOffset, RawAccess, Store, Swap,
+    PointerOffset, Primitive, RawAccess, Store, Swap,
 };
 #[cfg(aarch64_code)]
 use super::{FetchBitwise, MinMax};
@@ -610,7 +610,7 @@ impl<T> BitTest for *mut T {
 impl<T> FetchBitwise for *mut T {}
 
 #[cfg(not(loom))]
-impl<T> PtrOffset for *mut T {
+impl<T> PointerOffset for *mut T {
     #[inline]
     fn fetch_ptr_add(cell: &Self::Cell, count: usize, order: CoreOrdering) -> Self {
         cell.fetch_ptr_add(count, order)
@@ -631,7 +631,7 @@ impl<T> PtrOffset for *mut T {
 
 // Loom's pointer cell has no arithmetic.
 #[cfg(loom)]
-impl<T> PtrOffset for *mut T {
+impl<T> PointerOffset for *mut T {
     #[inline]
     fn fetch_ptr_add(cell: &Self::Cell, count: usize, order: CoreOrdering) -> Self {
         update_in_loop(cell, order, |seen| seen.wrapping_add(count))

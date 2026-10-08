@@ -132,7 +132,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct Outer {
         /// The marked node.
-        #[atom(ptr)]
+        #[atom(pointer)]
         inner: Inner,
         /// Whether it is locked.
         locked: bool,
@@ -142,7 +142,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct Head {
         /// The next node.
-        #[atom(ptr)]
+        #[atom(pointer)]
         next: Next,
         /// Whether the list is closed.
         closed: bool,
@@ -152,7 +152,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct LockedSlot {
         /// The slot.
-        #[atom(ptr)]
+        #[atom(pointer)]
         slot: Slot,
         /// Whether it is locked.
         locked: bool,
@@ -162,7 +162,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct LockedChild {
         /// The child.
-        #[atom(ptr)]
+        #[atom(pointer)]
         child: Child,
         /// Whether it is locked.
         locked: bool,
@@ -191,7 +191,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     enum Either {
         /// A marked node, tag 0.
-        Marked(#[atom(ptr)] Inner),
+        Marked(#[atom(pointer)] Inner),
         /// A plain node, tag 1.
         Plain(NonNull<Node>),
     }
@@ -212,7 +212,7 @@ mod tests {
         /// The end of the list.
         End,
         /// A node.
-        Node(#[atom(ptr)] P),
+        Node(#[atom(pointer)] P),
     }
 
     /// `Next`, its repr stated as the one word it is.
@@ -298,9 +298,9 @@ mod tests {
         repr_and_validity_are::<Pinned, *mut (), ZeroValid>();
         assert_eq!(Pinned::End.to_repr(), Next::End.to_repr(), "pinned alike, the end null");
         assert_eq!(Next::REPRS, ReprRange::FULL, "null is the end");
-        assert_eq!(Child::REPRS, ReprRange::NONZERO, "no child is null");
-        assert_eq!(Occupancy::REPRS, ReprRange::NONZERO, "nor an occupancy");
-        assert_eq!(Union::<Leaf, Branch>::REPRS, ReprRange::NONZERO, "nor a generic union");
+        assert_eq!(Child::REPRS, ReprRange::NON_ZERO, "no child is null");
+        assert_eq!(Occupancy::REPRS, ReprRange::NON_ZERO, "nor an occupancy");
+        assert_eq!(Union::<Leaf, Branch>::REPRS, ReprRange::NON_ZERO, "nor a generic union");
     }
 
     #[test]

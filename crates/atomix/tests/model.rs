@@ -124,7 +124,7 @@ mod tests {
     /// A slot beside a lock at bit 2, above the slot's tag.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct LockedSlot {
-        #[atom(ptr)]
+        #[atom(pointer)]
         slot: Slot,
         locked: bool,
     }

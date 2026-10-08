@@ -2,7 +2,7 @@
 
 #![expect(unsafe_code, reason = "the `Atom` impl promises what loads rely on")]
 
-use super::{Atom, PtrAtom};
+use super::{Atom, PointerAtom};
 use crate::primitive::DoubleWord;
 use crate::range::{PointeeAlignment, ReprRange, Tags, assert_aligned};
 use crate::validity::{Validity, ZeroValid};
@@ -22,13 +22,13 @@ type ZeroValidity<P, Q> = <<P as Atom>::Validity as Validity>::ZeroValidityWith<
 // exactly where each word decodes as its value, by the repr alone, and `from_repr_unchecked`
 // decodes each word unchecked, which gives what `from_repr` does; the validity promises zero
 // decodes only where each value's does; and each value may cross threads, as its own impl promises.
-const unsafe impl<P: [const] PtrAtom, Q: [const] PtrAtom> Atom for (P, Q) {
+const unsafe impl<P: [const] PointerAtom, Q: [const] PointerAtom> Atom for (P, Q) {
     type Repr = DoubleWord<*mut P::Pointee, *mut Q::Pointee>;
     type Validity = ZeroValidity<P, Q>;
     const REPRS: ReprRange<Self::Repr> = if P::REPRS.contains(0) && Q::REPRS.contains(0) {
         ReprRange::FULL
     } else {
-        ReprRange::NONZERO
+        ReprRange::NON_ZERO
     };
     const TAG_WIDTH: u32 = P::TAG_WIDTH;
     const POINTEE_ALIGNMENT: PointeeAlignment = P::POINTEE_ALIGNMENT;

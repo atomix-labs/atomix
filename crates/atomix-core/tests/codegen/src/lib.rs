@@ -165,12 +165,12 @@ pub fn bool_or(atomic: &AtomicBool, value: bool) {
 }
 
 #[unsafe(no_mangle)]
-pub fn ptr_fetch_byte_add_discarded(atomic: &AtomicPtr<u64>, bytes: usize) {
+pub fn pointer_fetch_byte_add_discarded(atomic: &AtomicPtr<u64>, bytes: usize) {
     atomic.fetch_byte_add(bytes, Relaxed);
 }
 
 #[unsafe(no_mangle)]
-pub fn ptr_fetch_ptr_sub(atomic: &AtomicPtr<u64>, count: usize) -> *mut u64 {
+pub fn pointer_fetch_ptr_sub(atomic: &AtomicPtr<u64>, count: usize) -> *mut u64 {
     atomic.fetch_ptr_sub(count, AcqRel)
 }
 

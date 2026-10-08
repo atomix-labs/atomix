@@ -7,7 +7,7 @@ mod ptr;
 mod ranged;
 mod scalar;
 
-pub use self::ptr::PtrAtom;
+pub use self::ptr::PointerAtom;
 #[cfg(wide)]
 pub use self::ptr::VtablePointer;
 // For deranged's ranged integers, which take the impls atomix's own do.

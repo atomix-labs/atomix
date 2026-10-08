@@ -168,7 +168,7 @@ mod tests {
         repr_and_validity_are::<Wrap<u8>, u8, Total>();
         repr_and_validity_are::<Wrap<NonZero<u64>>, u64, TotalZeroNiche>();
         repr_and_validity_are::<Word<NonZero<u32>>, u32, TotalZeroNiche>();
-        assert_eq!(Wrap::<NonZero<u64>>::REPRS, ReprRange::NONZERO, "every repr but zero");
+        assert_eq!(Wrap::<NonZero<u64>>::REPRS, ReprRange::NON_ZERO, "every repr but zero");
     }
 
     #[test]

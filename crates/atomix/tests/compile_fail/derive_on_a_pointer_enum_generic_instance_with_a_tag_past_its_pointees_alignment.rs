@@ -10,8 +10,8 @@ use atomix::{Atom, Atomic};
 
 #[derive(Clone, Copy, Atom)]
 enum Union<A, B> {
-    Left(#[atom(ptr)] A),
-    Right(#[atom(ptr)] B),
+    Left(#[atom(pointer)] A),
+    Right(#[atom(pointer)] B),
 }
 
 fn main() {

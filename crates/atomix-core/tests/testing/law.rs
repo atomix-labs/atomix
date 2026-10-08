@@ -69,15 +69,15 @@ pub(crate) trait Promise {
     /// Whether the zero repr decodes: `None` where the validity promises nothing.
     const ZERO_DECODES: Option<bool>;
     /// Whether every other repr decodes: `None` where the validity promises nothing.
-    const NONZERO_DECODES: Option<bool>;
+    const NON_ZERO_DECODES: Option<bool>;
 }
 
 /// Implements `Promise` for each validity: what it promises of zero, then of every other repr.
 macro_rules! promise {
-    ($($validity:ident => $zero:expr, $nonzero:expr;)+) => {$(
+    ($($validity:ident => $zero:expr, $non_zero:expr;)+) => {$(
         impl Promise for $validity {
             const ZERO_DECODES: Option<bool> = $zero;
-            const NONZERO_DECODES: Option<bool> = $nonzero;
+            const NON_ZERO_DECODES: Option<bool> = $non_zero;
         }
     )+};
 }
@@ -99,7 +99,7 @@ pub(crate) fn decodes_as_promised<V: Promise, T: Atom<Validity = V> + Debug>(
 where
     T::Repr: PartialEq + Debug,
 {
-    let promise = if repr.is_bits(0) { V::ZERO_DECODES } else { V::NONZERO_DECODES };
+    let promise = if repr.is_bits(0) { V::ZERO_DECODES } else { V::NON_ZERO_DECODES };
     if let Some(decodes) = promise {
         prop_assert_eq!(
             T::from_repr(repr).is_some(),

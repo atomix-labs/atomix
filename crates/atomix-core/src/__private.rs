@@ -9,7 +9,7 @@
 use core::any::type_name;
 use core::ptr;
 
-use crate::atom::{Atom, AtomAdd, AtomBitwise, AtomOrd, PtrAtom};
+use crate::atom::{Atom, AtomAdd, AtomBitwise, AtomOrd, PointerAtom};
 pub use crate::atomic::{HasPackedField, NotAnAtomic, RawValue, Reach, project_field};
 use crate::message::{Message, refuse};
 use crate::primitive::{CompareExchange, ExactBits, Primitive};
@@ -63,7 +63,7 @@ pub const fn to_tagged_repr<F: const Atom>(value: F, tags: Tags) -> (F::Repr, us
 /// Its bound refuses a field marked a pointer that is none, at its type.
 #[inline]
 #[must_use]
-pub const fn to_tagged_pointer<F: const PtrAtom>(value: F, tags: Tags) -> (*mut (), usize) {
+pub const fn to_tagged_pointer<F: const PointerAtom>(value: F, tags: Tags) -> (*mut (), usize) {
     let (pointer, misaligned) = value.to_tagged_repr(tags);
     (pointer.cast(), misaligned)
 }
@@ -71,7 +71,7 @@ pub const fn to_tagged_pointer<F: const PtrAtom>(value: F, tags: Tags) -> (*mut 
 /// The value of a pointer enum's pointer field stored as `pointer`: [`Atom::from_repr`].
 #[inline]
 #[must_use]
-pub const fn from_pointer<F: const PtrAtom>(pointer: *mut ()) -> Option<F> {
+pub const fn from_pointer<F: const PointerAtom>(pointer: *mut ()) -> Option<F> {
     F::from_repr(pointer.cast())
 }
 
@@ -83,7 +83,7 @@ pub const fn from_pointer<F: const PtrAtom>(pointer: *mut ()) -> Option<F> {
 #[expect(unsafe_code, reason = "forwards `Atom::from_repr_unchecked`, and its contract")]
 #[inline]
 #[must_use]
-pub const unsafe fn from_pointer_unchecked<F: const PtrAtom>(pointer: *mut ()) -> F {
+pub const unsafe fn from_pointer_unchecked<F: const PointerAtom>(pointer: *mut ()) -> F {
     // SAFETY: the caller's pointer decodes.
     unsafe { F::from_repr_unchecked(pointer.cast()) }
 }
@@ -93,7 +93,7 @@ pub const unsafe fn from_pointer_unchecked<F: const PtrAtom>(pointer: *mut ()) -
 #[diagnostic::on_unimplemented(
     message = "a field stored as `{Self}` cannot be packed beside others",
     label = "a pointer, whose bits do not hold its provenance",
-    note = "a pointer is stored alone, in a newtype or an `Option`, or as a pointer field of a pointer word or the one of a pointer enum's variant, marked `#[atom(ptr)]` where its type shows no pointer"
+    note = "a pointer is stored alone, in a newtype or an `Option`, or as a pointer field of a pointer word or the one of a pointer enum's variant, marked `#[atom(pointer)]` where its type shows no pointer"
 )]
 pub impl(crate) const trait FieldRepr: [const] ExactBits {}
 
@@ -136,9 +136,9 @@ pub const unsafe fn from_bits_unchecked<F: const Atom>(bits: u128) -> F {
 pub const fn assert_send_and_sync<T: Send + Sync>() {}
 
 /// Compiles only where `F` is stored as a pointer, which a newtype claims of its field where it is
-/// written as one or marked `#[atom(ptr)]`.
+/// written as one or marked `#[atom(pointer)]`.
 #[inline]
-pub const fn assert_pointer<F: PtrAtom>() {}
+pub const fn assert_pointer<F: PointerAtom>() {}
 
 /// Compiles only where `T` is an atom of a `const` impl, as a derived newtype's concrete field must
 /// be: the one check of the field, since the newtype's impl assumes it.
@@ -635,7 +635,7 @@ impl PointerEnumValidity {
     #[inline]
     #[must_use]
     pub const fn range<R: Primitive>(self) -> ReprRange<R> {
-        if self.promises.none_takes_zero { ReprRange::NONZERO } else { ReprRange::FULL }
+        if self.promises.none_takes_zero { ReprRange::NON_ZERO } else { ReprRange::FULL }
     }
 }
 
@@ -793,7 +793,7 @@ mod tests {
         let slot = EnumLayout::tagged(ReprRange::<u8>::new(0, 2), &[lap, lap]);
         let slot = EnumValidity::new(slot).with_unit(0_u8).with_variant(1_u8, lap, laps);
         assert_eq!(slot.with_variant(2_u8, lap, laps).code(64), ZERO_VALID, "a unit at tag 0");
-        let (id, ids) = fields::<u8, TotalZeroNiche, 1>(ReprRange::NONZERO);
+        let (id, ids) = fields::<u8, TotalZeroNiche, 1>(ReprRange::NON_ZERO);
         let owned = EnumLayout::tagged(ReprRange::<u8>::new(0, 1), &[id]);
         let owned = EnumValidity::new(owned).with_variant(0_u8, id, ids).with_unit(1_u8);
         assert_eq!(owned.code(16), ZERO_NICHE, "a field at tag 0 whose zero never decodes");
@@ -825,7 +825,7 @@ mod tests {
         let lock = EnumValidity::new(EnumLayout::niche_or_tagged(2, owner, 2_u8));
         let lock = lock.with_unit(0_u8).with_unit(1_u8).with_variant(2_u8, owner, owners);
         assert_eq!(lock.code(64), ZERO_NICHE, "zero is the payload's, which never decodes");
-        let (id, ids) = fields::<u8, TotalZeroNiche, 1>(ReprRange::NONZERO);
+        let (id, ids) = fields::<u8, TotalZeroNiche, 1>(ReprRange::NON_ZERO);
         let maybe = EnumValidity::new(EnumLayout::niche_or_tagged(1, id, 1_u8));
         let maybe = maybe.with_unit(0_u8).with_variant(1_u8, id, ids);
         assert_eq!(maybe.code(8), ZERO_VALID, "zero is the unit's");
@@ -842,7 +842,7 @@ mod tests {
             PackedValidity::EMPTY.with_field::<TotalZeroNiche>(node_first.pointer_layout());
         let zero_is_no_node = PointerEnumValidity::new(node_first).with_variant(0_u8, null_node);
         assert_eq!(zero_is_no_node.code(), ZERO_NICHE, "a null node at tag 0 decodes as nothing");
-        assert_eq!(zero_is_no_node.range::<*mut ()>(), ReprRange::NONZERO, "so zero lies outside");
+        assert_eq!(zero_is_no_node.range::<*mut ()>(), ReprRange::NON_ZERO, "so zero lies outside");
         let no_tag_zero = PointerEnumLayout::tagged(&[
             PointerEnumVariant::unit(1_u8),
             PointerEnumVariant::pointer::<_, *mut u64>(2_u8, no_tags),
@@ -976,8 +976,8 @@ mod tests {
     #[test]
     fn discriminants_are_total_where_they_take_every_repr_and_else_say_whether_zero_decodes() {
         assert_eq!(discriminant_validity_code(every_byte()), TOTAL, "every byte");
-        let nonzero: [u8; 255] = array::from_fn(|index| every_byte()[index + 1]);
-        assert_eq!(discriminant_validity_code(nonzero), TOTAL_ZERO_NICHE, "every byte but zero");
+        let non_zero: [u8; 255] = array::from_fn(|index| every_byte()[index + 1]);
+        assert_eq!(discriminant_validity_code(non_zero), TOTAL_ZERO_NICHE, "every byte but zero");
         let below_the_top: [u8; 255] = array::from_fn(|index| every_byte()[index]);
         assert_eq!(discriminant_validity_code(below_the_top), ZERO_VALID, "every byte but 255");
         assert_eq!(discriminant_validity_code([0_u8, 1]), ZERO_VALID, "zero among a few");

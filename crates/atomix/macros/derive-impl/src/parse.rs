@@ -378,7 +378,7 @@ fn disagreement(stated: &Ident, named: &Ident, stored_as: &str, agreeing: &str) 
 /// Each of `fields`, those of `owner`, a struct or a variant, as an impl reads it; each refusal
 /// adds an error.
 ///
-/// A field marked `#[atom(ptr)]` is a pointer its type does not show.
+/// A field marked `#[atom(pointer)]` is a pointer its type does not show.
 fn fields(
     fields: Fields, generics: &Generics, owner: Owner<'_>, errors: &mut Vec<DeriveError>,
 ) -> Vec<Field> {
@@ -389,7 +389,7 @@ fn fields(
         .into_iter()
         .zip(members)
         .map(|(field, member)| {
-            refuse_atom_other_than_ptr(&field, errors);
+            refuse_atom_other_than_pointer(&field, errors);
             refuse_default(&field, errors);
             refuse_place(&field.ty, &member, owner, projects, errors);
             let is_generic = names_a_parameter(&field.ty.to_token_stream(), generics);
@@ -570,23 +570,24 @@ fn refuse_place(
     )));
 }
 
-/// Whether `attr` is `#[atom(ptr)]`, the mark of a pointer its field's type does not show.
+/// Whether `attr` is `#[atom(pointer)]`, the mark of a pointer its field's type does not show.
 fn is_pointer_mark(attr: &Attribute) -> bool {
-    attr.path().is_ident("atom") && attr.parse_args::<Ident>().is_ok_and(|key| key == "ptr")
+    attr.path().is_ident("atom") && attr.parse_args::<Ident>().is_ok_and(|key| key == "pointer")
 }
 
-/// Adds an error for each `#[atom]` on `field` but `#[atom(ptr)]`: a field's reprs are its type's.
-fn refuse_atom_other_than_ptr(field: &FieldDefinition, errors: &mut Vec<DeriveError>) {
+/// Adds an error for each `#[atom]` on `field` but `#[atom(pointer)]`: a field's reprs are its
+/// type's.
+fn refuse_atom_other_than_pointer(field: &FieldDefinition, errors: &mut Vec<DeriveError>) {
     let refused =
         field.attrs.iter().filter(|attr| attr.path().is_ident("atom") && !is_pointer_mark(attr));
     errors.extend(refused.map(|attr| {
-        DeriveError::new(attr.span(), "a field takes `#[atom(ptr)]` alone".to_owned())
+        DeriveError::new(attr.span(), "a field takes `#[atom(pointer)]` alone".to_owned())
             .note(
                 None,
                 "a field's reprs are its type's: `#[atom]`'s other keys go on the type".to_owned(),
             )
             .help(
-                "mark `#[atom(ptr)]` a pointer whose type shows none: an alias, a newtype, a parameter, a pointer word or a pointer enum"
+                "mark `#[atom(pointer)]` a pointer whose type shows none: an alias, a newtype, a parameter, a pointer word or a pointer enum"
                     .to_owned(),
             )
     }));
@@ -877,7 +878,7 @@ fn is_raw_or_non_null(ty: &Type) -> bool {
 }
 
 /// The type `ty` is written to point to: `T` of `*mut T`, `NonNull<T>` or `Option<NonNull<T>>`;
-/// `None` where it is written as no pointer, as a field marked `#[atom(ptr)]` may be.
+/// `None` where it is written as no pointer, as a field marked `#[atom(pointer)]` may be.
 fn pointee(ty: &Type) -> Option<&Type> {
     if let Type::Ptr(pointer) = ungrouped(ty) {
         return Some(&pointer.elem);
@@ -1336,7 +1337,7 @@ mod tests {
     fn atom_on_a_field_or_a_variant_is_refused() {
         assert_eq!(
             refusals(quote! { struct Seq(#[atom(repr = u8)] u64); }),
-            ["a field takes `#[atom(ptr)]` alone"],
+            ["a field takes `#[atom(pointer)]` alone"],
             "on a field, but to mark a pointer"
         );
         assert_eq!(
@@ -1346,7 +1347,7 @@ mod tests {
         );
         assert_eq!(
             refusals(quote! { enum Slot { Empty, Full(#[atom] u32) } }),
-            ["a field takes `#[atom(ptr)]` alone"],
+            ["a field takes `#[atom(pointer)]` alone"],
             "or on a variant's field"
         );
     }
@@ -1409,7 +1410,7 @@ mod tests {
     fn every_refusal_of_a_type_is_reported() {
         assert_eq!(
             refusals(quote! { #[atom(width = 8)] struct Seq(#[atom] u64); }),
-            ["`width` is not a key of `#[atom]`", "a field takes `#[atom(ptr)]` alone"],
+            ["`width` is not a key of `#[atom]`", "a field takes `#[atom(pointer)]` alone"],
             "the key and the field"
         );
     }
@@ -1441,8 +1442,9 @@ mod tests {
         let fields: Vec<String> = head.fields().map(|field| text(&field.member)).collect();
         assert_eq!(fields, ["version", "top", "marked"], "every field, in declaration order");
         assert_eq!(head.repr, WordRepr::Selected, "as wide as its tags need");
-        let link =
-            pointer_word(quote! { struct Link { #[atom(ptr)] next: NodePointer, deleted: bool } });
+        let link = pointer_word(
+            quote! { struct Link { #[atom(pointer)] next: NodePointer, deleted: bool } },
+        );
         assert_eq!(members(&link).0, [(0, "next".to_owned())], "or a field marked one");
         let tagged = pointer_word(quote! { struct Tagged<T> { pointer: NonNull<T>, tag: u2 } });
         let (_, pointer) = &tagged.pointers[0];
@@ -1525,7 +1527,7 @@ mod tests {
     fn a_pointer_in_a_variant_makes_a_pointer_enum() {
         let noun = "a pointer enum";
         assert_eq!(noun_of(quote! { enum Next { End, Node(NonNull<u8>) } }), noun, "written one");
-        let marked = quote! { enum Next { End, Node(#[atom(ptr)] Inner) } };
+        let marked = quote! { enum Next { End, Node(#[atom(pointer)] Inner) } };
         assert_eq!(noun_of(marked), noun, "or marked one");
         let pinned = quote! { #[atom(repr = usize)] enum Next { End, Node(NonNull<u8>) } };
         assert_eq!(noun_of(pinned), noun, "and pinned to one word");

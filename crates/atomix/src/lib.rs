@@ -28,14 +28,14 @@
 //!   struct of places it writes. A place's type names its [`FieldPath`]: a [`Field`], a [`Then`] of
 //!   a field's field, or [`Whole`], which [`Join`] extends; [`TopField`] marks the one that adds.
 //! - **Values.** [`Atom`] encodes a value as its repr and back, its [`ReprRange`] says which reprs
-//!   it takes and its [`validity`] which decode, and [`PtrAtom`] is a value stored as a pointer;
-//!   [`AtomAdd`], [`AtomOrd`] and [`AtomBitwise`] add the read-modify-writes that mean something
-//!   for it, and [`FieldBitwise`] and [`FieldAdd`] those of a field of it. Two words hold a pair
-//!   `(P, Q)` of values stored as pointers, and a pointer to a slice, a `str` or a trait object.
-//!   With the `derive` feature, each derives: `Atom` for a struct or an enum, a pointer word or a
-//!   pointer enum among them, which keeps small fields as tags in its pointer's low bits and the
-//!   pointer's provenance, and each capability for a newtype whose field has it. A pointer word
-//!   takes two words where a second pointer, a wide one or tags no alignment holds need them.
+//!   it takes and its [`validity`] which decode, and [`PointerAtom`] is a value stored as a
+//!   pointer; [`AtomAdd`], [`AtomOrd`] and [`AtomBitwise`] add the read-modify-writes that mean
+//!   something for it, and [`FieldBitwise`] and [`FieldAdd`] those of a field of it. Two words hold
+//!   a pair `(P, Q)` of values stored as pointers, and a pointer to a slice, a `str` or a trait
+//!   object. With the `derive` feature, each derives: `Atom` for a struct or an enum, a pointer
+//!   word or a pointer enum among them, which keeps small fields as tags in its pointer's low bits
+//!   and the pointer's provenance, and each capability for a newtype whose field has it. A pointer
+//!   word takes two words where a second pointer, a wide one or tags no alignment holds need them.
 //!   [`RangedU64<MIN, MAX>`](RangedU64) and its siblings, `RangedU8` to `RangedIsize`, hold an
 //!   integer from `MIN` to `MAX`, and [`RangeError`] and [`ParseRangeError`] say why one refused an
 //!   integer or a text.
@@ -476,10 +476,10 @@ pub use atomix_core::{
     Atom, AtomAdd, AtomBitwise, AtomOrd, Atomic, AtomicBool, AtomicField, AtomicI8, AtomicI16,
     AtomicI32, AtomicI64, AtomicIsize, AtomicPtr, AtomicU8, AtomicU16, AtomicU32, AtomicU64,
     AtomicUsize, BitTest, ExactBits, FetchAdd, FetchBitwise, Field, FieldAdd, FieldBitwise,
-    FieldPath, Join, Load, MaskBitwise, MinMax, ParseRangeError, Primitive, ProjectFields, PtrAtom,
-    RangeError, RangedI8, RangedI16, RangedI32, RangedI64, RangedI128, RangedIsize, RangedU8,
-    RangedU16, RangedU32, RangedU64, RangedU128, RangedUsize, RawAccess, ReadByExchange, ReprRange,
-    Store, Swap, Then, TopField, Whole, compiler_fence, fence,
+    FieldPath, Join, Load, MaskBitwise, MinMax, ParseRangeError, PointerAtom, Primitive,
+    ProjectFields, RangeError, RangedI8, RangedI16, RangedI32, RangedI64, RangedI128, RangedIsize,
+    RangedU8, RangedU16, RangedU32, RangedU64, RangedU128, RangedUsize, RawAccess, ReadByExchange,
+    ReprRange, Store, Swap, Then, TopField, Whole, compiler_fence, fence,
 };
 #[cfg(any(
     target_arch = "aarch64",

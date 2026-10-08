@@ -296,7 +296,7 @@ impl PointerWordLayout {
     #[inline]
     #[must_use]
     pub const fn range<R: Primitive, P: Primitive>(self, pointer: ReprRange<P>) -> ReprRange<R> {
-        if pointer.contains(0) { ReprRange::FULL } else { ReprRange::NONZERO }
+        if pointer.contains(0) { ReprRange::FULL } else { ReprRange::NON_ZERO }
     }
 
     /// The tags a word of this layout passes on to its pointer field: its tag fields', whose bits,
@@ -667,8 +667,8 @@ mod tests {
     #[test]
     fn a_word_is_nonzero_only_where_its_pointer_is() {
         let word = three_bits(0);
-        let never_null = word.range::<*mut u8, *mut u8>(ReprRange::NONZERO);
-        assert_eq!(never_null, ReprRange::NONZERO, "every repr but zero");
+        let never_null = word.range::<*mut u8, *mut u8>(ReprRange::NON_ZERO);
+        assert_eq!(never_null, ReprRange::NON_ZERO, "every repr but zero");
         let nullable = word.range::<*mut u8, *mut u8>(ReprRange::FULL);
         assert_eq!(nullable, ReprRange::FULL, "else every repr");
     }

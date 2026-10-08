@@ -231,7 +231,7 @@ fn a_signed_span_of_any_width_packs_into_the_narrowest_field_that_holds_its_ends
 fn none_takes_the_repr_each_rule_names() {
     assert_eq!(ReprRange::<u8>::new(0, 1).spare_for_none(), Some(2), "from zero: after the end");
     assert_eq!(ReprRange::<u8>::new(200, 201).spare_for_none(), Some(199), "a tie: before");
-    assert_eq!(ReprRange::<u8>::NONZERO.spare_for_none(), Some(0), "from 1: zero");
+    assert_eq!(ReprRange::<u8>::NON_ZERO.spare_for_none(), Some(0), "from 1: zero");
     assert_eq!(ReprRange::<u8>::new(128, 255).spare_for_none(), Some(0), "to the top: zero");
     assert_eq!(ReprRange::<i8>::from_signed(-1, 1).spare_for_none(), Some(0xFE), "-1 to 1: -2");
     assert_eq!(
@@ -255,7 +255,7 @@ fn a_range_grows_to_its_nearer_side() {
     assert_eq!(ReprRange::<u8>::new(0, 1).including(2), ReprRange::new(0, 2), "up");
     assert_eq!(ReprRange::<u8>::new(16, 32).including(0), ReprRange::new(0, 32), "the nearer way");
     assert_eq!(ReprRange::<u8>::new(1, 5).including(3), ReprRange::new(1, 5), "not where it holds");
-    assert_eq!(ReprRange::<u8>::NONZERO.including(0), ReprRange::FULL, "to every repr");
+    assert_eq!(ReprRange::<u8>::NON_ZERO.including(0), ReprRange::FULL, "to every repr");
     let all_but_the_lowest = ReprRange::<i8>::from_signed(-127, 127);
     assert_eq!(all_but_the_lowest.including(0x80), ReprRange::FULL, "from zero once full");
 }
@@ -263,15 +263,15 @@ fn a_range_grows_to_its_nearer_side() {
 #[test]
 fn full_and_nonzero_span_each_primitive() {
     assert_eq!(ReprRange::<bool>::FULL.span(), span(0, 1, 1), "`bool`, one bit");
-    assert_eq!(ReprRange::<bool>::NONZERO.span(), span(1, 1, 1), "and its nonzero repr, 1");
+    assert_eq!(ReprRange::<bool>::NON_ZERO.span(), span(1, 1, 1), "and its nonzero repr, 1");
     assert_eq!(ReprRange::<u8>::FULL.span(), span(0, 0xFF, 8), "`u8`");
     assert_eq!(ReprRange::<i8>::FULL.span(), span(0, 0xFF, 8), "`i8`, as unsigned bits");
-    assert_eq!(ReprRange::<u16>::NONZERO.span(), span(1, 0xFFFF, 16), "`u16`'s nonzero");
+    assert_eq!(ReprRange::<u16>::NON_ZERO.span(), span(1, 0xFFFF, 16), "`u16`'s nonzero");
     assert_eq!(ReprRange::<i32>::FULL.span(), span(0, 0xFFFF_FFFF, 32), "`i32`");
     assert_eq!(ReprRange::<u64>::FULL.span(), span(0, u128::from(u64::MAX), 64), "`u64`");
     assert_eq!(
-        ReprRange::<*mut u8>::NONZERO.span(),
-        ReprRange::<usize>::NONZERO.span(),
+        ReprRange::<*mut u8>::NON_ZERO.span(),
+        ReprRange::<usize>::NON_ZERO.span(),
         "a pointer's, an address's"
     );
 }
@@ -284,7 +284,7 @@ fn new_holds_its_bounds_in_unsigned_order() {
     assert_eq!(ReprRange::<u8>::new(0, 0xFF), ReprRange::FULL, "every repr");
     assert_eq!(ReprRange::<i8>::new(0x80, 0xFF).span(), span(0x80, 0xFF, 8), "an `i8`'s negatives");
     assert_eq!(ReprRange::<u32>::new(0, 0x10_FFFF).span(), span(0, 0x10_FFFF, 32), "`char`'s");
-    assert_eq!(ReprRange::<bool>::new(1, 1), ReprRange::NONZERO, "`true` alone");
+    assert_eq!(ReprRange::<bool>::new(1, 1), ReprRange::NON_ZERO, "`true` alone");
 }
 
 #[test]
@@ -806,7 +806,7 @@ fn units_fill_the_niche_beside_a_payload() {
     let lock = niche_or_tagged(2, ReprRange::<u64>::new(3, u128::from(u64::MAX)));
     let reprs: [u64; 3] = [lock.repr(0_u8, 0), lock.repr(1_u8, 0), lock.repr(2_u8, 3)];
     assert_eq!(reprs, [1, 2, 3], "`Uninit` and `Free` take 1 and 2, below `Owned`'s 3");
-    assert_eq!(lock.range::<u64>(), ReprRange::NONZERO, "leaving 0 to `Option`'s `None`");
+    assert_eq!(lock.range::<u64>(), ReprRange::NON_ZERO, "leaving 0 to `Option`'s `None`");
     let discriminants: [u8; 3] = [1, 2, 3].map(|bits| lock.discriminant(bits));
     assert_eq!(discriminants, [0, 1, 2], "each read back");
     let side = niche_or_tagged(1, ReprRange::<u8>::new(0, 1));
@@ -814,7 +814,7 @@ fn units_fill_the_niche_beside_a_payload() {
     let signs = niche_or_tagged(1, ReprRange::<i8>::from_signed(-1, 1));
     assert_eq!(signs.repr::<u8, u8>(0, 0), 0xFE, "below -1, as `None` would");
     assert_eq!(signs.range::<u8>(), ReprRange::from_signed(-2, 1), "in two bits, signed");
-    let tagged = niche_or_tagged(2, ReprRange::<u8>::NONZERO);
+    let tagged = niche_or_tagged(2, ReprRange::<u8>::NON_ZERO);
     assert_eq!(tagged.width(), 10, "two units beside one spare repr need a tag");
     assert_eq!(tagged.repr::<u16, u8>(1, 0), 1 << 8, "`Free`'s tag above the byte");
 }
@@ -977,15 +977,15 @@ const _: () = {
 const _: () = {
     let full = ReprRange::<u128>::FULL.span();
     assert!(full.start == 0 && full.end == u128::MAX, "every `u128`");
-    let nonzero = ReprRange::<i128>::NONZERO.span();
-    assert!(nonzero.start == 1 && nonzero.end == u128::MAX, "every `i128` but zero");
+    let non_zero = ReprRange::<i128>::NON_ZERO.span();
+    assert!(non_zero.start == 1 && non_zero.end == u128::MAX, "every `i128` but zero");
     let signs = ReprRange::<i128>::from_signed(-1, 1).span();
     assert!(signs.start == u128::MAX && signs.end == 1, "-1 to 1, through zero");
     assert!(
         matches!(ReprRange::<i128>::from_signed(-1, 1).spare_for_none(), Some(MINUS_TWO)),
         "-2"
     );
-    assert!(matches!(ReprRange::<u128>::NONZERO.spare_for_none(), Some(0)), "and zero beside 1");
+    assert!(matches!(ReprRange::<u128>::NON_ZERO.spare_for_none(), Some(0)), "and zero beside 1");
     let every = ReprRange::<i128>::from_signed(i128::MIN, i128::MAX).span();
     assert!(every.start == 0 && every.end == u128::MAX, "every `i128`, from zero as it is full");
     let rotated = span(i128::MIN.cast_unsigned(), i128::MAX.cast_unsigned(), 128);

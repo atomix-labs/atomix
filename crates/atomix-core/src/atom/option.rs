@@ -42,7 +42,7 @@ const fn none_repr<T: Atom>() -> u128 {
         if T::REPRS.contains(0) {
             refuse_option::<T>(&Message::new().text(concat!(
                 "a pointer repr marks `None` with null alone, but null is a value's repr: leave it ",
-                "out, as `NonNull`'s `ReprRange::NONZERO` does, or, for an enum, declare first a ",
+                "out, as `NonNull`'s `ReprRange::NON_ZERO` does, or, for an enum, declare first a ",
                 "variant whose pointer is never null"
             )));
         }

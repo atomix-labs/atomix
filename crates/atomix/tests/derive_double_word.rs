@@ -35,7 +35,7 @@ mod tests {
 
     use atomix::ordering::{AcqRel, Acquire, Relaxed, Release};
     use atomix::validity::{Partial, Total, ZeroNiche, ZeroValid};
-    use atomix::{Atom, Atomic, DoubleWord, PtrAtom, ReprRange};
+    use atomix::{Atom, Atomic, DoubleWord, PointerAtom, ReprRange};
 
     use crate::testing::atom::{low_bit_widths, repr_and_validity_are};
 
@@ -137,7 +137,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct CountedMark {
         /// The marked node.
-        #[atom(ptr)]
+        #[atom(pointer)]
         top: MarkedNode,
         /// How many times it changed.
         version: u64,
@@ -150,7 +150,7 @@ mod tests {
         /// The node the edge leaves.
         from: NonNull<Node>,
         /// The node it reaches, marked when the edge is deleted.
-        #[atom(ptr)]
+        #[atom(pointer)]
         to: MarkedNode,
     }
 
@@ -181,7 +181,7 @@ mod tests {
     }
 
     /// Compiles only where `T` is stored as one pointer.
-    const fn stored_as_a_pointer<T: PtrAtom>() {}
+    const fn stored_as_a_pointer<T: PointerAtom>() {}
 
     #[test]
     fn each_shape_takes_the_words_its_fields_need() {
@@ -199,7 +199,7 @@ mod tests {
         assert_eq!(low_bit_widths::<Pair>(), (1, 3), "a pair's tags, in its first pointer's bits");
         assert_eq!(low_bit_widths::<Head>(), (0, 3), "an integer word's, none of them");
         assert_eq!(Head::REPRS, ReprRange::FULL, "a nullable pointer: every repr");
-        assert_eq!(Pair::REPRS, ReprRange::NONZERO, "a pointer never null: every one but zero");
+        assert_eq!(Pair::REPRS, ReprRange::NON_ZERO, "a pointer never null: every one but zero");
     }
 
     #[test]

@@ -58,7 +58,7 @@ impl<R: Primitive> ReprRange<R> {
     /// Every repr.
     pub const FULL: Self = Self::from_bounds(0, mask(R::BITS));
     /// Every repr but zero.
-    pub const NONZERO: Self = Self::from_bounds(1, mask(R::BITS));
+    pub const NON_ZERO: Self = Self::from_bounds(1, mask(R::BITS));
 
     /// The reprs from `start` up to `end`, as unsigned bits: an `i8`'s -1 is `0xFF`.
     ///

@@ -13,7 +13,7 @@ struct Inner {
 
 #[derive(Clone, Copy, Atom)]
 struct Outer {
-    #[atom(ptr)]
+    #[atom(pointer)]
     inner: Inner,
     locked: bool,
 }

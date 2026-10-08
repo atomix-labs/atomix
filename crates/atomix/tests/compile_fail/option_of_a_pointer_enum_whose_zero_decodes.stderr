@@ -1,4 +1,4 @@
-error[E0080]: evaluation panicked: `Option<$CRATE::Slot>`: a pointer repr marks `None` with null alone, but null is a value's repr: leave it out, as `NonNull`'s `ReprRange::NONZERO` does, or, for an enum, declare first a variant whose pointer is never null
+error[E0080]: evaluation panicked: `Option<$CRATE::Slot>`: a pointer repr marks `None` with null alone, but null is a value's repr: leave it out, as `NonNull`'s `ReprRange::NON_ZERO` does, or, for an enum, declare first a variant whose pointer is never null
  --> $WORKSPACE/crates/atomix-core/src/atom/option.rs
   |
   |             None => <T::Repr as Primitive>::from_bits(const { none_repr::<T>() }),
@@ -9,7 +9,7 @@ note: inside `atomix_core::atom::option::none_repr::<Slot>`
   |
   | /             refuse_option::<T>(&Message::new().text(concat!(
   | |                 "a pointer repr marks `None` with null alone, but null is a value's repr: leave it ",
-  | |                 "out, as `NonNull`'s `ReprRange::NONZERO` does, or, for an enum, declare first a ",
+  | |                 "out, as `NonNull`'s `ReprRange::NON_ZERO` does, or, for an enum, declare first a ",
   | |                 "variant whose pointer is never null"
   | |             )));
   | |_______________^

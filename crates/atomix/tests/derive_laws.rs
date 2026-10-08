@@ -404,7 +404,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct Guarded {
         /// The link.
-        #[atom(ptr)]
+        #[atom(pointer)]
         link: Link,
         /// Whether the link is locked.
         locked: bool,
@@ -448,7 +448,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct Flagged<P> {
         /// The pointer.
-        #[atom(ptr)]
+        #[atom(pointer)]
         pointer: P,
         /// The flag.
         flag: bool,
@@ -458,9 +458,9 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     enum Either<A, B> {
         /// The left pointer.
-        Left(#[atom(ptr)] A),
+        Left(#[atom(pointer)] A),
         /// The right pointer.
-        Right(#[atom(ptr)] B),
+        Right(#[atom(pointer)] B),
     }
 
     /// A node of a list, a stack, a chain and a table at once, which holds an atomic link of each
@@ -533,7 +533,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct GuardedLink {
         /// The marked link.
-        #[atom(ptr)]
+        #[atom(pointer)]
         link: MarkedLink,
         /// Whether the link is locked.
         locked: bool,
