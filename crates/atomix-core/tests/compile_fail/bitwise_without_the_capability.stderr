@@ -25,7 +25,7 @@ note: required by a bound in `atomix_core::atomic::capability::<impl atomix_core
   |
   | impl<T: Atom> Atomic<T> {
 ...
-  |     pub fn or<O: RmwOrdering>(&self, value: T, order: O)
+  |     pub const fn or<O: RmwOrdering>(&self, value: T, order: O)
   |     where
-  |         T: AtomBitwise,
+  |         T: AtomBitwise + [const] Atom,
   |            ^^^^^^^^^^^ required by this bound in `atomix_core::atomic::capability::<impl Atomic<T>>::or`

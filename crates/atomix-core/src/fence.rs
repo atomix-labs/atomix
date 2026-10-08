@@ -2,6 +2,8 @@
 
 #[cfg(dmb_ishst)]
 use core::arch::asm;
+#[cfg(dmb_ishst)]
+use core::intrinsics::const_eval_select;
 use core::sync::atomic::compiler_fence as core_compiler_fence;
 #[cfg(not(loom))]
 use core::sync::atomic::fence as atomic_fence;
@@ -20,24 +22,40 @@ use crate::ordering::FenceOrdering;
 /// hardware orders it. Everywhere else, and under loom and Miri, it is a `Release` fence, which on
 /// `x86_64` emits no instruction; it also orders earlier loads and publishes plain writes, so
 /// neither checker reports code that needs either from it. The other orderings are `core`'s fence.
+///
+/// `const`, as core's is, but under loom, whose is not; a constant runs on one thread, so in one
+/// it orders nothing.
+#[cfg(not(loom))]
 #[inline]
-pub fn fence<O: FenceOrdering>(order: O) {
+pub const fn fence<O: FenceOrdering>(order: O) {
     let _ = order;
     #[cfg(dmb_ishst)]
     if O::IS_STORE_STORE {
-        store_store();
+        const_eval_select((), order_nothing, store_store);
         return;
     }
+    atomic_fence(O::CORE_FENCE);
+}
+
+/// Orders memory accesses across threads as `order` says: loom's fence, in a model.
+#[cfg(loom)]
+#[inline]
+pub fn fence<O: FenceOrdering>(order: O) {
+    let _ = order;
     atomic_fence(O::CORE_FENCE);
 }
 
 /// Orders memory accesses within this thread only: no instruction, only the compiler's order, so
 /// nothing between threads, and nothing loom models.
 #[inline]
-pub fn compiler_fence<O: FenceOrdering>(order: O) {
+pub const fn compiler_fence<O: FenceOrdering>(order: O) {
     let _ = order;
     core_compiler_fence(O::CORE_FENCE);
 }
+
+/// Orders nothing: the store-store fence in a constant, which runs on one thread and no `asm!`.
+#[cfg(dmb_ishst)]
+const fn order_nothing() {}
 
 /// The store-store fence on `aarch64`.
 #[cfg(dmb_ishst)]

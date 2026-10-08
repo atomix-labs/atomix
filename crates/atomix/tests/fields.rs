@@ -1,7 +1,7 @@
 //! What the derive adds to the field operations atomix-core's tests cover: each field's path, at
 //! the placement the derive packs it at, on a named, a tuple, a generic and a nested struct, and a
 //! signed last field, whose sign fills the bits above it; the projection, built at compile time;
-//! the top field it marks; and the projection's `Debug`.
+//! the top field it marks; the projection's `Debug`; and each field operation, in a constant.
 
 #![feature(const_trait_impl)]
 // Loom's cells exist only inside a model, and `as_ptr` and a `const` `new` not at all; `model.rs`
@@ -203,6 +203,25 @@ mod tests {
         nibble.and(Nibble(7), Release);
         assert_eq!(canonical(&signed), Signed { low: 0xFF, nibble: Nibble(3) }, "and cleared");
     }
+
+    // A derived struct's fields change in a constant.
+    const _: () = {
+        /// One more of a value.
+        const fn increment(value: u16) -> u16 {
+            value + 1
+        }
+        let tagged = Atomic::new(Tagged { marked: false, value: 0xABCD_u16 });
+        let fields = tagged.fields();
+        assert!(!fields.marked.test_and_set(AcqRel), "unmarked before, in const");
+        let before = fields.value.update(AcqRel, Acquire, increment);
+        assert!(before.value == 0xABCD && tagged.load(Acquire).value == 0xABCE, "updated");
+        let inner = Inner { ready: true, flags: Flags(1) };
+        let outer = Atomic::new(Outer { low: 3, inner, done: true });
+        let InnerFields { ready, flags } = outer.fields().inner.fields();
+        ready.clear(Release);
+        flags.or(Flags(0x80), Release);
+        assert!(!ready.load(Acquire) && flags.load(Acquire).0 == 0x81, "a field of a field");
+    };
 
     #[test]
     fn a_field_lent_by_a_static_changes_that_static_alone() {

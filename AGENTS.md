@@ -129,7 +129,8 @@ What a change here keeps, beyond what the checks hold it to.
   read them: only code and the checks read `POINTEE_ALIGNMENT`, so a node can
   hold an atomic of the word that points to it.
 - A function that can be `const` is, and a trait whose impls can be is a `const
-  trait`.
+  trait`: each atomic operation is `const` where core's is, so not a pointer's
+  compare-exchange, offsets or masks, nor any under loom, whose impls are plain.
 - Each `unsafe` block sits under an `#[expect(unsafe_code, reason = "…")]` with
   a `// SAFETY:` comment that proves what it requires; a field a proof relies on
   states its `// INVARIANT:` and names every writer.
@@ -148,17 +149,24 @@ What a change here keeps, beyond what the checks hold it to.
   pointer, which `transmute` reads, as core's own `vtable_ptr` does, and writes
   back, since the compiler hard-codes it: `transmute` refuses a change of its
   size, and `crates/atomix-core/tests/double_words.rs` calls through a trait
-  object's pointer read back; and `const_eval_select`, whose four callers read
-  in a constant no address of a pointer with provenance, three null's alone and
-  `exposed_address` that of a pointer made of an integer, a tagged null, by a
-  `transmute` a constant refuses of any other, and at run time do what no
-  constant can: `address` reads a pointer's address with `addr`;
-  `exposed_address`, a double word's, exposes its provenance with
-  `expose_provenance`; `clear_tags`, a word's decode, clears its tag bits with
-  `ptr_mask`'s `mask`, which tells LLVM they are clear; and `subtract_tags`, a
-  pointer enum's, offsets the pointer back by its tag, which a match's arm
-  knows, and tells LLVM through `assert_unchecked` that the bits are clear.
-  `generic_const_exprs`, `specialization` and `unsafe_fields` stay out.
+  object's pointer read back; and `const_eval_select`, whose callers do at run
+  time what no constant can. Four read in a constant no address of a pointer
+  with provenance, three null's alone and `exposed_address` that of a pointer
+  made of an integer, a tagged null, by a `transmute` a constant refuses of any
+  other: `address` reads a pointer's address with `addr`; `exposed_address`, a
+  double word's, exposes its provenance with `expose_provenance`; `clear_tags`,
+  a word's decode, clears its tag bits with `ptr_mask`'s `mask`, which tells
+  LLVM they are clear; and `subtract_tags`, a pointer enum's, offsets the
+  pointer back by its tag, which a match's arm knows, and tells LLVM through
+  `assert_unchecked` that the bits are clear. Four keep to run time what a
+  constant cannot run, and in a constant, which runs on one thread, do the same
+  plainly: an integer's `BitTest` on `x86_64`, `lock bts` and its kin in an
+  `asm!`, there its mask's `fetch_or` and its kin; the 128-bit cell's `exchange`
+  on `x86_64`, `cmpxchg16b`, there a read and a write; `fence(StoreStore)` on
+  `aarch64`, `dmb ishst`, there nothing; and the lock of Miri's double-word
+  cell, taken and given back around each operation, there none, as a constant
+  reads no `static` with interior mutability. `generic_const_exprs`,
+  `specialization` and `unsafe_fields` stay out.
 
 ### Docs
 

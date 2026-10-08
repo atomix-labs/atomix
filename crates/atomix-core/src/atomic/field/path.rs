@@ -96,11 +96,11 @@ impl<C> fmt::Debug for Whole<C> {
     message = "`{Self}` is no path to a field of a packed value",
     label = "expected a path to a field, such as `Field<Quote, 2, bool>`"
 )]
-pub impl(crate) trait FieldPath: Copy {
+pub impl(crate) const trait FieldPath: Copy {
     /// The value the field lies in.
-    type Container: Atom;
+    type Container: [const] Atom;
     /// The field's value.
-    type Value: Atom;
+    type Value: [const] Atom;
     /// The field's lowest bit in the container's repr.
     const OFFSET: u32;
     /// How many bits the field takes.
@@ -175,7 +175,7 @@ pub impl(crate) trait TopField: FieldPath {}
 /// pointer field takes the low bits of the second word that hold its own tags, at bit 64.
 #[doc(hidden)]
 #[expect(unsafe_code, reason = "`FieldPath` for `Field` trusts the placement")]
-pub unsafe trait HasPackedField<const INDEX: u32, V: Atom>: Atom {
+pub const unsafe trait HasPackedField<const INDEX: u32, V: Atom>: Atom {
     /// Where the field lies.
     const PLACEMENT: PackedField;
     /// How the value lays out every field.
@@ -201,7 +201,7 @@ impl ReachesTop for Reach<true> {}
 // Each path keeps `FieldPath`'s promise.
 //
 // Every bit of the repr is the value's own repr, read back as it is.
-impl<C: Atom> FieldPath for Whole<C> {
+const impl<C: [const] Atom> FieldPath for Whole<C> {
     type Container = C;
     type Value = C;
     const OFFSET: u32 = 0;
@@ -220,7 +220,9 @@ impl<C: Atom> FieldPath for Whole<C> {
 // as the container with that field changed, since `from_repr` decodes each field alone and checks
 // only the bits above the width, which extend the last field of any bits, which `END` includes
 // where it is signed.
-impl<C: HasPackedField<INDEX, V>, const INDEX: u32, V: Atom> FieldPath for Field<C, INDEX, V> {
+const impl<C: [const] HasPackedField<INDEX, V> + [const] Atom, const INDEX: u32, V: [const] Atom>
+    FieldPath for Field<C, INDEX, V>
+{
     type Container = C;
     type Value = V;
     const OFFSET: u32 = C::PLACEMENT.offset();
@@ -243,7 +245,9 @@ impl<C: HasPackedField<INDEX, V>, const INDEX: u32, V: Atom> FieldPath for Field
 // decoding, by `B`'s promise, so the container too, by `A`'s. `B` governs no more of `A`'s value
 // than `A` stores, except that where the container's bits above `A` copy `A`'s top bit, which is
 // `B`'s where `B` is signed and ends at `A`'s width, it governs those too.
-impl<A: FieldPath, B: FieldPath<Container = A::Value>> FieldPath for Then<A, B> {
+const impl<A: [const] FieldPath, B: [const] FieldPath<Container = A::Value>> FieldPath
+    for Then<A, B>
+{
     type Container = A::Container;
     type Value = B::Value;
     const OFFSET: u32 = A::OFFSET.saturating_add(B::OFFSET);

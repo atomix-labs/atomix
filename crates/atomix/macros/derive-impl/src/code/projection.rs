@@ -85,7 +85,7 @@ impl<'a> ProjectionCode<'a> {
                 let member = member_in_expansion(member);
                 quote! {
                     #[automatically_derived]
-                    unsafe impl #impl_generics #atomix::__private::HasPackedField<#index, #ty>
+                    const unsafe impl #impl_generics #atomix::__private::HasPackedField<#index, #ty>
                         for #instance #where_clause
                     {
                         const PLACEMENT: #atomix::__private::PackedField = #placement;

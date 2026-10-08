@@ -22,10 +22,10 @@ note: required by a bound in `atomix_core::Atomic::<T>::store`
   |
   | impl<T: Atom> Atomic<T> {
 ...
-  |     pub fn store<O: StoreOrdering>(&self, value: T, order: O)
-  |     where
-  |         T::Repr: Store,
-  |                  ^^^^^ required by this bound in `Atomic::<T>::store`
+  |     pub const fn store<O: StoreOrdering>(&self, value: T, order: O)
+...
+  |         T::Repr: [const] Store,
+  |                  ^^^^^^^^^^^^^ required by this bound in `Atomic::<T>::store`
 
 error[E0277]: `u128` has no pure-read atomic load on this target
   --> tests/compile_fail/aarch64_without_lse2/load_and_store_on_a_wide_value.rs:10:18
@@ -51,7 +51,7 @@ note: required by a bound in `atomix_core::Atomic::<T>::load`
    |
    | impl<T: Atom> Atomic<T> {
 ...
-   |     pub fn load<O: LoadOrdering>(&self, order: O) -> T
-   |     where
-   |         T::Repr: Load,
-   |                  ^^^^ required by this bound in `Atomic::<T>::load`
+   |     pub const fn load<O: LoadOrdering>(&self, order: O) -> T
+...
+   |         T::Repr: [const] Load,
+   |                  ^^^^^^^^^^^^ required by this bound in `Atomic::<T>::load`

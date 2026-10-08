@@ -1,5 +1,7 @@
-//! The read-modify-writes a capability allows, on the values that have it.
+//! The read-modify-writes a capability allows, on the values that have it, at run time and in a
+//! constant.
 
+#![feature(const_trait_impl)]
 // Loom's cells exist only inside a model; `model.rs` holds the loom tests.
 #![cfg(not(loom))]
 
@@ -9,7 +11,7 @@ mod tests {
 
     #[cfg(aarch64_code)]
     use atomix_core::AtomicI64;
-    use atomix_core::ordering::{AcqRel, Relaxed};
+    use atomix_core::ordering::{AcqRel, Acquire, Relaxed, Release};
     use atomix_core::{
         Atomic, AtomicBool, AtomicI8, AtomicI16, AtomicU8, AtomicU16, AtomicU32, AtomicU64,
     };
@@ -139,6 +141,46 @@ mod tests {
         assert!(!bits.bit_set(31, AcqRel), "clear before the set");
         assert_eq!(bits.load(Relaxed), Wrapping(1 << 31), "the top bit set");
     }
+
+    // Add and subtract run in a constant.
+    const _: () = {
+        let count = AtomicU8::new(255);
+        assert!(count.fetch_add(1, AcqRel) == 255, "the value before, in const");
+        assert!(count.fetch_sub(2, AcqRel) == 0, "after a wrap to 0");
+        assert!(count.load(Acquire) == 254, "and back past it");
+    };
+
+    // The bitwise operations that discard the value before run in a constant.
+    const _: () = {
+        let bits = AtomicU16::new(0b1100);
+        bits.or(0b0011, Release);
+        bits.and(0b0110, Release);
+        bits.xor(0b0101, Release);
+        bits.not(Release);
+        assert!(bits.load(Acquire) == !0b0011, "each combined, in const");
+    };
+
+    // A bit's set, toggle and clear run in a constant.
+    const _: () = {
+        let busy = AtomicU64::new(0);
+        assert!(!busy.bit_set(5, AcqRel), "worker 5 was idle, in const");
+        assert!(busy.bit_toggle(5, AcqRel), "busy before the toggle");
+        assert!(!busy.bit_clear(5, AcqRel), "and idle before the clear");
+    };
+
+    // On `aarch64` and `arm64ec`, the `fetch_` forms, maximum and minimum run in a constant.
+    #[cfg(aarch64_code)]
+    const _: () = {
+        let low = AtomicI64::new(5);
+        assert!(low.fetch_min(-3, AcqRel) == 5, "the value before, in const");
+        assert!(low.fetch_max(1, AcqRel) == -3, "the minimum");
+        let flags = AtomicU8::new(0b01);
+        assert!(flags.fetch_or(0b10, AcqRel) == 0b01, "the flags before");
+        assert!(flags.fetch_and(0b10, AcqRel) == 0b11, "both set");
+        assert!(flags.fetch_xor(0b11, AcqRel) == 0b10, "one left");
+        assert!(flags.fetch_not(AcqRel) == 0b01, "flipped");
+        assert!(flags.load(Acquire) == !0b01, "and flipped again");
+    };
 
     #[cfg(aarch64_code)]
     #[test]

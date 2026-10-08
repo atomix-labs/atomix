@@ -22,7 +22,7 @@ note: required by a bound in `atomix_core::atomic::capability::<impl atomix_core
   |
   | impl<T: Atom> Atomic<T> {
 ...
-  |     pub fn fetch_add<O: RmwOrdering>(&self, delta: T::Repr, order: O) -> T
+  |     pub const fn fetch_add<O: RmwOrdering>(&self, delta: T::Repr, order: O) -> T
   |     where
-  |         T: AtomAdd,
+  |         T: AtomAdd + [const] Atom,
   |            ^^^^^^^ required by this bound in `atomix_core::atomic::capability::<impl Atomic<T>>::fetch_add`

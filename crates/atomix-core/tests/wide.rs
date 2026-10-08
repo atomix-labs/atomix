@@ -1,7 +1,9 @@
 //! 128-bit atomics, on every target with a 16-byte compare-exchange.
 //!
-//! The pure load and store exist only with LSE2 (`aarch64`) or AVX (`x86_64`).
+//! The pure load and store exist only with LSE2 (`aarch64`) or AVX (`x86_64`). Each operation is
+//! `const`, `x86_64`'s `cmpxchg16b` a read and a write in a constant.
 
+#![feature(const_trait_impl)]
 // Loom's cells exist only inside a model; `model.rs` holds the loom tests.
 #![cfg(not(loom))]
 #![cfg(wide)]
@@ -107,17 +109,36 @@ mod tests {
         assert_eq!(unsigned.into_inner(), HIGH | 1, "into_inner reads what get_mut wrote");
     }
 
-    #[test]
-    fn new_get_mut_and_into_inner_are_const() {
-        const {
-            let mut value = AtomicI128::new(-1);
-            *value.get_mut() = i128::MIN;
-            assert!(
-                value.into_inner() == i128::MIN,
-                "into_inner reads what get_mut wrote, in const"
-            );
+    // `new`, `get_mut` and `into_inner` run in a constant.
+    const _: () = {
+        let mut value = AtomicI128::new(-1);
+        *value.get_mut() = i128::MIN;
+        assert!(value.into_inner() == i128::MIN, "into_inner reads what get_mut wrote, in const");
+    };
+
+    // A compare-exchange and `update` run in a constant.
+    const _: () = {
+        /// The bits one place up.
+        const fn shift(bits: u128) -> u128 {
+            bits << 1
         }
-    }
+        let value = AtomicU128::new(HIGH | 1);
+        let found = value.compare_exchange(1, 2, AcqRel, Acquire);
+        assert!(matches!(found, Err(seen) if seen == HIGH | 1), "the high half counts, in const");
+        let landed = value.compare_exchange_weak(HIGH | 1, HIGH | 2, AcqRel, Acquire);
+        assert!(matches!(landed, Ok(seen) if seen == HIGH | 1), "both halves match");
+        assert!(value.update(AcqRel, Acquire, shift) == HIGH | 2, "updated");
+        value.store_rmw(3, Release);
+        assert!(value.load_rmw(Acquire) == 3, "and load_rmw reads what store_rmw wrote");
+    };
+
+    // The pure load and store run in a constant.
+    #[cfg(wide_load_store)]
+    const _: () = {
+        let value = AtomicI128::new(0);
+        value.store(i128::MIN, Release);
+        assert!(value.load(Acquire) == i128::MIN, "the load reads the store, in const");
+    };
 
     #[test]
     fn a_plain_word_is_an_atomic_through_its_pointer() {

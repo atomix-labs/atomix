@@ -416,9 +416,9 @@
 //! Under `--cfg loom` with the `loom` feature, every atomic, [`fence`](fn@fence), [`cell`] and
 //! [`hint::spin_loop`] is loom's, so the same code is the model. [`compiler_fence`] stays core's:
 //! it orders nothing between threads. There, `Atomic`'s `new`, `into_inner`, `get`, `set`, `From`
-//! and `Default` are not `const`, nor are the cell's methods; `Atomic`'s `as_ptr`, `from_ptr`,
-//! `get_mut`, `from_mut`, `get_mut_slice` and `from_mut_slice`, and the cell's `as_ptr` and
-//! `raw_get`, do not exist.
+//! and `Default`, [`fence`](fn@fence) and the cell's methods are not `const`, and no atomic
+//! operation runs in a constant; `Atomic`'s `as_ptr`, `from_ptr`, `get_mut`, `from_mut`,
+//! `get_mut_slice` and `from_mut_slice`, and the cell's `as_ptr` and `raw_get`, do not exist.
 //!
 //! A crate models its own code with this dependency, under `RUSTFLAGS="--cfg loom"`:
 //!

@@ -1,12 +1,27 @@
 //! The primitives atomic cells hold, and which of their operations need no compare-exchange loop.
 //!
 //! Library code names `core`'s and loom's atomic types here and nowhere else.
+//!
+//! Each operation's trait is `const`, and its impls are `const` where core's operation is: off
+//! loom, whose atomics are not, but for a pointer's compare-exchange, offsets and masks, which
+//! core's `AtomicPtr` does not make `const`.
 
 use core::marker::Destruct;
 use core::panic::RefUnwindSafe;
 use core::sync::atomic::Ordering as CoreOrdering;
 
 use crate::atomic::FieldPath;
+
+/// Writes `impl …` as `const impl …` off loom, where core's atomic operations are `const`, and as
+/// it is under loom, whose are not.
+macro_rules! const_off_loom {
+    (impl $($impl:tt)+) => {
+        #[cfg(not(loom))]
+        const impl $($impl)+
+        #[cfg(loom)]
+        impl $($impl)+
+    };
+}
 
 #[cfg(wide)]
 mod double;
@@ -163,7 +178,7 @@ pub impl(crate) const trait ExactBits: [const] Primitive {
     )
 )]
 #[doc(hidden)]
-pub impl(crate) trait CompareExchange: Primitive {
+pub impl(crate) const trait CompareExchange: Primitive {
     /// The first read of an update loop: a load where there is one, else a compare-exchange.
     fn read_for_rmw(cell: &Self::Cell, order: CoreOrdering) -> Self;
     /// Writes `new` if the cell holds `current`; returns the value before, `Ok` if `current`.
@@ -189,14 +204,18 @@ pub impl(crate) trait CompareExchange: Primitive {
     label = "expected `bool`, an integer or a `DoubleWord`",
     note = "a pointer's compare-exchange compares its address alone, so one of null for null would strip a null's provenance: for a pure-read load of a pointer, call `load`"
 )]
-pub impl(crate) trait ReadByExchange: CompareExchange {}
+pub impl(crate) const trait ReadByExchange: [const] CompareExchange {}
 
 // `do_not_recommend`, so a pointer reports this trait's message, not `ExactBits`'.
 #[diagnostic::do_not_recommend]
-impl<R: ExactBits + CompareExchange> ReadByExchange for R {}
+const impl<R: ExactBits + [const] CompareExchange> ReadByExchange for R {}
 
 // `do_not_recommend`, so a pointer's refusal lists no double word's impl as a fix.
-#[cfg(wide)]
+#[cfg(all(wide, not(loom)))]
+#[diagnostic::do_not_recommend]
+const impl<A: [const] Word, B: [const] Word> ReadByExchange for DoubleWord<A, B> {}
+
+#[cfg(all(wide, loom))]
 #[diagnostic::do_not_recommend]
 impl<A: Word, B: Word> ReadByExchange for DoubleWord<A, B> {}
 
@@ -207,7 +226,7 @@ impl<A: Word, B: Word> ReadByExchange for DoubleWord<A, B> {}
     note = "a 128-bit load is one instruction with FEAT_LSE2 (aarch64: `-C target-cpu` of a CPU with LSE2) or AVX (x86_64: `-C target-cpu=x86-64-v3`)",
     note = "to accept a load that writes the cache line, call `load_rmw`"
 )]
-pub impl(crate) trait Load: CompareExchange {
+pub impl(crate) const trait Load: CompareExchange {
     /// Reads the cell.
     #[doc(hidden)]
     fn load(cell: &Self::Cell, order: CoreOrdering) -> Self;
@@ -220,7 +239,7 @@ pub impl(crate) trait Load: CompareExchange {
     note = "a 128-bit store is one instruction with FEAT_LSE2 (aarch64: `-C target-cpu` of a CPU with LSE2) or AVX (x86_64: `-C target-cpu=x86-64-v3`)",
     note = "to accept a compare-exchange loop, call `store_rmw`"
 )]
-pub impl(crate) trait Store: CompareExchange {
+pub impl(crate) const trait Store: CompareExchange {
     /// Writes `value` to the cell.
     #[doc(hidden)]
     fn store(cell: &Self::Cell, value: Self, order: CoreOrdering);
@@ -232,7 +251,7 @@ pub impl(crate) trait Store: CompareExchange {
     label = "this exchange would be a compare-exchange loop",
     note = "atomix has no 128-bit exchange: call `update` with `|_| new`, a compare-exchange loop that returns the value before"
 )]
-pub impl(crate) trait Swap: CompareExchange {
+pub impl(crate) const trait Swap: CompareExchange {
     /// Writes `value` to the cell, and returns the value before.
     #[doc(hidden)]
     fn swap(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self;
@@ -256,7 +275,7 @@ pub impl(crate) trait Swap: CompareExchange {
     note = "atomix has no 128-bit add",
     note = "to accept a compare-exchange loop, call `update`"
 )]
-pub impl(crate) trait FetchAdd: CompareExchange {
+pub impl(crate) const trait FetchAdd: CompareExchange {
     /// Adds `delta`, wrapping, and returns the value before.
     #[doc(hidden)]
     fn fetch_add(cell: &Self::Cell, delta: Self, order: CoreOrdering) -> Self;
@@ -270,7 +289,7 @@ pub impl(crate) trait FetchAdd: CompareExchange {
 ///
 /// Each keeps the pointer's provenance. Loom's pointer cell has no arithmetic, so under loom each
 /// offset is a compare-exchange loop.
-pub(crate) trait PointerOffset: CompareExchange {
+pub(crate) const trait PointerOffset: CompareExchange {
     /// Offsets the pointer by `count` elements, wrapping, and returns the pointer before.
     fn fetch_ptr_add(cell: &Self::Cell, count: usize, order: CoreOrdering) -> Self;
     /// Offsets the pointer back by `count` elements, wrapping, and returns the pointer before.
@@ -285,7 +304,7 @@ pub(crate) trait PointerOffset: CompareExchange {
 /// discards the value before: `lock or` on `x86_64`, `ldset` on `aarch64` (without LSE, an outline
 /// call or an LL/SC pair).
 #[doc(hidden)]
-pub impl(crate) trait Bitwise: CompareExchange {
+pub impl(crate) const trait Bitwise: CompareExchange {
     /// Applies `& value`, and returns the value before.
     fn fetch_and(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self;
     /// Applies `| value`, and returns the value before.
@@ -320,10 +339,12 @@ pub impl(crate) trait Bitwise: CompareExchange {
     note = "atomix has no 128-bit bitwise operation",
     note = "to accept a compare-exchange loop, call `update`"
 )]
-pub impl(crate) trait MaskBitwise: CompareExchange {
+pub impl(crate) const trait MaskBitwise:
+    CompareExchange + [const] Primitive
+{
     /// The mask: the integer itself, or a pointer's address.
     #[doc(hidden)]
-    type Mask: ExactBits;
+    type Mask: const ExactBits;
     /// The mask of the one bit at `position`, modulo `BITS`, as `wrapping_shl` counts a shift:
     /// `Atomic::bit_set` and its kin pass any position.
     #[doc(hidden)]
@@ -369,28 +390,24 @@ pub impl(crate) trait MaskBitwise: CompareExchange {
     label = "this would be a compare-exchange loop",
     note = "to accept a compare-exchange loop, call `update`"
 )]
-pub impl(crate) trait BitTest: MaskBitwise {
+pub impl(crate) const trait BitTest: [const] MaskBitwise {
     /// Turns on the bit at `position`, modulo `BITS`, and returns it before.
     #[doc(hidden)]
     #[inline]
     fn test_and_set_bit(cell: &Self::Cell, position: u32, order: CoreOrdering) -> bool {
-        let bit = Self::bit(position);
-        has_bit(Self::fetch_or_mask(cell, bit, order), bit)
+        test_and_set_by_mask::<Self>(cell, position, order)
     }
     /// Turns off the bit at `position`, modulo `BITS`, and returns it before.
     #[doc(hidden)]
     #[inline]
     fn test_and_clear_bit(cell: &Self::Cell, position: u32, order: CoreOrdering) -> bool {
-        let bit = Self::bit(position);
-        let others = Self::Mask::from_bits(!bit.to_bits());
-        has_bit(Self::fetch_and_mask(cell, others, order), bit)
+        test_and_clear_by_mask::<Self>(cell, position, order)
     }
     /// Inverts the bit at `position`, modulo `BITS`, and returns it before.
     #[doc(hidden)]
     #[inline]
     fn test_and_toggle_bit(cell: &Self::Cell, position: u32, order: CoreOrdering) -> bool {
-        let bit = Self::bit(position);
-        has_bit(Self::fetch_xor_mask(cell, bit, order), bit)
+        test_and_toggle_by_mask::<Self>(cell, position, order)
     }
     /// Turns on the bit of `P`, a one-bit field of a container whose repr is `Self`, and returns
     /// it before: [`test_and_set_bit`](Self::test_and_set_bit) at a position the compiler knows.
@@ -415,9 +432,39 @@ pub impl(crate) trait BitTest: MaskBitwise {
     }
 }
 
+/// Turns on the bit at `position` of `R`, modulo its `BITS`, with a mask, and returns it before:
+/// [`BitTest::test_and_set_bit`]'s own body, and its body in a constant where an `asm!` replaces
+/// it.
+#[inline]
+const fn test_and_set_by_mask<R: [const] MaskBitwise>(
+    cell: &R::Cell, position: u32, order: CoreOrdering,
+) -> bool {
+    let bit = R::bit(position);
+    has_bit(R::fetch_or_mask(cell, bit, order), bit)
+}
+
+/// Turns off the bit at `position` of `R`, as [`test_and_set_by_mask`] turns it on.
+#[inline]
+const fn test_and_clear_by_mask<R: [const] MaskBitwise>(
+    cell: &R::Cell, position: u32, order: CoreOrdering,
+) -> bool {
+    let bit = R::bit(position);
+    let others = R::Mask::from_bits(!bit.to_bits());
+    has_bit(R::fetch_and_mask(cell, others, order), bit)
+}
+
+/// Inverts the bit at `position` of `R`, as [`test_and_set_by_mask`] turns it on.
+#[inline]
+const fn test_and_toggle_by_mask<R: [const] MaskBitwise>(
+    cell: &R::Cell, position: u32, order: CoreOrdering,
+) -> bool {
+    let bit = R::bit(position);
+    has_bit(R::fetch_xor_mask(cell, bit, order), bit)
+}
+
 /// Whether the bit of `mask` is set in `value`.
 #[inline]
-fn has_bit<R: MaskBitwise>(value: R, mask: R::Mask) -> bool {
+const fn has_bit<R: [const] MaskBitwise>(value: R, mask: R::Mask) -> bool {
     value.packed_bits() & mask.to_bits() != 0
 }
 
@@ -460,7 +507,7 @@ pub impl(crate) trait FetchBitwise: MaskBitwise {}
     label = "this would be a compare-exchange loop",
     note = "to accept a compare-exchange loop, call `update`"
 )]
-pub impl(crate) trait MinMax: CompareExchange {
+pub impl(crate) const trait MinMax: CompareExchange {
     /// Keeps the larger, and returns the value before.
     #[doc(hidden)]
     fn fetch_max(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self;

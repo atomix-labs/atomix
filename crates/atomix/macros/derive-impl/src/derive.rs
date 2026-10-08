@@ -470,7 +470,7 @@ mod tests {
             const _: () = ::atomix::__private::assert_send_and_sync::<Step>();
             const _: () = {
                 #[automatically_derived]
-                unsafe impl ::atomix::__private::HasPackedField<0, u8> for Step {
+                const unsafe impl ::atomix::__private::HasPackedField<0, u8> for Step {
                     const PLACEMENT: ::atomix::__private::PackedField = placement_0;
                     const LAYOUT: ::atomix::__private::PackedLayout = layout;
                     type Reach = ::atomix::__private::Reach<{
@@ -482,7 +482,7 @@ mod tests {
                     }
                 }
                 #[automatically_derived]
-                unsafe impl ::atomix::__private::HasPackedField<1, Sign> for Step {
+                const unsafe impl ::atomix::__private::HasPackedField<1, Sign> for Step {
                     const PLACEMENT: ::atomix::__private::PackedField = placement_1;
                     const LAYOUT: ::atomix::__private::PackedLayout = layout;
                     type Reach = ::atomix::__private::Reach<{
@@ -1041,7 +1041,7 @@ mod tests {
             const _: () = ::atomix::__private::assert_send_and_sync::<bool>();
             const _: () = {
                 #[automatically_derived]
-                unsafe impl ::atomix::__private::HasPackedField<0, NonNull<Node> > for Link {
+                const unsafe impl ::atomix::__private::HasPackedField<0, NonNull<Node> > for Link {
                     const PLACEMENT: ::atomix::__private::PackedField = layout.pointer_placement();
                     const LAYOUT: ::atomix::__private::PackedLayout = layout.packed_layout();
                     type Reach = ::atomix::__private::Reach<false>;
@@ -1051,7 +1051,7 @@ mod tests {
                     }
                 }
                 #[automatically_derived]
-                unsafe impl ::atomix::__private::HasPackedField<1, bool> for Link {
+                const unsafe impl ::atomix::__private::HasPackedField<1, bool> for Link {
                     const PLACEMENT: ::atomix::__private::PackedField = placement_0;
                     const LAYOUT: ::atomix::__private::PackedLayout = layout.packed_layout();
                     type Reach = ::atomix::__private::Reach<{

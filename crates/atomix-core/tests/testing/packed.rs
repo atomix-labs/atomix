@@ -97,7 +97,7 @@ macro_rules! packed {
                 // `Reach<true>` only where the field ends at the repr's top bit; and `field`
                 // returns the field.
                 #[expect(unsafe_code, reason = "the impl the derive writes, by hand")]
-                unsafe impl HasPackedField<$index, $ty> for $name {
+                const unsafe impl HasPackedField<$index, $ty> for $name {
                     const PLACEMENT: PackedField = PLACEMENTS[$index];
                     const LAYOUT: PackedLayout = LAYOUT;
                     type Reach = Reach<{ reaches_top::<$repr>(PLACEMENTS[$index]) }>;
