@@ -11,7 +11,8 @@ use quote::quote;
 use syn::{Ident, Path, Type};
 
 use super::bound::{
-    BoundSite, field_bounds, own_where_clause, thread_bounds, thread_checks, where_clause,
+    BoundSite, PointerBound, field_bounds, own_where_clause, thread_bounds, thread_checks,
+    where_clause,
 };
 use super::repr;
 use crate::model::{Field, Implementor};
@@ -40,6 +41,8 @@ pub(super) struct LayoutCode<'a> {
     lay_out_checked: Ident,
     /// Whether each instance lays itself out: where the type has parameters, unless laid out once.
     is_laid_out_per_instance: bool,
+    /// What a field written as a thin pointer is bounded by: a pointer enum's is a `PointerAtom`.
+    pointer_bound: PointerBound,
 }
 
 /// What an `Atom` impl holds beside its layout's locals.
@@ -91,7 +94,14 @@ impl<'a> LayoutCode<'a> {
             lay_out: name("lay_out"),
             lay_out_checked: name("lay_out_checked"),
             is_laid_out_per_instance: !implementor.generics.params.is_empty(),
+            pointer_bound: PointerBound::Word,
         }
+    }
+
+    /// The layout of a pointer enum, whose variants' pointers share one `*mut ()`, so each is a
+    /// `PointerAtom`.
+    pub(super) fn bounded_as_pointer_enum(self) -> Self {
+        Self { pointer_bound: PointerBound::Enum, ..self }
     }
 
     /// The layout of a type whose parameters reach markers alone: laid out once, in constants.
@@ -306,10 +316,11 @@ impl<'a> LayoutCode<'a> {
         };
         if let Some((repr_type, repr_items)) = per_instance_repr {
             let functions = self.lay_out_functions(&checks, || {
-                field_bounds(atomix, fields.clone(), BoundSite::LayOut)
+                field_bounds(atomix, fields.clone(), BoundSite::LayOut, self.pointer_bound)
             });
             let pointer_constants = self.alignment.as_ref().and_then(pointer_constants);
-            let field_bounds = field_bounds(atomix, fields.clone(), BoundSite::Impl);
+            let field_bounds =
+                field_bounds(atomix, fields.clone(), BoundSite::Impl, self.pointer_bound);
             let where_clause = where_clause(
                 self.implementor,
                 field_bounds.chain(thread_bounds(self.implementor, fields)),

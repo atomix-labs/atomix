@@ -9,6 +9,7 @@
 use core::any::type_name;
 use core::ptr;
 
+pub use crate::atom::PointerReprAtom;
 use crate::atom::{Atom, AtomAdd, AtomBitwise, AtomOrd, PointerAtom};
 pub use crate::atomic::{HasPackedField, RawValue, Reach, project_field};
 use crate::message::{Message, refuse};
@@ -139,7 +140,7 @@ pub const fn assert_send_and_sync<T: Send + Sync>() {}
 /// Compiles only where `F` is stored as a pointer, which a newtype claims of its field where it is
 /// written as one or marked `#[atom(pointer)]`.
 #[inline]
-pub const fn assert_pointer<F: PointerAtom>() {}
+pub const fn assert_pointer<F: PointerReprAtom>() {}
 
 /// Compiles only where `T` is an atom of a `const` impl, as a derived newtype's concrete field must
 /// be: the one check of the field, since the newtype's impl assumes it.

@@ -22,9 +22,9 @@ mod tests {
     use std::hash::DefaultHasher;
     use std::thread;
 
-    use atomix_core::ordering::{AcqRel, Acquire, Relaxed, Release, SeqCst};
-    use atomix_core::validity::{Total, TotalZeroNiche};
-    use atomix_core::{Atom, Atomic, Primitive, ReprOf};
+    use atomix_core::ordering::{AcqRel, Acquire, CoreRmwOrdering, Relaxed, Release, SeqCst};
+    use atomix_core::validity::{Total, TotalZeroNiche, ZeroNiche, ZeroValid};
+    use atomix_core::{Atom, Atomic, BitTest, Load, MaskBitwise, Primitive, ReprOf};
 
     use crate::testing::law::{assert_holds, decodes_as_promised, keeps_provenance, round_trips};
 
@@ -120,9 +120,9 @@ mod tests {
         assert_holds(round_trips(None::<&Config>));
         assert_holds(keeps_provenance(&config, |config: &Config| config.depth));
         assert_holds(keeps_provenance(Some(&config), |config| config.map(|config| config.venue)));
-        assert_holds(decodes_as_promised::<TotalZeroNiche, &Config>((&config).to_repr()));
-        assert_holds(decodes_as_promised::<Total, Option<&Config>>((&config).to_repr()));
-        assert_holds(decodes_as_promised::<Total, Option<&Config>>(Primitive::from_bits(0)));
+        assert_holds(decodes_as_promised::<ZeroNiche, &Config>((&config).to_repr()));
+        assert_holds(decodes_as_promised::<ZeroValid, Option<&Config>>((&config).to_repr()));
+        assert_holds(decodes_as_promised::<ZeroValid, Option<&Config>>(Primitive::from_bits(0)));
     }
 
     #[test]
@@ -150,6 +150,95 @@ mod tests {
 
         let forged: HookRepr = Primitive::from_bits(0xDEAD_BEE8);
         assert!(<Hook as Atom>::from_repr(forged).is_none(), "nor a function");
+        let hook: Hook = parse;
+        // Toggled, not set: Miri may place a function at an odd address.
+        let moved = hook.to_repr().with_packed_bits(hook.to_repr().packed_bits() ^ 1);
+        assert!(<Hook as Atom>::from_repr(moved).is_none(), "whose code's alignment holds no tag");
+    }
+
+    #[test]
+    fn a_tag_set_in_the_bits_the_pointees_alignment_leaves_clear_keeps_the_address() {
+        let config = Config { depth: 5, venue: "XPAR" };
+        let address = (&config).to_repr().packed_bits();
+        assert_eq!(address & 0b111, 0, "a `Config` is aligned to 8, three low bits clear");
+        let tagged = (&config).to_repr().with_packed_bits(address | 0b101);
+        assert_eq!(tagged.packed_bits(), address | 0b101, "the tags set, the address kept");
+    }
+
+    #[test]
+    fn a_tagged_repr_decodes_once_its_tags_clear() {
+        let config = Config { depth: 5, venue: "XPAR" };
+        let repr = (&config).to_repr();
+        let tagged = repr.with_packed_bits(repr.packed_bits() | 0b101);
+        assert_eq!(<&Config as Atom>::from_repr(tagged), None, "a tagged repr is no reference");
+        let cleared = tagged.clear_packed_bits(0b111);
+        assert_eq!(<&Config as Atom>::from_repr(cleared), Some(&config), "until its tags clear");
+    }
+
+    #[test]
+    fn a_bit_past_the_tags_makes_null() {
+        let config = Config { depth: 5, venue: "XPAR" };
+        let repr = (&config).to_repr();
+        let moved = repr.with_packed_bits(repr.packed_bits() ^ 0b1000);
+        assert_eq!(moved, Primitive::from_bits(0), "set or cleared, as the address held it");
+        let cleared = repr.with_packed_bits(repr.packed_bits() | 1).clear_packed_bits(1 << 40 | 1);
+        assert!(
+            cleared == repr || cleared.is_bits(0),
+            "a clear past the tags keeps it, or nulls it"
+        );
+    }
+
+    #[test]
+    fn a_tagged_null_decodes_as_no_value() {
+        let null: ConfigRepr<'_> = Primitive::from_bits(0);
+        let tagged = null.with_packed_bits(0b11);
+        assert_eq!(<Option<&Config>>::from_repr(tagged), None, "neither `None` nor a reference");
+    }
+
+    /// The cell of `repr`, through the bound every repr has, as a caller of the hidden primitive
+    /// operations reaches one.
+    fn cell_of<R: Primitive>(repr: R) -> R::Cell {
+        R::into_cell(repr)
+    }
+
+    #[test]
+    fn a_mask_past_the_tags_changes_the_tags_alone() {
+        let config = Config { depth: 5, venue: "XPAR" };
+        let repr = (&config).to_repr();
+        let cell = cell_of(repr);
+        let before =
+            <ConfigRepr<'_> as MaskBitwise>::fetch_or_mask(&cell, usize::MAX, AcqRel::CORE);
+        assert_eq!(before, repr, "the reference before");
+        let set = <ConfigRepr<'_> as Load>::load(&cell, Acquire::CORE);
+        assert_eq!(set.packed_bits(), repr.packed_bits() | 0b111, "only the tags set");
+        <ConfigRepr<'_> as MaskBitwise>::fetch_and_mask(&cell, 0, AcqRel::CORE);
+        <ConfigRepr<'_> as MaskBitwise>::fetch_xor_mask(&cell, 1 << 40, AcqRel::CORE);
+        let _ = <ConfigRepr<'_> as BitTest>::test_and_toggle_bit(&cell, 40, AcqRel::CORE);
+        let after = <ConfigRepr<'_> as Load>::load(&cell, Acquire::CORE);
+        assert_eq!(<&Config as Atom>::from_repr(after), Some(&config), "the address as it was");
+    }
+
+    #[test]
+    fn an_operation_that_hands_out_bits_changes_the_tags_alone() {
+        let config = Config { depth: 5, venue: "XPAR" };
+        let repr = (&config).to_repr();
+        let cell = cell_of(repr);
+        <ConfigRepr<'_> as MaskBitwise>::or_mask(&cell, usize::MAX, Relaxed::CORE);
+        let bits = <ConfigRepr<'_> as Load>::load_bits(&cell, Relaxed::CORE);
+        assert_eq!(bits, repr.packed_bits() | 0b111, "only the tags set");
+        <ConfigRepr<'_> as MaskBitwise>::xor_mask(&cell, usize::MAX, Relaxed::CORE);
+        <ConfigRepr<'_> as MaskBitwise>::and_mask(&cell, 0, Relaxed::CORE);
+        let after = <ConfigRepr<'_> as Load>::load(&cell, Acquire::CORE);
+        assert_eq!(<&Config as Atom>::from_repr(after), Some(&config), "the address as it was");
+    }
+
+    #[test]
+    fn a_reference_stored_by_an_exchange_is_read_whole() {
+        let (first, second) =
+            (Config { depth: 1, venue: "XNAS" }, Config { depth: 2, venue: "XLON" });
+        let config = Atomic::new(&first);
+        config.store_rmw(&second, Release);
+        assert_eq!(config.load(Acquire).depth, 2, "the second, read through the reference");
     }
 
     #[test]
@@ -345,6 +434,22 @@ mod tests {
         fn code(&self) -> &'static str {
             "XLON"
         }
+    }
+
+    #[cfg(wide)]
+    #[test]
+    fn a_pair_holds_two_references_or_a_reference_beside_a_function_pointer() {
+        let (bid, ask) = (Config { depth: 1, venue: "XNAS" }, Config { depth: 2, venue: "XNYS" });
+        let best = Atomic::new((&bid, &ask));
+        assert_eq!(best.load_rmw(Acquire), (&bid, &ask), "both references");
+        let swapped = best.compare_exchange((&bid, &ask), (&ask, &bid), AcqRel, Acquire);
+        assert_eq!(swapped, Ok((&bid, &ask)), "both exchanged at once");
+        assert_holds(keeps_provenance((&bid, &ask), |(bid, ask)| (bid.depth, ask.venue)));
+        let hook: Hook = parse;
+        assert_holds(keeps_provenance((&bid, hook), |(bid, hook)| hook(bid.venue)));
+        let pair: Atomic<(&Config, Hook)> = Atomic::new((&bid, hook));
+        // A reference beside a function takes the stronger floor, the reference's.
+        assert_eq!(pair.load_rmw(Acquire).1("XLON"), 4, "the function, beside the reference");
     }
 
     #[cfg(wide)]

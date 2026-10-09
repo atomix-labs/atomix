@@ -57,8 +57,16 @@ mod codegen {
     //! and two pointers, a mark in the first's low bits, are tested in one test before their one
     //! exchange or store. Where `x86_64` has no `cmpxchg16b`, each shape of two words is refused
     //! once, at its derive.
+    //!
+    //! A word over a reference lowers as its twin over a `NonNull` does, instruction for
+    //! instruction: its tag's test, its tag's `Relaxed` load and set, which no floor raises, its
+    //! tag's `Acquire` update, whose write puts the reference back and needs no `Release`, and its
+    //! pointer's load. Its store and exchange test no tag bit, since a reference is aligned, so
+    //! they have no refusal at all.
 
-    use crate::testing::codegen::Lowering::{self, InOrder, Only, Refuses, Retry, RetryOnly};
+    use crate::testing::codegen::Lowering::{
+        self, InOrder, Only, Refuses, Retry, RetryOnly, SameAs,
+    };
     use crate::testing::codegen::{
         AARCH64_LINUX, AARCH64_MACOS, X86_64_LINUX, X86_64_MACOS, lowers_as_expected, refused,
     };
@@ -87,11 +95,26 @@ mod codegen {
         ("locked_slot_test_and_set_locked", Only(&["mov", "ldsetal", "ubfx", "ret"])),
         ("guarded_set_locked", Only(&["mov", "ldsetl", "ret"])),
         ("guarded_test_and_set_marked", Only(&["mov", "ldsetal", "and", "ret"])),
+        ("reference_head_test_and_set_marked", SameAs("head_test_and_set_marked")),
+        ("reference_head_load_top", SameAs("head_load_top")),
+        ("reference_marked_store", Only(&["add", "stlr", "ret"])),
+        ("reference_head_compare_exchange", InOrder(&["add", "add", "casal", "cmp", "cset"])),
+        ("head_load_marked", Only(&["ldr", "ubfx", "ret"])),
+        ("head_set_marked", Only(&["mov", "ldset", "ret"])),
+        ("reference_head_load_marked", SameAs("head_load_marked")),
+        ("reference_head_set_marked", SameAs("head_set_marked")),
+        ("reference_head_update_marked", SameAs("head_update_marked")),
     ];
 
     /// Each load and update on `aarch64` with the `+lse` floor, which reads with `ldar`.
     const AARCH64_FLOOR: &[(&str, Lowering)] = &[
-        ("counted_head_update_version", Retry(&["caspa", "add", "caspal"])),
+        (
+            "counted_head_update_version",
+            RetryOnly(&[
+                "mov", "mov", "caspa", "mov", "add", "mov", "mov", "mov", "caspal", "cmp", "ccmp",
+                "b.ne", "mov", "mov", "ret",
+            ]),
+        ),
         ("packed_struct_load", Only(&["ldar", "lsr", "and", "bfi", "ret"])),
         ("fieldless_enum_load", Only(&["ldarb", "ret"])),
         ("niche_filling_enum_load", InOrder(&["ldarb"])),
@@ -135,13 +158,32 @@ mod codegen {
                 "b.ne", "and", "and", "ubfx", "stp", "strb", "ldp", "ret",
             ]),
         ),
+        ("head_update_marked", Retry(&["ldar", "casa"])),
     ];
 
     /// Each load and update on `aarch64` with LSE2, `neoverse-v1` on Linux and macOS's floor,
     /// `apple-m1`, which reads with `ldapr`.
     const AARCH64_LSE2: &[(&str, Lowering)] = &[
         ("counted_head_load", Only(&["ldp", "dmb ishld", "ret"])),
-        ("counted_head_update_version", Retry(&["ldp", "dmb ishld", "add", "caspal"])),
+        (
+            "counted_head_update_version",
+            RetryOnly(&[
+                "ldp",
+                "dmb ishld",
+                "mov",
+                "mov",
+                "add",
+                "mov",
+                "mov",
+                "caspal",
+                "cmp",
+                "ccmp",
+                "b.ne",
+                "mov",
+                "mov",
+                "ret",
+            ]),
+        ),
         ("marked_pair_store", InOrder(&["tbnz", "add", "dmb ish", "stp", "bl"])),
         ("packed_struct_load", Only(&["ldapr", "lsr", "and", "bfi", "ret"])),
         ("fieldless_enum_load", Only(&["ldaprb", "ret"])),
@@ -172,6 +214,7 @@ mod codegen {
             "child_update",
             RetryOnly(&["ldapr", "mov", "casal", "cmp", "mov", "b.ne", "and", "and", "ret"]),
         ),
+        ("head_update_marked", Retry(&["ldapr", "casa"])),
     ];
 
     /// The rest on `aarch64` Linux with LSE2, `neoverse-v1`, which puts an update's
@@ -240,7 +283,21 @@ mod codegen {
                 "retq",
             ]),
         ),
-        ("counted_head_update_version", Retry(&["vmovdqa", "leaq", "lock cmpxchg16b"])),
+        (
+            "counted_head_update_version",
+            RetryOnly(&[
+                "pushq",
+                "vmovdqa",
+                "vmovq",
+                "vpextrq",
+                "leaq",
+                "movq",
+                "lock cmpxchg16b",
+                "jne",
+                "popq",
+                "retq",
+            ]),
+        ),
         ("marked_pair_store", Refuses(&["testb", "jne", "addq", "vmovdqa", "retq"])),
         (
             "marked_pair_compare_exchange",
@@ -261,6 +318,10 @@ mod codegen {
         ("top_fetch_add", Only(&["movl", "shlq", "lock xaddq", "shrq", "retq"])),
         ("head_test_and_set_marked", Only(&["lock btsq", "setb", "retq"])),
         ("head_load_top", Only(&["movq", "andq", "retq"])),
+        ("reference_head_test_and_set_marked", SameAs("head_test_and_set_marked")),
+        ("reference_head_load_top", SameAs("head_load_top")),
+        ("reference_marked_store", Only(&["incq", "movq", "retq"])),
+        ("reference_head_compare_exchange", InOrder(&["leaq", "addq", "lock cmpxchgq", "sete"])),
         ("next_load_match", Only(&["movq", "testq", "je", "movq", "retq", "movl", "retq"])),
         ("child_load_match", Only(&["movq", "movq", "andq", "andl", "movq", "retq"])),
         ("child_load_leaf", Only(&["movq", "testb", "je", "xorl", "retq", "movq", "retq"])),
@@ -375,6 +436,12 @@ mod codegen {
         ("locked_slot_test_and_set_locked", Only(&["lock btsq", "setb", "retq"])),
         ("guarded_set_locked", Only(&["lock orq", "retq"])),
         ("guarded_test_and_set_marked", Only(&["lock btsq", "setb", "retq"])),
+        ("head_load_marked", Only(&["movq", "andl", "shrl", "retq"])),
+        ("head_set_marked", Only(&["lock orq", "retq"])),
+        ("head_update_marked", Retry(&["movq", "lock cmpxchgq"])),
+        ("reference_head_load_marked", SameAs("head_load_marked")),
+        ("reference_head_set_marked", SameAs("head_set_marked")),
+        ("reference_head_update_marked", SameAs("head_update_marked")),
     ];
 
     /// The rest on `x86_64` Linux, where a function that calls aligns the stack with a push.

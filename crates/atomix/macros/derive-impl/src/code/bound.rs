@@ -41,23 +41,34 @@ pub(crate) enum BoundSite {
     Impl,
 }
 
+/// What a field written as a thin pointer is bounded by.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PointerBound {
+    /// A pointer word's: `PointerReprAtom`, any value stored as one pointer, a reference too.
+    Word,
+    /// A pointer enum's, whose variants' pointers share one `*mut ()`: `PointerAtom`.
+    Enum,
+}
+
 /// The bounds at `site` on each of `fields` that names a parameter and is no marker, each `[const]`
-/// in the impl's where clause: `PointerAtom` on a thin pointer; `Atom` on a wide one, two words;
+/// in the impl's where clause: `pointer_bound` on a thin pointer; `Atom` on a wide one, two words;
 /// and `Atom` on any other field, whose repr a projection and the impl ask to be stored as bits.
 pub(crate) fn field_bounds<'f, I: IntoIterator<Item = &'f Field>>(
-    atomix: &Path, fields: I, site: BoundSite,
+    atomix: &Path, fields: I, site: BoundSite, pointer_bound: PointerBound,
 ) -> impl Iterator<Item = TokenStream> {
     let private = quote!(#atomix::__private);
+    let pointer_bound = match pointer_bound {
+        PointerBound::Word => quote!(#private::PointerReprAtom),
+        PointerBound::Enum => quote!(#atomix::PointerAtom),
+    };
     // A marker needs none: every `PhantomData` is an atom of a `const` impl, and a `[const]` bound
     // of one in a where clause would hide that impl from a `const` call of its codec.
     let bounded_fields = fields.into_iter().filter(|field| field.is_laid_out_per_instance());
     bounded_fields.map(move |Field { ty, is_pointer, is_wide_pointer, .. }| {
         let is_thin_pointer = *is_pointer && !*is_wide_pointer;
         match (is_thin_pointer, *is_wide_pointer, site) {
-            (true, _, BoundSite::LayOut | BoundSite::Projection) => {
-                quote!(#ty: #atomix::PointerAtom)
-            },
-            (true, _, BoundSite::Impl) => quote!(#ty: [const] #atomix::PointerAtom),
+            (true, _, BoundSite::LayOut | BoundSite::Projection) => quote!(#ty: #pointer_bound),
+            (true, _, BoundSite::Impl) => quote!(#ty: [const] #pointer_bound),
             (false, true, BoundSite::Impl) => quote!(#ty: [const] #atomix::Atom),
             (false, _, BoundSite::LayOut) | (false, true, BoundSite::Projection) => {
                 quote!(#ty: #atomix::Atom)

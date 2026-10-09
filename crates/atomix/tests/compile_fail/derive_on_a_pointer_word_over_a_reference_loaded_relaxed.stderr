@@ -1,0 +1,29 @@
+error[E0277]: `Published` can hold a reference, which is read with `Acquire` and written with `Release`
+  --> tests/compile_fail/derive_on_a_pointer_word_over_a_reference_loaded_relaxed.rs:21:20
+   |
+21 |     published.load(Relaxed)
+   |               ---- ^^^^^^^ too weak for a reference
+   |               |
+   |               required by a bound introduced by this call
+   |
+help: the trait `HoldsNoReference` is not implemented for `Published`
+  --> tests/compile_fail/derive_on_a_pointer_word_over_a_reference_loaded_relaxed.rs:15:1
+   |
+15 | struct Published {
+   | ^^^^^^^^^^^^^^^^
+   = note: a thread that reads a reference with `Acquire` sees the writes that made what it points to, which the `Release` that wrote it publishes
+help: the trait `LoadOrdering<T>` is conditionally implemented for `atomix::ordering::Relaxed`
+  --> $WORKSPACE/crates/atomix-core/src/ordering.rs
+   |
+   | impl<T: HoldsNoReference> LoadOrdering<T> for Relaxed {}
+   | ^^^^^^^^----------------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |         |
+   |         unsatisfied requirement introduced here: `_: HoldsNoReference`
+   = note: required for `atomix::ordering::Relaxed` to implement `LoadOrdering<Published>`
+note: required by a bound in `atomix::Atomic::<T>::load`
+  --> $WORKSPACE/crates/atomix-core/src/atomic/mod.rs
+   |
+   | impl<T: Atom> Atomic<T> {
+...
+   |     pub const fn load<O: LoadOrdering<T>>(&self, order: O) -> T
+   |                          ^^^^^^^^^^^^^^^ required by this bound in `Atomic::<T>::load`

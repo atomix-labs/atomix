@@ -16,7 +16,7 @@ use loom::sync::atomic;
 
 use super::{
     BitTest, Bitwise, CellAccess, CompareExchange, ExactBits, FetchAdd, Load, MaskBitwise,
-    PointerOffset, Primitive, RawAccess, Store, Swap,
+    PointerOffset, PointerRepr, Primitive, RawAccess, Store, Swap,
 };
 #[cfg(aarch64_code)]
 use super::{FetchBitwise, MinMax};
@@ -639,6 +639,8 @@ fn subtract_tags_at_run_time<T>(pointer: *mut T, tag_mask: usize) -> *mut T {
     }
     cleared
 }
+
+const impl<T> PointerRepr for *mut T {}
 
 // Each operation keeps the pointer's provenance, as core's do.
 impl<T> MaskBitwise for *mut T {

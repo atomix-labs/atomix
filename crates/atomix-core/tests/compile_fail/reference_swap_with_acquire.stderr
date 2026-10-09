@@ -1,20 +1,20 @@
-error[E0277]: `&'static u64` can hold a reference, which is read with `Acquire` and written with `Release`
+error[E0277]: `&'static u64` can hold a reference, which a read-modify-write writes with `Release`
   --> tests/compile_fail/reference_swap_with_acquire.rs:14:49
    |
 14 |     let _ = CONFIG.swap(Box::leak(Box::new(8)), Acquire);
-   |                    ----                         ^^^^^^^ too weak for a reference
+   |                    ----                         ^^^^^^^ publishes nothing
    |                    |
    |                    required by a bound introduced by this call
    |
-   = help: the trait `HoldsNoReference` is not implemented for `&'static u64`
-   = note: a thread that reads a reference with `Acquire` sees the writes that made what it points to, which the `Release` that wrote it publishes
+   = help: the trait `PublishesNoReference` is not implemented for `&'static u64`
+   = note: a reference written with `Release` publishes the writes that made what it points to, which a thread that reads it with `Acquire` sees: `AcqRel` or `SeqCst` orders both
 help: the trait `RmwOrdering<T>` is conditionally implemented for `atomix_core::ordering::Acquire`
   --> src/ordering.rs
    |
-   | impl<T: HoldsNoReference> RmwOrdering<T> for Acquire {}
-   | ^^^^^^^^----------------^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | impl<T: PublishesNoReference> RmwOrdering<T> for Acquire {}
+   | ^^^^^^^^--------------------^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |         |
-   |         unsatisfied requirement introduced here: `_: HoldsNoReference`
+   |         unsatisfied requirement introduced here: `_: PublishesNoReference`
    = note: required for `atomix_core::ordering::Acquire` to implement `RmwOrdering<&'static u64>`
 note: required by a bound in `atomix_core::Atomic::<T>::swap`
   --> src/atomic/mod.rs

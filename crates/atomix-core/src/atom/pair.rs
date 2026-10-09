@@ -1,8 +1,9 @@
-//! `Atom` for a pair of values each stored as a pointer, in a [`DoubleWord`] of the two.
+//! `Atom` for a pair of values each stored as one pointer, a reference or a function pointer among
+//! them, in a [`DoubleWord`] of the two.
 
 #![expect(unsafe_code, reason = "the `Atom` impl promises what loads rely on")]
 
-use super::{Atom, PointerAtom};
+use super::{Atom, PointerReprAtom};
 use crate::primitive::DoubleWord;
 use crate::range::{PointeeAlignment, ReprRange, Tags, assert_aligned};
 use crate::validity::{Validity, ZeroValid};
@@ -22,8 +23,8 @@ type ZeroValidity<P, Q> = <<P as Atom>::Validity as Validity>::ZeroValidityWith<
 // exactly where each word decodes as its value, by the repr alone, and `from_repr_unchecked`
 // decodes each word unchecked, which gives what `from_repr` does; the validity promises zero
 // decodes only where each value's does; and each value may cross threads, as its own impl promises.
-const unsafe impl<P: [const] PointerAtom, Q: [const] PointerAtom> Atom for (P, Q) {
-    type Repr = DoubleWord<*mut P::Pointee, *mut Q::Pointee>;
+const unsafe impl<P: [const] PointerReprAtom, Q: [const] PointerReprAtom> Atom for (P, Q) {
+    type Repr = DoubleWord<P::Repr, Q::Repr>;
     type Validity = ZeroValidity<P, Q>;
     const REPRS: ReprRange<Self::Repr> = if P::REPRS.contains(0) && Q::REPRS.contains(0) {
         ReprRange::FULL

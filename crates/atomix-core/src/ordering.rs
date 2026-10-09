@@ -5,13 +5,18 @@
 //! and a `Release` write, so a thread that loads the reference sees the writes that made what it
 //! points to: [`LoadOrdering<T>`](LoadOrdering), [`StoreOrdering<T>`](StoreOrdering) and
 //! [`RmwOrdering<T>`](RmwOrdering) take the value, and a value takes the floor of its repr, so an
-//! `Option`, a newtype or a struct that holds a reference takes the reference's. Generic code that
-//! orders a `T` with `Relaxed` bounds it by [`HoldsNoReference`].
+//! `Option`, a newtype or a struct that holds a reference takes the reference's. A field's
+//! read-modify-write beside a reference writes the reference back as it read it, so takes
+//! `Acquire` too: [`FieldOf`]. Generic code that orders a `T` with `Relaxed` bounds it by
+//! [`HoldsNoReference`], and a read-modify-write with `Acquire` by [`PublishesNoReference`].
 //!
 //! Only the types here implement the traits. Each but [`StoreStore`], which core has no name for,
 //! converts to core's [`Ordering`](CoreOrdering) through `From`, for code that hands its ordering
 //! on to core, std or a C interface; nothing converts back, so an ordering stays a type.
 
+use core::any::type_name;
+use core::fmt;
+use core::marker::PhantomData;
 use core::sync::atomic::Ordering as CoreOrdering;
 
 use crate::atom::Atom;
@@ -60,8 +65,9 @@ pub impl(crate) trait CoreLoadOrdering: CoreRmwOrdering {}
 /// only a fence takes, and, where `T` holds a reference, [`AcqRel`] or [`SeqCst`].
 ///
 /// A reference read must see the writes that made what it points to, and a reference written must
-/// publish them, so an exchange of one both acquires and releases. With no `T`, the orderings a
-/// value that holds no reference takes.
+/// publish them, so an exchange of one both acquires and releases. A field's read-modify-write,
+/// [`FieldOf<C>`](FieldOf), writes the reference back as it read it, so takes [`Acquire`] too. With
+/// no `T`, the orderings a value that holds no reference takes.
 ///
 /// Each converts to core's [`Ordering`](CoreOrdering), so generic code hands one on with `into`.
 #[diagnostic::on_unimplemented(
@@ -100,20 +106,93 @@ pub impl(crate) trait StoreOrdering<T = ()>: CoreRmwOrdering {}
 /// write.
 ///
 /// A primitive's hidden `OrderingFloor` names it, so a value takes its repr's: an `Option`, a
-/// newtype or a struct holding a reference takes the reference's.
+/// newtype or a struct holding a reference takes the reference's. `Atomic`'s operations take
+/// orderings the floor admits, and a primitive whose floor is not `Relaxed` raises any ordering a
+/// caller of its hidden operations passes to the floor, so no read of a reference misses the
+/// writes that made what it points to however it is reached.
 #[doc(hidden)]
-pub impl(crate) trait OrderingFloor {
-    /// The `core` ordering of the weakest load the floor takes: what `Debug` and serde's
-    /// `Serialize` read with.
-    const CORE_LOAD: CoreOrdering;
+pub impl(crate) const trait OrderingFloor {
+    /// The floor of a primitive that holds this one's beside `F`'s, as a double word holds two
+    /// words: the stronger of the two.
+    type Stronger<F: const OrderingFloor>: const OrderingFloor;
+    /// `order`, a load's or a compare-exchange's failure's, raised to the floor.
+    fn raise_for_load(order: CoreOrdering) -> CoreOrdering;
+    /// `order`, a store's, raised to the floor.
+    fn raise_for_store(order: CoreOrdering) -> CoreOrdering;
+    /// `order`, a read-modify-write's that writes a value of its own, raised to the floor; one that
+    /// writes null, which publishes nothing, is raised as a load's is.
+    fn raise_for_exchange(order: CoreOrdering) -> CoreOrdering;
+    /// `order`, a read-modify-write's that writes back the value it read with its tags alone
+    /// changed, raised to the floor: the read acquires, and the write continues the release
+    /// sequence of the store it read from.
+    fn raise_for_write_back(order: CoreOrdering) -> CoreOrdering;
 }
 
-impl OrderingFloor for Relaxed {
-    const CORE_LOAD: CoreOrdering = CoreOrdering::Relaxed;
+// Every ordering stands.
+const impl OrderingFloor for Relaxed {
+    type Stronger<F: const OrderingFloor> = F;
+    #[inline]
+    fn raise_for_load(order: CoreOrdering) -> CoreOrdering {
+        order
+    }
+    #[inline]
+    fn raise_for_store(order: CoreOrdering) -> CoreOrdering {
+        order
+    }
+    #[inline]
+    fn raise_for_exchange(order: CoreOrdering) -> CoreOrdering {
+        order
+    }
+    #[inline]
+    fn raise_for_write_back(order: CoreOrdering) -> CoreOrdering {
+        order
+    }
 }
 
-impl OrderingFloor for AcqRel {
-    const CORE_LOAD: CoreOrdering = CoreOrdering::Acquire;
+// A read acquires and a write releases; core's orderings past the five it has stand, as core
+// panics on one where it would.
+const impl OrderingFloor for AcqRel {
+    type Stronger<F: const OrderingFloor> = Self;
+    #[inline]
+    fn raise_for_load(order: CoreOrdering) -> CoreOrdering {
+        match order {
+            CoreOrdering::Relaxed | CoreOrdering::Acquire => CoreOrdering::Acquire,
+            CoreOrdering::Release => CoreOrdering::Release,
+            CoreOrdering::AcqRel => CoreOrdering::AcqRel,
+            CoreOrdering::SeqCst => CoreOrdering::SeqCst,
+            _ => order,
+        }
+    }
+    #[inline]
+    fn raise_for_store(order: CoreOrdering) -> CoreOrdering {
+        match order {
+            CoreOrdering::Relaxed | CoreOrdering::Release => CoreOrdering::Release,
+            CoreOrdering::Acquire => CoreOrdering::Acquire,
+            CoreOrdering::AcqRel => CoreOrdering::AcqRel,
+            CoreOrdering::SeqCst => CoreOrdering::SeqCst,
+            _ => order,
+        }
+    }
+    #[inline]
+    fn raise_for_exchange(order: CoreOrdering) -> CoreOrdering {
+        match order {
+            CoreOrdering::Relaxed | CoreOrdering::Acquire | CoreOrdering::Release => {
+                CoreOrdering::AcqRel
+            },
+            CoreOrdering::AcqRel => CoreOrdering::AcqRel,
+            CoreOrdering::SeqCst => CoreOrdering::SeqCst,
+            _ => order,
+        }
+    }
+    #[inline]
+    fn raise_for_write_back(order: CoreOrdering) -> CoreOrdering {
+        match order {
+            CoreOrdering::Relaxed | CoreOrdering::Acquire => CoreOrdering::Acquire,
+            CoreOrdering::Release | CoreOrdering::AcqRel => CoreOrdering::AcqRel,
+            CoreOrdering::SeqCst => CoreOrdering::SeqCst,
+            _ => order,
+        }
+    }
 }
 
 /// An ordering a fence may take.
@@ -167,12 +246,44 @@ impl CoreLoadOrdering for Relaxed {}
 impl CoreLoadOrdering for Acquire {}
 impl CoreLoadOrdering for SeqCst {}
 
+/// A read-modify-write of a field of a `C`, which writes the rest of the `C` back as it read it:
+/// what [`RmwOrdering`] takes for one, as an [`AtomicField`](crate::AtomicField)'s `update` and
+/// `fetch_or` do.
+///
+/// Where `C` holds a reference, the read hands out the `C`, so it acquires, and the write puts the
+/// reference back as the read found it, its tags alone changed: a read-modify-write continues the
+/// release sequence of the store it read from, so a thread that reads the reference after it still
+/// sees the writes that made what it points to, and the write needs no `Release`. So it takes
+/// [`Acquire`], [`AcqRel`] or [`SeqCst`]; where `C` holds none, every ordering a
+/// read-modify-write takes.
+///
+/// # Examples
+/// ```
+/// # extern crate atomix_core as atomix;
+/// use atomix::ordering::{Acquire, FieldOf, RmwOrdering};
+///
+/// /// Compiles only where `O` orders a read-modify-write of a field of `C`.
+/// fn orders_a_field_of<C, O: RmwOrdering<FieldOf<C>>>(_: O) {}
+///
+/// // A flag beside a reference: the read acquires the reference, and the write releases nothing.
+/// orders_a_field_of::<(&'static u64, bool), _>(Acquire);
+/// ```
+// Clone and Copy are derived, as a path's are. Debug is written out, so it names `C`.
+#[derive(Clone, Copy)]
+pub struct FieldOf<C>(PhantomData<fn(C) -> C>);
+
+impl<C> fmt::Debug for FieldOf<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "FieldOf<{}>", type_name::<C>())
+    }
+}
+
 /// A value that holds no reference, so takes every ordering: one whose repr's floor is
 /// [`Relaxed`].
 ///
-/// [`Relaxed`], and [`Acquire`] and [`Release`] in a read-modify-write, order a `T` only where it
-/// is one: generic code that orders a `T` with them bounds `T` by it, as rustc suggests, and a
-/// reference's refusal names the value and why. Sealed: a value's repr says whether it is one.
+/// [`Relaxed`], and [`Release`] in a read-modify-write, order a `T` only where it is one: generic
+/// code that orders a `T` with them bounds `T` by it, as rustc suggests, and a reference's refusal
+/// names the value and why. Sealed: a value's repr says whether it is one.
 ///
 /// # Examples
 /// ```
@@ -206,9 +317,99 @@ pub impl(crate) trait HoldsNoReference {}
 #[diagnostic::do_not_recommend]
 impl<T: Atom<Repr: Primitive<OrderingFloor = Relaxed>>> HoldsNoReference for T {}
 
+/// What a read-modify-write of a `Self` reads, which [`Relaxed`] and [`Release`] take where it
+/// hands out no reference: a value's own read, or a field's, [`FieldOf`], its container's.
+///
+/// A rule of its own, rather than `HoldsNoReference` for `FieldOf` too, so each refusal names what
+/// its caller wrote: a value's, the value; a field's, its container, in a message of its own.
+#[doc(hidden)]
+pub impl(crate) trait ReadModifyWrite {
+    /// The read: a [`ValueRead`] or a [`FieldRead`].
+    type Read;
+}
+
+impl<T: Atom> ReadModifyWrite for T {
+    type Read = ValueRead<T>;
+}
+
+// Beside the impl for values: `FieldOf` is no `Atom`.
+impl<C> ReadModifyWrite for FieldOf<C> {
+    type Read = FieldRead<C>;
+}
+
+/// The read of a read-modify-write of a `T`, which hands out the `T`.
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct ValueRead<T>(PhantomData<fn(T) -> T>);
+
+/// The read of a field's read-modify-write in a `C`, which hands out the `C`.
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct FieldRead<C>(PhantomData<fn(C) -> C>);
+
+/// A read that hands out no reference, so takes [`Relaxed`]: a value's, of one that
+/// [`HoldsNoReference`], or a field's, of a container that holds none.
+#[doc(hidden)]
+pub impl(crate) trait ReadsNoReference {}
+
+impl<T: HoldsNoReference> ReadsNoReference for ValueRead<T> {}
+impl<C: ContainerHoldsNoReference> ReadsNoReference for FieldRead<C> {}
+
+/// A value that holds no reference, as the container of a field: what a field's read-modify-write,
+/// [`FieldOf<C>`](FieldOf), asks of `C` to take [`Relaxed`] or [`Release`].
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "a field's read-modify-write beside the reference `{Self}` holds reads it, so takes `Acquire`, `AcqRel` or `SeqCst`",
+    label = "too weak to read the reference",
+    note = "its read hands out the `{Self}` before, the reference with it, so acquires; its write puts the reference back as it read it, so needs no `Release`"
+)]
+pub impl(crate) trait ContainerHoldsNoReference {}
+
+// `do_not_recommend`, as `HoldsNoReference`'s impl for values is.
+#[diagnostic::do_not_recommend]
+impl<C: Atom<Repr: Primitive<OrderingFloor = Relaxed>>> ContainerHoldsNoReference for C {}
+
+/// A read-modify-write that publishes no reference, so takes [`Acquire`]: one of a value that
+/// holds none, or of a field, [`FieldOf`], which writes back the reference it read.
+///
+/// [`Acquire`] orders a read-modify-write of a `T` only where it is one: generic code that orders
+/// one with it bounds `T` by it, as rustc suggests, and a reference's refusal names the value and
+/// why. Sealed: a value's repr says whether it is one.
+///
+/// # Examples
+/// ```
+/// # extern crate atomix_core as atomix;
+/// use atomix::ordering::{Acquire, PublishesNoReference};
+/// use atomix::{Atom, Atomic, Swap};
+///
+/// /// Takes a value of any type that holds no reference, leaving `empty`, with `Acquire`.
+/// fn take<T: Atom<Repr: Swap> + PublishesNoReference>(slot: &Atomic<T>, empty: T) -> T {
+///     slot.swap(empty, Acquire)
+/// }
+///
+/// assert_eq!(take(&Atomic::new(7_u64), 0), 7, "the value taken");
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` can hold a reference, which a read-modify-write writes with `Release`",
+    label = "publishes nothing",
+    note = "a reference written with `Release` publishes the writes that made what it points to, which a thread that reads it with `Acquire` sees: `AcqRel` or `SeqCst` orders both"
+)]
+pub impl(crate) trait PublishesNoReference {}
+
+// `do_not_recommend`, as `HoldsNoReference`'s impl for values is.
+#[diagnostic::do_not_recommend]
+impl<T: Atom<Repr: Primitive<OrderingFloor = Relaxed>>> PublishesNoReference for T {}
+
+// Beside the impl for values: `FieldOf` is no value. `do_not_recommend`, so a reference's refusal
+// names no `FieldOf` as a fix.
+#[diagnostic::do_not_recommend]
+impl<C> PublishesNoReference for FieldOf<C> {}
+
 // Written out, not generated: a wrong ordering's error lists these impls, and would show a macro.
-// Each impl that takes only a value holding no reference is bounded by `HoldsNoReference`, whose
-// message a reference's refusal reports.
+// Each impl that takes only a value holding no reference is bounded by `HoldsNoReference`, or, for
+// `Acquire` in a read-modify-write, `PublishesNoReference`, whose message a reference's refusal
+// reports; `Relaxed` and `Release` in a read-modify-write, `ReadModifyWrite`'s read, which reaches
+// `HoldsNoReference` for a value and `ContainerHoldsNoReference` for a field's, `FieldOf`.
 impl<T: HoldsNoReference> LoadOrdering<T> for Relaxed {}
 impl<T> LoadOrdering<T> for Acquire {}
 impl<T> LoadOrdering<T> for SeqCst {}
@@ -217,15 +418,17 @@ impl<T: HoldsNoReference> StoreOrdering<T> for Relaxed {}
 impl<T> StoreOrdering<T> for Release {}
 impl<T> StoreOrdering<T> for SeqCst {}
 
-impl<T: HoldsNoReference> RmwOrdering<T> for Relaxed {}
-impl<T: HoldsNoReference> RmwOrdering<T> for Acquire {}
-impl<T: HoldsNoReference> RmwOrdering<T> for Release {}
+impl<T: ReadModifyWrite<Read: ReadsNoReference>> RmwOrdering<T> for Relaxed {}
+impl<T: PublishesNoReference> RmwOrdering<T> for Acquire {}
+impl<T: ReadModifyWrite<Read: ReadsNoReference>> RmwOrdering<T> for Release {}
 impl<T> RmwOrdering<T> for AcqRel {}
 impl<T> RmwOrdering<T> for SeqCst {}
 
 #[cfg(test)]
 mod tests {
     use core::marker::Destruct;
+    #[cfg(wide)]
+    use core::ptr::NonNull;
     use core::sync::atomic::{AtomicU8, compiler_fence, fence};
 
     use super::{
@@ -245,6 +448,15 @@ mod tests {
         floor_is::<Option<&u64>, AcqRel>();
         floor_is::<fn(&str) -> usize, Relaxed>();
         floor_is::<Option<unsafe extern "C" fn()>, Relaxed>();
+    };
+
+    // A double word takes the stronger of its words' floors.
+    #[cfg(wide)]
+    const _: () = {
+        floor_is::<(NonNull<u64>, NonNull<u64>), Relaxed>();
+        floor_is::<(&u64, fn()), AcqRel>();
+        floor_is::<(fn(), &u64), AcqRel>();
+        floor_is::<&[u64], AcqRel>();
     };
 
     /// Loads with `O`, and fails a compare-exchange with it, on `core`'s atomic, which panics on an

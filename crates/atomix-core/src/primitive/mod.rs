@@ -35,6 +35,7 @@ mod wide;
 pub use self::double::{DoubleWord, Word};
 pub(crate) use self::narrow::{address, subtract_tags};
 pub use self::sealed::ReprOf;
+pub(crate) use self::sealed::alignment_mask;
 
 /// A primitive's cell, and every access to it that is not an atomic instruction.
 ///
@@ -82,7 +83,7 @@ macro_rules! primitive {
             /// The weakest ordering an operation on it takes: `Relaxed`, but on a reference's repr
             /// `AcqRel`, an `Acquire` read and a `Release` write.
             #[doc(hidden)]
-            type OrderingFloor: OrderingFloor = Relaxed;
+            type OrderingFloor: const OrderingFloor = Relaxed;
             /// The value of the low `BITS` of `bits`; a pointer built so has no provenance.
             #[doc(hidden)]
             fn from_bits(bits: u128) -> Self;
@@ -154,6 +155,24 @@ pub impl(crate) const unsafe trait RawAccess: [const] Primitive {
     fn as_ptr(cell: &Self::Cell) -> *mut Self;
 }
 
+/// Declares `PointerRepr`, a `Word` too where a double word exists.
+macro_rules! pointer_repr {
+    ($($word:tt)*) => {
+        /// A primitive that is one pointer, its provenance kept: a `*mut T`, or the [`ReprOf`] of
+        /// a thin reference or a function pointer.
+        ///
+        /// A pointer word's pointer field is stored as one, and so is each of a pair's, which a
+        /// double word holds.
+        #[doc(hidden)]
+        pub impl(crate) const trait PointerRepr: [const] Primitive + CompareExchange $($word)* {}
+    };
+}
+
+#[cfg(wide)]
+pointer_repr!(+ const Word);
+#[cfg(not(wide))]
+pointer_repr!();
+
 /// A primitive whose bits are its whole value: `bool` or an integer, never a pointer, whose
 /// provenance its bits do not hold.
 // `Primitive::IS_BITS_EXACT` is true exactly for the primitives that implement this.
@@ -187,7 +206,7 @@ pub impl(crate) const trait ExactBits:
     )
 )]
 #[doc(hidden)]
-pub impl(crate) const trait CompareExchange: Primitive {
+pub impl(crate) const trait CompareExchange: [const] Primitive {
     /// The first read of an update loop: a load where there is one, else a compare-exchange.
     fn read_for_rmw(cell: &Self::Cell, order: CoreOrdering) -> Self;
     /// Writes `new` if the cell holds `current`; returns the value before, `Ok` if `current`.
@@ -198,6 +217,36 @@ pub impl(crate) const trait CompareExchange: Primitive {
     fn compare_exchange_weak(
         cell: &Self::Cell, current: Self, new: Self, success: CoreOrdering, failure: CoreOrdering,
     ) -> Result<Self, Self>;
+    /// Writes `new` with a compare-exchange loop, `store_rmw`'s: `order` orders the exchange that
+    /// lands, raised as a store's, and the reads before it, which only feed the comparison and
+    /// hand out nothing, are `Relaxed`, raised by no floor.
+    #[inline]
+    fn store_by_exchange(cell: &Self::Cell, new: Self, order: CoreOrdering) {
+        // ORDERING: Relaxed on every read, which only feeds the comparison and pairs with nothing;
+        // `order` on the exchange that lands, pairing as the caller's store would.
+        let mut seen = Self::read_for_rmw(cell, CoreOrdering::Relaxed);
+        while let Err(found) =
+            Self::compare_exchange_weak(cell, seen, new, order, CoreOrdering::Relaxed)
+        {
+            seen = found;
+        }
+    }
+    /// Writes `new`, `current` with other packed bits, if the cell holds `current`, and returns the
+    /// value before, `Ok` if `current`; may fail while the cell holds it.
+    ///
+    /// A field's `update` and `try_update`: the write keeps every pointer `current` holds, its tags
+    /// alone changed, or makes a reference's null, so it publishes no reference, and a reference's
+    /// floor raises `success` as a read's alone.
+    ///
+    /// # Safety
+    /// `new` is `current.with_packed_bits(bits)`, for some `bits`.
+    #[expect(unsafe_code, reason = "the raise trusts `new` to keep `current`'s pointers")]
+    #[inline]
+    unsafe fn compare_exchange_write_back_weak(
+        cell: &Self::Cell, current: Self, new: Self, success: CoreOrdering, failure: CoreOrdering,
+    ) -> Result<Self, Self> {
+        Self::compare_exchange_weak(cell, current, new, success, failure)
+    }
 }
 
 /// A primitive a compare-exchange reads without changing: one of zero for zero, which writes zero
@@ -213,20 +262,23 @@ pub impl(crate) const trait CompareExchange: Primitive {
     label = "expected `bool`, an integer or a `DoubleWord`",
     note = "a pointer's compare-exchange compares its address alone, so one of null for null would strip a null's provenance: for a pure-read load of a pointer, call `load`"
 )]
-pub impl(crate) const trait ReadByExchange: [const] CompareExchange {}
+pub impl(crate) const trait ReadByExchange: [const] CompareExchange {
+    /// The packed bits of what the cell holds, read with an exchange of zero for zero, `order` as
+    /// it is: a field's `load_rmw`, which hands out bits alone, so no floor raises it.
+    #[doc(hidden)]
+    #[inline]
+    fn load_bits_by_exchange(cell: &Self::Cell, order: CoreOrdering) -> u128 {
+        let zero = Self::from_bits(0);
+        // It writes zero only over zero, and leaves the cell as it was, as `ReadByExchange` says.
+        match Self::compare_exchange(cell, zero, zero, order, order) {
+            Ok(current) | Err(current) => current.packed_bits(),
+        }
+    }
+}
 
 // `do_not_recommend`, so a pointer reports this trait's message, not `ExactBits`'.
 #[diagnostic::do_not_recommend]
 const impl<R: ExactBits + [const] CompareExchange> ReadByExchange for R {}
-
-// `do_not_recommend`, so a pointer's refusal lists no double word's impl as a fix.
-#[cfg(all(wide, not(loom)))]
-#[diagnostic::do_not_recommend]
-const impl<A: [const] Word, B: [const] Word> ReadByExchange for DoubleWord<A, B> {}
-
-#[cfg(all(wide, loom))]
-#[diagnostic::do_not_recommend]
-impl<A: Word, B: Word> ReadByExchange for DoubleWord<A, B> {}
 
 /// A primitive whose atomic load never writes.
 #[diagnostic::on_unimplemented(
@@ -235,10 +287,17 @@ impl<A: Word, B: Word> ReadByExchange for DoubleWord<A, B> {}
     note = "a 128-bit load is one instruction with FEAT_LSE2 (aarch64: `-C target-cpu` of a CPU with LSE2) or AVX (x86_64: `-C target-cpu=x86-64-v3`)",
     note = "to accept a load that writes the cache line, call `load_rmw`"
 )]
-pub impl(crate) const trait Load: CompareExchange {
+pub impl(crate) const trait Load: CompareExchange + [const] Primitive {
     /// Reads the cell.
     #[doc(hidden)]
     fn load(cell: &Self::Cell, order: CoreOrdering) -> Self;
+    /// Reads the packed bits of what the cell holds, `order` as it is: a field's load of bits,
+    /// which hands out no pointer, so no floor raises it.
+    #[doc(hidden)]
+    #[inline]
+    fn load_bits(cell: &Self::Cell, order: CoreOrdering) -> u128 {
+        Self::load(cell, order).packed_bits()
+    }
 }
 
 /// A primitive whose atomic store needs no compare-exchange loop.
@@ -371,6 +430,25 @@ pub impl(crate) const trait MaskBitwise:
     /// Flips the bits of `mask`, and returns the value before.
     #[doc(hidden)]
     fn fetch_xor_mask(cell: &Self::Cell, mask: Self::Mask, order: CoreOrdering) -> Self;
+    /// Turns on the bits of `mask`, the value before discarded: a field's `or`, which hands out
+    /// nothing, so no floor raises `order`.
+    #[doc(hidden)]
+    #[inline]
+    fn or_mask(cell: &Self::Cell, mask: Self::Mask, order: CoreOrdering) {
+        Self::fetch_or_mask(cell, mask, order);
+    }
+    /// Clears every bit outside `mask`, the value before discarded, as [`or_mask`](Self::or_mask).
+    #[doc(hidden)]
+    #[inline]
+    fn and_mask(cell: &Self::Cell, mask: Self::Mask, order: CoreOrdering) {
+        Self::fetch_and_mask(cell, mask, order);
+    }
+    /// Flips the bits of `mask`, the value before discarded, as [`or_mask`](Self::or_mask).
+    #[doc(hidden)]
+    #[inline]
+    fn xor_mask(cell: &Self::Cell, mask: Self::Mask, order: CoreOrdering) {
+        Self::fetch_xor_mask(cell, mask, order);
+    }
 }
 
 /// A primitive whose one bit a test-and-set, -clear or -toggle reads back without a

@@ -1,6 +1,6 @@
 //! A reference's and a function pointer's operations, each a raw pointer's: a reference's load
-//! acquires and its store releases, as its floor requires, and a function pointer takes any
-//! ordering.
+//! acquires and its store releases, as its floor requires, its `store_rmw`'s reads raised by
+//! nothing, and a function pointer takes any ordering.
 
 use atomix_core::ordering::{AcqRel, Acquire, Relaxed, Release};
 use atomix_core::{Atomic, AtomicPtr};
@@ -30,6 +30,11 @@ pub fn pointer_store(atomic: &AtomicPtr<Config>, pointer: *mut Config) {
 }
 
 #[unsafe(no_mangle)]
+pub fn pointer_store_rmw(atomic: &AtomicPtr<Config>, pointer: *mut Config) {
+    atomic.store_rmw(pointer, Release);
+}
+
+#[unsafe(no_mangle)]
 pub fn pointer_swap(atomic: &AtomicPtr<Config>, pointer: *mut Config) -> *mut Config {
     atomic.swap(pointer, AcqRel)
 }
@@ -54,6 +59,11 @@ pub fn config_depth(atomic: &Atomic<&'static Config>) -> u32 {
 #[unsafe(no_mangle)]
 pub fn config_store(atomic: &Atomic<&'static Config>, config: &'static Config) {
     atomic.store(config, Release);
+}
+
+#[unsafe(no_mangle)]
+pub fn config_store_rmw(atomic: &Atomic<&'static Config>, config: &'static Config) {
+    atomic.store_rmw(config, Release);
 }
 
 #[unsafe(no_mangle)]

@@ -11,7 +11,7 @@
 //! A pointer keeps small fields as tags in the low bits its pointee's alignment leaves clear, and
 //! keeps its provenance through every operation: `HEAD.fields().closed.test_and_set(AcqRel)`
 //! closes a derived Treiber stack's `Head` with `lock bts`, or `ldsetal`, on its top node's
-//! pointer. [`PointerAtom`] is any value stored as a pointer.
+//! pointer. [`PointerAtom`] is any value stored as a raw pointer.
 //!
 //! A shared reference and a function pointer are each stored as a [`ReprOf`] of itself, the raw
 //! pointer's repr, which no bits forge: `CONFIG.load(Acquire)` reads a `&'static Config` with

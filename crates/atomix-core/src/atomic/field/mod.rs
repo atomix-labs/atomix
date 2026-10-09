@@ -9,7 +9,7 @@ pub use self::path::{Field, FieldPath, Join, Then, TopField, Whole};
 pub use self::path::{HasPackedField, Reach};
 use super::Atomic;
 use crate::atom::{Atom, FieldAdd, FieldBitwise};
-use crate::ordering::{LoadOrdering, RmwOrdering, StoreOrdering};
+use crate::ordering::{FieldOf, LoadOrdering, RmwOrdering, StoreOrdering};
 use crate::primitive::{
     BitTest, CellAccess, CompareExchange, ExactBits, FetchAdd, FetchBitwise, Load, MaskBitwise,
     Primitive, ReadByExchange,
@@ -227,6 +227,12 @@ where
 /// pointer's provenance. Its pointer field has only [`load`](Self::load), which reads it through
 /// the word, and, where the pointer is a word too, [`fields`](Self::fields).
 ///
+/// Beside a reference, a field stored as bits takes its own value's orderings wherever it hands
+/// out no more than itself: its loads, `set` and the other forms that discard what they read, and
+/// the tests of a bit. An `update`, a `try_update` or a `fetch_` form hands out the container, so
+/// takes [`FieldOf`]'s: an `Acquire` read, its write needing no `Release`, as it puts the reference
+/// back as it read it.
+///
 /// # Examples
 /// [`#[derive(Atom)]`'s example][derive] claims a ring buffer slot with one field's
 /// `test_and_set`, and counts its readers with another's `fetch_add`.
@@ -283,6 +289,9 @@ impl<P: FieldPath> AtomicField<P> {
 
     /// Reads the field: a load of the whole word, and the field's bits read back, or, for a
     /// pointer word's pointer, the word decoded.
+    ///
+    /// A field stored as bits takes its own value's orderings, beside a reference too: its load
+    /// reads the word's bits, and hands out no reference.
     #[expect(unsafe_code, reason = "decodes a field of a repr read from the cell")]
     #[inline]
     pub const fn load<O: LoadOrdering<P::Value>>(&self, order: O) -> P::Value
@@ -291,9 +300,15 @@ impl<P: FieldPath> AtomicField<P> {
         ContainerRepr<P>: [const] Load,
     {
         let _ = order;
-        let repr = ContainerRepr::<P>::load(self.cell(), O::CORE);
-        // SAFETY: by `Atomic`'s field INVARIANT, the repr read from the cell decodes.
-        unsafe { decode_repr::<P>(repr) }
+        if <<P::Value as Atom>::Repr as Primitive>::IS_BITS_EXACT {
+            let bits = ContainerRepr::<P>::load_bits(self.cell(), O::CORE);
+            // SAFETY: by `Atomic`'s field INVARIANT, the repr whose bits the cell holds decodes.
+            unsafe { decode::<P>(bits) }
+        } else {
+            let repr = ContainerRepr::<P>::load(self.cell(), O::CORE);
+            // SAFETY: by `Atomic`'s field INVARIANT, the repr read from the cell decodes.
+            unsafe { decode_repr::<P>(repr) }
+        }
     }
 
     /// Reads the field with a compare-exchange of the whole word, for a container whose repr has
@@ -308,9 +323,15 @@ impl<P: FieldPath> AtomicField<P> {
         P: [const] FieldPath,
         ContainerRepr<P>: [const] ReadByExchange,
     {
-        let repr = self.atomic.load_rmw_repr(order);
-        // SAFETY: by `Atomic`'s field INVARIANT, the repr read from the cell decodes.
-        unsafe { decode_repr::<P>(repr) }
+        if <<P::Value as Atom>::Repr as Primitive>::IS_BITS_EXACT {
+            let bits = ContainerRepr::<P>::load_bits_by_exchange(self.cell(), O::CORE);
+            // SAFETY: by `Atomic`'s field INVARIANT, the repr whose bits the cell holds decodes.
+            unsafe { decode::<P>(bits) }
+        } else {
+            let repr = self.atomic.load_rmw_repr(order);
+            // SAFETY: by `Atomic`'s field INVARIANT, the repr read from the cell decodes.
+            unsafe { decode_repr::<P>(repr) }
+        }
     }
 
     /// Replaces the field with `f` of it, and returns the container before.
@@ -320,7 +341,7 @@ impl<P: FieldPath> AtomicField<P> {
     #[expect(unsafe_code, reason = "decodes reprs read from the cell")]
     #[inline]
     pub const fn update<
-        S: RmwOrdering<P::Container>,
+        S: RmwOrdering<FieldOf<P::Container>>,
         F: LoadOrdering<P::Container>,
         U: [const] FnMut(P::Value) -> P::Value + [const] Destruct,
     >(
@@ -331,17 +352,16 @@ impl<P: FieldPath> AtomicField<P> {
         <P::Value as Atom>::Repr: [const] ExactBits,
         ContainerRepr<P>: [const] CompareExchange,
     {
-        let replace_field = const |seen: ContainerRepr<P>| {
-            let bits = seen.packed_bits();
-            // SAFETY: by `Atomic`'s field INVARIANT, the repr read from the cell decodes.
+        let replace_field = const |bits: u128| {
+            // SAFETY: by `Atomic`'s field INVARIANT, the repr whose bits these are decodes.
             let value = f(unsafe { decode::<P>(bits) }).to_repr().to_bits();
-            Some(seen.with_packed_bits(replace::<P>(bits, value)))
+            Some(replace::<P>(bits, value))
         };
-        // SAFETY: each repr `replace_field` returns is one read from the cell, which decodes, by
-        // `Atomic`'s field INVARIANT, with the field replaced by a repr of a value of it, so it
-        // decodes, by `FieldPath`'s promise.
+        // SAFETY: each repr written is one read from the cell, which decodes, by `Atomic`'s field
+        // INVARIANT, with the field's bits replaced by a repr of a value of it, so it decodes, by
+        // `FieldPath`'s promise.
         let replaced =
-            unsafe { self.atomic.try_update_repr(set_order, fetch_order, replace_field) };
+            unsafe { self.atomic.try_update_bits(set_order, fetch_order, replace_field) };
         match replaced {
             // SAFETY: by `Atomic`'s field INVARIANT, the repr read from the cell decodes.
             Ok(before) | Err(before) => unsafe { P::Container::from_repr_unchecked(before) },
@@ -356,7 +376,7 @@ impl<P: FieldPath> AtomicField<P> {
     #[expect(unsafe_code, reason = "decodes reprs read from the cell")]
     #[inline]
     pub const fn try_update<
-        S: RmwOrdering<P::Container>,
+        S: RmwOrdering<FieldOf<P::Container>>,
         F: LoadOrdering<P::Container>,
         U: [const] FnMut(P::Value) -> Option<P::Value> + [const] Destruct,
     >(
@@ -367,17 +387,16 @@ impl<P: FieldPath> AtomicField<P> {
         <P::Value as Atom>::Repr: [const] ExactBits,
         ContainerRepr<P>: [const] CompareExchange,
     {
-        let replace_field = const |seen: ContainerRepr<P>| {
-            let bits = seen.packed_bits();
-            // SAFETY: by `Atomic`'s field INVARIANT, the repr read from the cell decodes.
+        let replace_field = const |bits: u128| {
+            // SAFETY: by `Atomic`'s field INVARIANT, the repr whose bits these are decodes.
             let Some(value) = f(unsafe { decode::<P>(bits) }) else {
                 return None;
             };
-            Some(seen.with_packed_bits(replace::<P>(bits, value.to_repr().to_bits())))
+            Some(replace::<P>(bits, value.to_repr().to_bits()))
         };
         // SAFETY: as in `update`.
         let replaced =
-            unsafe { self.atomic.try_update_repr(set_order, fetch_order, replace_field) };
+            unsafe { self.atomic.try_update_bits(set_order, fetch_order, replace_field) };
         match replaced {
             // SAFETY: by `Atomic`'s field INVARIANT, the repr read from the cell decodes.
             Ok(before) => Ok(unsafe { P::Container::from_repr_unchecked(before) }),
@@ -429,9 +448,9 @@ impl<P: FieldPath> AtomicField<P> {
         let _ = order;
         let cell = self.cell();
         if value {
-            ContainerRepr::<P>::fetch_or_mask(cell, operand::<P>(true), O::CORE);
+            ContainerRepr::<P>::or_mask(cell, operand::<P>(true), O::CORE);
         } else {
-            ContainerRepr::<P>::fetch_and_mask(cell, and_operand::<P>(false), O::CORE);
+            ContainerRepr::<P>::and_mask(cell, and_operand::<P>(false), O::CORE);
         }
     }
 
@@ -489,7 +508,7 @@ impl<P: FieldPath> AtomicField<P> {
         ContainerRepr<P>: [const] MaskBitwise,
     {
         let _ = order;
-        ContainerRepr::<P>::fetch_and_mask(self.cell(), and_operand::<P>(value), O::CORE);
+        ContainerRepr::<P>::and_mask(self.cell(), and_operand::<P>(value), O::CORE);
     }
 
     /// Applies `| value` to the field: [`fetch_or`](Self::fetch_or) with the container before
@@ -502,7 +521,7 @@ impl<P: FieldPath> AtomicField<P> {
         ContainerRepr<P>: [const] MaskBitwise,
     {
         let _ = order;
-        ContainerRepr::<P>::fetch_or_mask(self.cell(), operand::<P>(value), O::CORE);
+        ContainerRepr::<P>::or_mask(self.cell(), operand::<P>(value), O::CORE);
     }
 
     /// Applies `^ value` to the field: [`fetch_xor`](Self::fetch_xor) with the container before
@@ -515,7 +534,7 @@ impl<P: FieldPath> AtomicField<P> {
         ContainerRepr<P>: [const] MaskBitwise,
     {
         let _ = order;
-        ContainerRepr::<P>::fetch_xor_mask(self.cell(), operand::<P>(value), O::CORE);
+        ContainerRepr::<P>::xor_mask(self.cell(), operand::<P>(value), O::CORE);
     }
 
     /// Inverts every bit of the field: [`fetch_not`](Self::fetch_not) with the container before
@@ -528,7 +547,7 @@ impl<P: FieldPath> AtomicField<P> {
         ContainerRepr<P>: [const] MaskBitwise,
     {
         let _ = order;
-        ContainerRepr::<P>::fetch_xor_mask(self.cell(), not_operand::<P>(), O::CORE);
+        ContainerRepr::<P>::xor_mask(self.cell(), not_operand::<P>(), O::CORE);
     }
 
     /// Applies `& value` to the field, and returns the container before.
@@ -536,7 +555,7 @@ impl<P: FieldPath> AtomicField<P> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[must_use = "to discard the container before, call `and`, which every target has"]
     #[inline]
-    pub const fn fetch_and<O: RmwOrdering<P::Container>>(
+    pub const fn fetch_and<O: RmwOrdering<FieldOf<P::Container>>>(
         &self, value: P::Value, order: O,
     ) -> P::Container
     where
@@ -556,7 +575,7 @@ impl<P: FieldPath> AtomicField<P> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[must_use = "to discard the container before, call `or`, which every target has"]
     #[inline]
-    pub const fn fetch_or<O: RmwOrdering<P::Container>>(
+    pub const fn fetch_or<O: RmwOrdering<FieldOf<P::Container>>>(
         &self, value: P::Value, order: O,
     ) -> P::Container
     where
@@ -575,7 +594,7 @@ impl<P: FieldPath> AtomicField<P> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[must_use = "to discard the container before, call `xor`, which every target has"]
     #[inline]
-    pub const fn fetch_xor<O: RmwOrdering<P::Container>>(
+    pub const fn fetch_xor<O: RmwOrdering<FieldOf<P::Container>>>(
         &self, value: P::Value, order: O,
     ) -> P::Container
     where
@@ -594,7 +613,7 @@ impl<P: FieldPath> AtomicField<P> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[must_use = "to discard the container before, call `not`, which every target has"]
     #[inline]
-    pub const fn fetch_not<O: RmwOrdering<P::Container>>(&self, order: O) -> P::Container
+    pub const fn fetch_not<O: RmwOrdering<FieldOf<P::Container>>>(&self, order: O) -> P::Container
     where
         P: [const] FieldPath,
         P::Value: FieldBitwise,
@@ -612,7 +631,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// The field ends at the repr's top bit ([`TopField`]), so the carry out of it leaves the word.
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub const fn fetch_add<O: RmwOrdering<P::Container>>(
+    pub const fn fetch_add<O: RmwOrdering<FieldOf<P::Container>>>(
         &self, delta: <P::Value as Atom>::Repr, order: O,
     ) -> P::Container
     where
@@ -633,7 +652,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// As [`fetch_add`](Self::fetch_add), the borrow leaving the word.
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub const fn fetch_sub<O: RmwOrdering<P::Container>>(
+    pub const fn fetch_sub<O: RmwOrdering<FieldOf<P::Container>>>(
         &self, delta: <P::Value as Atom>::Repr, order: O,
     ) -> P::Container
     where

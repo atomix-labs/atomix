@@ -142,6 +142,16 @@ mod tests {
     #[derive(Clone, Copy, Debug, Atom)]
     struct Measure(fn(&str) -> usize);
 
+    /// The configuration in force, or none, and whether it is stale: a pointer word over a
+    /// reference, its tag in the low bits a `Config`'s alignment, 4, leaves clear.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Published {
+        /// The configuration.
+        config: Option<&'static Config>,
+        /// Whether a newer one is on its way.
+        stale: bool,
+    }
+
     /// A lock's owner, from 3, as its field's range.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct OwnerId(RangedU64<3>);
@@ -893,8 +903,9 @@ mod tests {
         repr_and_validity_are::<GuardedLink, *mut Linked, ZeroNiche>();
         repr_and_validity_are::<GenericLink<u64>, *mut GenericNode<u64>, ZeroValid>();
         repr_and_validity_are::<VenueHalves<u8>, u32, Total>();
-        repr_and_validity_are::<Current, ReprOf<&'static Config>, TotalZeroNiche>();
+        repr_and_validity_are::<Current, ReprOf<&'static Config>, ZeroNiche>();
         repr_and_validity_are::<Measure, ReprOf<fn(&str) -> usize>, TotalZeroNiche>();
+        repr_and_validity_are::<Published, ReprOf<&'static Config>, ZeroValid>();
         assert_eq!(Turn::REPRS, ReprRange::new(0, 0x1FF), "every repr up to the third's end");
         assert_eq!(Offer::Closed.to_repr(), 2, "and `Closed` above the side's 0 and 1");
     }
@@ -1070,6 +1081,9 @@ mod tests {
             link in links(),
             guarded in guarded_links(),
             flagged in (nodes(), any::<bool>()).prop_map(|(pointer, flag)| Flagged { pointer, flag }),
+            published in (option::of(select(&[0_usize, 1])), any::<bool>()).prop_map(
+                |(index, stale)| Published { config: index.map(|index| &CONFIGS[index]), stale },
+            ),
             bits in edge_or_random_bits(&[0xF, 0x10]),
         ) {
             value_obeys_the_laws(head, bits)?;
@@ -1080,6 +1094,8 @@ mod tests {
             keeps_provenance(guarded, |guarded| read(guarded.link.next))?;
             value_obeys_the_laws(flagged, bits)?;
             keeps_provenance(flagged, |flagged| read(flagged.pointer))?;
+            value_obeys_the_laws(published, bits)?;
+            keeps_provenance(published, |published| published.config.map(|config| config.depth))?;
         }
 
         #[test]

@@ -96,6 +96,13 @@ impl Tags {
     /// No tag: a value no word holds.
     pub const EMPTY: Self = Self { mask: 0, bits: 0 };
 
+    /// The bits the tags take.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn mask(self) -> usize {
+        self.mask
+    }
+
     /// These tags, beside the tags of a word that take `mask` and are `bits`, each in its place.
     #[inline]
     #[must_use]

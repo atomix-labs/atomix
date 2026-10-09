@@ -43,7 +43,8 @@
 //!
 //! A reference's and a function pointer's every operation is a raw pointer's, instruction for
 //! instruction, and a wide reference's a `u128`'s: a reference's load acquires and its store
-//! releases, as its floor asks, and a function pointer's load is `Relaxed`'s `ldr`, or `mov`.
+//! releases, as its floor asks, its `store_rmw` reading with `Relaxed`'s `ldr` as a raw pointer's
+//! does, and a function pointer's load is `Relaxed`'s `ldr`, or `mov`.
 
 // Miri cannot run the compiler, and loom's atomics are not what ships.
 #![cfg(on_hardware)]
@@ -71,6 +72,7 @@ mod tests {
         ("pointer_store", Only(&["stlr", "ret"])),
         ("config_load", SameAs("pointer_load")),
         ("config_store", SameAs("pointer_store")),
+        ("config_store_rmw", SameAs("pointer_store_rmw")),
         ("option_config_load", SameAs("pointer_load")),
         ("hook_load", SameAs("pointer_load_relaxed")),
         ("hook_load_acquire", SameAs("pointer_load")),
@@ -212,6 +214,7 @@ mod tests {
         ("tag_fetch_or", Only(&["mov", "ldsetal", "and", "and", "ret"])),
         ("word_compare_exchange", Refuses(&["orr", "tst", "b.ne", "casal", "ret"])),
         ("nested_compare_exchange", Refuses(&["orr", "tst", "b.ne", "casal", "ret"])),
+        ("pointer_store_rmw", Retry(&["ldr", "casl"])),
     ];
 
     /// Each load on `aarch64` without LSE2, at the `+lse` floor and at Android's default CPU,
@@ -539,6 +542,7 @@ mod tests {
                 "adrp", "add", "bl",
             ]),
         ),
+        ("pointer_store_rmw", Retry(&["ldr", "ldxr", "cmp", "stlxr"])),
     ];
 
     /// Each function of the fixture on `x86_64` with `cmpxchg16b`: at the `x86-64-v3` floor on
@@ -553,11 +557,13 @@ mod tests {
         ("pointer_load", Only(&["movq", "retq"])),
         ("pointer_load_relaxed", Only(&["movq", "retq"])),
         ("pointer_store", Only(&["movq", "retq"])),
+        ("pointer_store_rmw", Retry(&["movq", "lock cmpxchgq"])),
         ("pointer_swap", Only(&["movq", "xchgq", "retq"])),
         ("pointer_compare_exchange", InOrder(&["lock cmpxchgq", "setne"])),
         ("config_load", SameAs("pointer_load")),
         ("config_depth", Only(&["movq", "movl", "retq"])),
         ("config_store", SameAs("pointer_store")),
+        ("config_store_rmw", SameAs("pointer_store_rmw")),
         ("config_swap", SameAs("pointer_swap")),
         ("config_compare_exchange", SameAs("pointer_compare_exchange")),
         ("option_config_load", SameAs("pointer_load")),

@@ -1,5 +1,5 @@
 //! `Atom` for pointers, each stored in an atomic pointer, so it keeps its provenance, or, a wide
-//! one, in a `DoubleWord`; and [`PointerAtom`], every value stored as one pointer.
+//! one, in a `DoubleWord`; and [`PointerAtom`], every value stored as one raw pointer.
 
 #![expect(unsafe_code, reason = "each `Atom` impl here promises what loads rely on")]
 
@@ -18,7 +18,7 @@ use core::ptr::{NonNull, Pointee};
 use super::Atom;
 #[cfg(wide)]
 use crate::__private::assert_send_and_sync;
-use crate::primitive::{CompareExchange, Primitive};
+use crate::primitive::{CompareExchange, PointerRepr, Primitive};
 #[cfg(wide)]
 use crate::primitive::{DoubleWord, Word};
 #[cfg(wide)]
@@ -123,9 +123,8 @@ pub struct VtablePointer<T: ?Sized> {
     // INVARIANT: null, or a `DynMetadata<T>`'s vtable pointer, with the provenance it had or one
     // exposed beside its address. Its writers are `of`, which reads a `DynMetadata<T>`'s; `Word`'s
     // `from_bits`, `with_packed_bits` and `clear_packed_bits`, which keep it or make it null; and
-    // `Word::from_exposed_bits`, which only a double word's cell calls, on the bits it holds,
-    // those `exposed_bits` gave of such a pointer: the cell lends no place for other bits. `Word`
-    // is unnameable outside atomix, so no other code calls them.
+    // `Word::from_exposed_bits`, whose callers pass the bits `exposed_bits` gave of such a
+    // pointer, as a double word's cell does, whose field holds no other bits.
     //
     // A vtable pointer, unlike a data pointer, points to no memory Rust's abstract machine knows
     // of, and std documents no exposure of one: that one taken back from its exposed address keeps
@@ -197,9 +196,12 @@ const impl<T: ?Sized> Word for VtablePointer<T> {
     fn exposed_bits(self) -> u64 {
         self.pointer.exposed_bits()
     }
+    #[expect(unsafe_code, reason = "takes back a provenance the caller says the bits exposed")]
     #[inline]
-    fn from_exposed_bits(bits: u64) -> Self {
-        Self { pointer: Word::from_exposed_bits(bits), marker: PhantomData }
+    unsafe fn from_exposed_bits(bits: u64) -> Self {
+        // SAFETY: the caller's bits are what `exposed_bits` gave of a `VtablePointer<T>`, so of its
+        // pointer, null or a `DynMetadata<T>`'s vtable pointer, by the field INVARIANT.
+        Self { pointer: unsafe { Word::from_exposed_bits(bits) }, marker: PhantomData }
     }
 }
 
@@ -382,16 +384,20 @@ where
 /// pointer word or a pointer enum.
 ///
 /// A pointer word, `#[derive(Atom)]`'s struct of one such field beside tag fields, packs the tags
-/// into the low bits the pointer's alignment leaves clear, and its derive bounds a generic pointer
-/// field by this trait. A pointer to a slice, a `str` or a trait object is none: two words hold it.
+/// into the low bits the pointer's alignment leaves clear, as it does beside a reference, whose
+/// repr is a sealed [`ReprOf`](crate::ReprOf); beside a function pointer, whose code leaves no bit
+/// clear, its tags take a word of their own. A pointer enum's variants share one pointer, so its
+/// derive bounds a generic pointer field by this trait. A pointer to a slice, a `str` or a trait
+/// object is none: two words hold it.
 ///
 /// One impl gives it to every such [`Atom`], so it promises nothing of its own: it names the
 /// pointee, so generic code knows the repr is `*mut Self::Pointee`.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not stored as a pointer, so no tag can share its bits",
     label = "expected a value whose repr is a `*mut`",
-    note = "a pointer word's pointer field, or a pointer enum variant's, is a `NonNull`, an `Option` of one, a raw pointer, or a value stored as one, such as a newtype of one",
-    note = "a pointer to a slice, a `str` or a trait object is two words, which the derive sees where the field's type writes the pointer out, never through an alias"
+    note = "a pointer enum variant's pointer is a `NonNull`, an `Option` of one, a raw pointer, or a value stored as one, such as a newtype of one",
+    note = "a pointer to a slice, a `str` or a trait object is two words, which the derive sees where the field's type writes the pointer out, never through an alias",
+    note = "a reference or a function pointer, which no bits forge, keeps tags in a pointer word, but in no pointer enum, whose variants' pointers share one repr"
 )]
 pub const trait PointerAtom: [const] Atom<Repr = *mut Self::Pointee> {
     /// The type the pointer points to.
@@ -403,3 +409,24 @@ pub const trait PointerAtom: [const] Atom<Repr = *mut Self::Pointee> {
 const impl<T: [const] Atom<Repr = *mut P>, P> PointerAtom for T {
     type Pointee = P;
 }
+
+/// A value stored as one pointer, its provenance kept, whose low bits a word's tags may share: a
+/// [`PointerAtom`], or a thin reference or a function pointer, stored as a
+/// [`ReprOf`](crate::ReprOf).
+///
+/// A pointer word's pointer field is one, as the derive's bound says, and so is each of a pair's.
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not stored as a pointer, so no tag can share its bits",
+    label = "expected a value whose repr is one pointer",
+    note = "a pointer word's pointer field is a `NonNull`, a shared reference, a function pointer, an `Option` of one, a raw pointer, or a value stored as one, such as a newtype of one",
+    note = "a pointer to a slice, a `str` or a trait object is two words, which the derive sees where the field's type writes the pointer out, never through an alias"
+)]
+pub impl(crate) const trait PointerReprAtom:
+    [const] Atom<Repr: [const] PointerRepr>
+{
+}
+
+// `do_not_recommend`, so a value whose repr is no pointer reports `PointerReprAtom`'s message.
+#[diagnostic::do_not_recommend]
+const impl<T: [const] Atom<Repr: [const] PointerRepr>> PointerReprAtom for T {}

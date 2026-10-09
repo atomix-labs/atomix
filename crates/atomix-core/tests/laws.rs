@@ -24,7 +24,7 @@ mod tests {
 
     #[cfg(aarch64_code)]
     use atomix_core::ordering::Relaxed;
-    use atomix_core::validity::{Partial, Total, TotalZeroNiche, ZeroValid};
+    use atomix_core::validity::{Partial, Total, TotalZeroNiche, ZeroNiche, ZeroValid};
     use atomix_core::{
         Atom, ExactBits, Primitive, RangedI8, RangedI16, RangedI32, RangedI64, RangedIsize,
         RangedU8, RangedU16, RangedU32, RangedU64, RangedUsize,
@@ -257,8 +257,8 @@ mod tests {
         let reference: <&u64 as Atom>::Repr = Primitive::from_bits(bits);
         let function: <Hook as Atom>::Repr = Primitive::from_bits(bits);
         prop_assert!(reference.is_bits(0) && function.is_bits(0), "bits make null alone");
-        decodes_as_promised::<TotalZeroNiche, &u64>(reference)?;
-        decodes_as_promised::<Total, Option<&u64>>(reference)?;
+        decodes_as_promised::<ZeroNiche, &u64>(reference)?;
+        decodes_as_promised::<ZeroValid, Option<&u64>>(reference)?;
         decodes_as_promised::<TotalZeroNiche, Hook>(function)?;
         decodes_as_promised::<Total, Option<Hook>>(function)?;
         canonical::<Option<&u64>>(reference)?;
@@ -266,13 +266,20 @@ mod tests {
         round_trips::<&u64>(&DEPTH)?;
         round_trips(Some(&DEPTH))?;
         canonical::<&u64>((&DEPTH).to_repr())?;
+        // A word's tags, in the bits a `u64`'s alignment leaves clear, make no reference.
+        let tagged = (&DEPTH).to_repr().with_packed_bits((&DEPTH).to_repr().packed_bits() | 0b11);
+        decodes_as_promised::<ZeroNiche, &u64>(tagged)?;
+        prop_assert!(
+            <&u64 as Atom>::from_repr(tagged).is_none(),
+            "a tagged repr decodes as no reference"
+        );
         // A wide reference's repr is sealed as a thin one's: no bits make one but null.
         #[cfg(wide)]
         {
             let name: <&str as Atom>::Repr = Primitive::from_bits(bits);
-            decodes_as_promised::<TotalZeroNiche, &str>(name)?;
-            decodes_as_promised::<Total, Option<&str>>(name)?;
-            decodes_as_promised::<TotalZeroNiche, &str>("XNAS".to_repr())?;
+            decodes_as_promised::<ZeroNiche, &str>(name)?;
+            decodes_as_promised::<ZeroValid, Option<&str>>(name)?;
+            decodes_as_promised::<ZeroNiche, &str>("XNAS".to_repr())?;
             round_trips("XNAS")?;
         }
         let hook: Hook = str::len;

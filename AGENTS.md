@@ -130,14 +130,23 @@ What a change here keeps, beyond what the checks hold it to.
   read them: only code and the checks read `POINTEE_ALIGNMENT`, so a node can
   hold an atomic of the word that points to it.
 - A reference and a function pointer are stored as a `ReprOf` of themselves, the
-  raw pointer's repr sealed: only a value's `to_repr` makes one, and bits make
-  null, so a safe `from_repr` hands out no reference or function pointer a value
-  did not give. A value that holds a reference takes no ordering weaker than an
+  raw pointer's repr sealed: only a value's `to_repr` makes one, bits make null,
+  and so does a change of any bit but the low bits its pointee's alignment
+  leaves clear, a word's tags, so a safe `from_repr` hands out no reference or
+  function pointer a value did not give, and refuses a tagged one. A pointer
+  word or a pair holds a reference as it holds a `NonNull`, and a pointer word
+  keeps its tags in those low bits, to which `ReprOf` confines each operation's
+  mask. A value that holds a reference takes no ordering weaker than an
   `Acquire` read and a `Release` write: the floor is its repr's,
   `Primitive::OrderingFloor`, which an `Option`, a newtype or a derived value
-  inherits with no code of its own, and each operation that reads or writes a
-  `T` takes `LoadOrdering<T>`, `StoreOrdering<T>` or `RmwOrdering<T>`. A
-  function pointer points to code no write changes, so it takes any.
+  inherits with no code of its own, and a double word's is the stronger of its
+  words'. Each operation that reads or writes a `T` takes `LoadOrdering<T>`,
+  `StoreOrdering<T>` or `RmwOrdering<T>`. A field stored as bits takes its own
+  value's, every ordering, where it hands out no more than itself, through a
+  primitive's hidden operation that returns bits or a `bool` and raises nothing;
+  where it returns its container, `RmwOrdering<FieldOf<C>>`, an `Acquire` read,
+  since its write puts back the reference it read. A function pointer points to
+  code no write changes, so it takes any.
 - A function that can be `const` is, and a trait whose impls can be is a `const
   trait`: each atomic operation is `const` where core's is, so not a pointer's
   compare-exchange, offsets or masks, nor any under loom, whose impls are plain.

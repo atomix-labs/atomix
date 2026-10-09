@@ -8,10 +8,10 @@ mod ranged;
 mod reference;
 mod scalar;
 
-pub use self::ptr::PointerAtom;
 #[cfg(wide)]
 pub use self::ptr::VtablePointer;
 pub(crate) use self::ptr::{Metadata, PointerMetadata};
+pub use self::ptr::{PointerAtom, PointerReprAtom};
 // For deranged's ranged integers, which take the impls atomix's own do.
 #[cfg(feature = "deranged-05")]
 pub(crate) use self::ranged::ranged_atom;

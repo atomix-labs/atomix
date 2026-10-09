@@ -863,25 +863,33 @@ pub(crate) fn is_marker(ty: &Type) -> bool {
     last_segment(ty).is_some_and(|segment| segment.ident == "PhantomData")
 }
 
-/// Whether `ty` is written as a raw pointer, a `NonNull` or an `Option` of one.
+/// Whether `ty` is written as a pointer, or an `Option` of one.
 fn is_pointer(ty: &Type) -> bool {
-    is_raw_or_non_null(ty)
+    is_written_as_pointer(ty)
         || last_segment(ty).is_some_and(|segment| {
-            segment.ident == "Option" && type_argument(segment).is_some_and(is_raw_or_non_null)
+            segment.ident == "Option" && type_argument(segment).is_some_and(is_written_as_pointer)
         })
 }
 
-/// Whether `ty` is written as a raw pointer or a `NonNull`.
-fn is_raw_or_non_null(ty: &Type) -> bool {
-    matches!(ungrouped(ty), Type::Ptr(_))
+/// Whether `ty` is written as a pointer: a raw pointer, a `NonNull`, a shared reference or a
+/// function pointer.
+fn is_written_as_pointer(ty: &Type) -> bool {
+    if let Type::Reference(reference) = ungrouped(ty) {
+        return reference.mutability.is_none();
+    }
+    matches!(ungrouped(ty), Type::Ptr(_) | Type::FnPtr(_))
         || last_segment(ty).is_some_and(|segment| segment.ident == "NonNull")
 }
 
-/// The type `ty` is written to point to: `T` of `*mut T`, `NonNull<T>` or `Option<NonNull<T>>`;
-/// `None` where it is written as no pointer, as a field marked `#[atom(pointer)]` may be.
+/// The type `ty` is written to point to: `T` of `*mut T`, `NonNull<T>`, `&T` or an `Option` of
+/// one; `None` where it is written as no pointer, as a field marked `#[atom(pointer)]` may be, or
+/// as a function pointer, whose code no type is.
 fn pointee(ty: &Type) -> Option<&Type> {
     if let Type::Ptr(pointer) = ungrouped(ty) {
         return Some(&pointer.elem);
+    }
+    if let Type::Reference(reference) = ungrouped(ty) {
+        return Some(&reference.elem);
     }
     let segment = last_segment(ty)?;
     if segment.ident == "NonNull" {
@@ -1260,7 +1268,7 @@ mod tests {
     }
 
     #[test]
-    fn a_raw_pointer_a_non_null_and_an_option_of_one_are_pointers() {
+    fn a_raw_pointer_a_non_null_a_reference_a_function_pointer_and_an_option_of_one_are_pointers() {
         for pointer in [
             quote! { *mut u8 },
             quote! { *const T },
@@ -1268,10 +1276,19 @@ mod tests {
             quote! { core::ptr::NonNull<u8> },
             quote! { Option<NonNull<u8>> },
             quote! { Option<*mut u8> },
+            quote! { &'a Node },
+            quote! { Option<&'static Node> },
+            quote! { fn(&str) -> usize },
+            quote! { Option<unsafe extern "C" fn()> },
         ] {
             assert!(value(&pointer).is_pointer, "`{pointer}` is a pointer");
         }
-        for other in [quote! { u64 }, quote! { Option<u64> }, quote! { Option<Option<*mut u8>> }] {
+        for other in [
+            quote! { u64 },
+            quote! { Option<u64> },
+            quote! { Option<Option<*mut u8>> },
+            quote! { &'a mut Node },
+        ] {
             assert!(!value(&other).is_pointer, "`{other}` is not");
         }
     }
@@ -1474,11 +1491,16 @@ mod tests {
         assert_eq!(pair.repr, WordRepr::Pointers, "in two words");
         let stated = quote! { #[atom(repr = u128)] struct Pair { a: *mut u8, b: NonNull<u8> } };
         assert_eq!(pointer_word(stated).repr, WordRepr::Pointers, "as `repr = u128` states");
-        for pointer in
-            [quote! { NonNull<dyn Fn()> }, quote! { *const [u8] }, quote! { Option<NonNull<str>> }]
-        {
+        for pointer in [
+            quote! { NonNull<dyn Fn()> },
+            quote! { *const [u8] },
+            quote! { Option<NonNull<str>> },
+            quote! { &'a [u64] },
+            quote! { Option<&'static dyn Venue> },
+        ] {
             assert!(value(&pointer).is_wide_pointer, "`{pointer}` is two words wide");
         }
+        assert!(!value(&quote! { fn(&str) -> usize }).is_wide_pointer, "and a function's, one");
         assert!(
             !value(&quote! { NonNull<[u8; 4]> }).is_wide_pointer,
             "and an array's pointer, one"

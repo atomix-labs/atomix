@@ -151,8 +151,8 @@ fn checks(implementor: &Implementor, newtype: &Newtype) -> TokenStream {
 }
 
 /// The newtype's bounds in an impl's where clause: `bound`, with the repr stated, on the
-/// value's field where it names a parameter, else `concrete_bound`; `PointerAtom` too where it is
-/// written or marked as a thin pointer; and those `thread_bounds` says.
+/// value's field where it names a parameter, else `concrete_bound`; `PointerReprAtom` too where it
+/// is written or marked as a thin pointer; and those `thread_bounds` says.
 fn bounds<'a>(
     implementor: &Implementor, newtype: &'a Newtype, bound: &TokenStream,
     concrete_bound: &TokenStream,
@@ -175,6 +175,6 @@ fn bounds<'a>(
         quote!(for<'__atomix> #ty: #concrete_bound)
     };
     let pointer_bound = (value.is_generic && value.is_pointer && !value.is_wide_pointer)
-        .then(|| quote!(#ty: #atomix::PointerAtom));
+        .then(|| quote!(#ty: #atomix::__private::PointerReprAtom));
     iter::once(value_bound).chain(pointer_bound).chain(thread_bounds(implementor, newtype.fields()))
 }

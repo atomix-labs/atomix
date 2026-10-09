@@ -33,6 +33,7 @@ error[E0277]: `T` can hold a reference, which is read with `Acquire` and written
   |          required by a bound introduced by this call
   |
   = note: a thread that reads a reference with `Acquire` sees the writes that made what it points to, which the `Release` that wrote it publishes
+  = note: required for `atomix_core::ordering::ValueRead<T>` to implement `atomix_core::ordering::ReadsNoReference`
   = note: required for `atomix_core::ordering::Relaxed` to implement `RmwOrdering<T>`
 note: required by a bound in `atomix_core::atomic::capability::<impl atomix_core::Atomic<T>>::and`
  --> src/atomic/capability.rs

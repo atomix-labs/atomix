@@ -1,4 +1,5 @@
-//! [`ReprOf`]: the repr of a reference or a function pointer, which no bits forge.
+//! [`ReprOf`]: the repr of a reference or a function pointer, which no bits forge, and whose low
+//! bits a word's tags may share.
 
 use core::fmt;
 use core::hash::{Hash, Hasher};
@@ -6,19 +7,29 @@ use core::marker::PhantomData;
 use core::ops::FnPtr;
 use core::sync::atomic::Ordering as CoreOrdering;
 
-use super::{CellAccess, CompareExchange, Load, Primitive, RawAccess, ReadByExchange, Store, Swap};
+#[cfg(aarch64_code)]
+use super::FetchBitwise;
+#[cfg(wide)]
+use super::Word;
+use super::{
+    BitTest, CellAccess, CompareExchange, ExactBits, Load, MaskBitwise, PointerRepr, Primitive,
+    RawAccess, ReadByExchange, Store, Swap,
+};
 use crate::atom::{Metadata, PointerMetadata};
+use crate::atomic::FieldPath;
 use crate::ordering::{AcqRel, OrderingFloor, Relaxed};
-use crate::range::mask;
+use crate::range::{PointeeAlignment, mask};
 
 /// The repr of a value no bits may forge, a reference or a function pointer: the primitive a raw
 /// pointer to the same place is stored as, holding a pointer a `V` gave, or null.
 ///
 /// It has no constructor: a `V` gives one, through its [`Atom::to_repr`](crate::Atom::to_repr),
-/// and bits make none. A repr built of bits, or changed to other bits, is null, which decodes as
-/// no value, so no safe code forges a reference that a decode would hand out, nor a function
-/// pointer it would call. `V` names the value whole, its lifetimes and its signature too, and the
-/// repr is invariant in it, so no repr one type gave decodes as another.
+/// and bits make none. A repr built of bits is null, which decodes as no value, and so is one whose
+/// bits change anywhere but in the low bits its pointee's alignment leaves clear, where a word that
+/// holds it keeps its tags, so no safe code forges a reference that a decode would hand out, nor a
+/// function pointer it would call. A repr with a tag set decodes as no value either: a word clears
+/// its tags before it decodes its pointer. `V` names the value whole, its lifetimes and its
+/// signature too, and the repr is invariant in it, so no repr one type gave decodes as another.
 ///
 /// Its operations are the raw pointer's, so its every instruction is one an `AtomicPtr`, or a
 /// double word of a wide reference, runs. A reference's take an `Acquire` read and a `Release`
@@ -44,12 +55,17 @@ use crate::range::mask;
 #[repr(transparent)]
 pub struct ReprOf<V: SealedValue> {
     // INVARIANT: null, as `V::Raw::from_bits(0)` gives it, or the repr of a pointer a `V`'s
-    // `to_repr` gave, its provenance kept. Its writers are `new`, whose callers prove it;
-    // `from_bits`, `with_packed_bits` and `clear_packed_bits`, which keep it or make it null; the
-    // cell's reads and exchanges, from a `SealedCell<V>`, which holds only what `into_cell`, `set`
-    // and the cell's writes put there, each a `ReprOf<V>`; and the raw place `RawAccess` lends,
-    // whose `get_mut` takes only a `ReprOf<V>`, and whose pointer `Atomic::from_ptr` and
-    // `Atomic::as_ptr` bind to this invariant in their contracts.
+    // `to_repr` gave, its provenance kept; either with any of the bits below `V`'s pointee
+    // alignment, `alignment_mask::<V>()`, set, a word's tags. Its writers are `new`, whose callers
+    // prove it; `from_bits`, `with_packed_bits` and `clear_packed_bits`, which change only
+    // those bits or make it null; `null`, which makes it null; `Word::from_exposed_bits`,
+    // whose callers pass the bits `exposed_bits` gave of such a repr, as a double word's cell
+    // does; the cell's reads and read-modify-writes, from a `SealedCell<V>`, which holds only
+    // what `into_cell`, `set` and the cell's writes put there, each a `ReprOf<V>`, or such a
+    // repr with its tag bits changed by `MaskBitwise`, which confines its masks to them; and
+    // the raw place `RawAccess` lends, whose `get_mut` takes only a `ReprOf<V>`, and whose
+    // pointer `Atomic::from_ptr` and `Atomic::as_ptr` bind to this invariant in their
+    // contracts.
     /// The pointer, as the raw pointer's repr.
     repr: V::Raw,
     /// The value that gave it, held invariantly, and `Send` and `Sync` whatever it is.
@@ -60,19 +76,35 @@ impl<V: SealedValue> ReprOf<V> {
     /// The repr `repr`, sealed.
     ///
     /// # Safety
-    /// `repr` is null, or the repr of a pointer a `V` gave, its provenance kept, as the field
-    /// INVARIANT says.
+    /// `repr` is null, or the repr of a pointer a `V` gave, its provenance kept, either with tags
+    /// in the low bits `V`'s pointee alignment leaves clear, as the field INVARIANT says.
     #[expect(unsafe_code, reason = "a repr whose decode trusts it")]
     #[inline]
     pub(crate) const unsafe fn new(repr: V::Raw) -> Self {
         Self { repr, marker: PhantomData }
     }
 
-    /// The pointer, as the raw pointer's repr: null, or one a `V` gave.
+    /// The pointer, as the raw pointer's repr: null, or one a `V` gave, either with tags.
     #[inline]
     pub(crate) const fn repr(self) -> V::Raw {
         self.repr
     }
+
+    /// Null: the repr of no value.
+    #[inline]
+    pub(crate) const fn null() -> Self
+    where
+        V::Raw: [const] Primitive,
+    {
+        Self { repr: V::Raw::from_bits(0), marker: PhantomData }
+    }
+}
+
+/// The low bits of a repr of a `V` that a word's tags may take: those its pointee's alignment
+/// leaves clear in the address, none for a function or a trait object.
+#[inline]
+pub(crate) const fn alignment_mask<V: SealedValue>() -> u128 {
+    mask(V::POINTEE_ALIGNMENT.width())
 }
 
 /// A value stored as a [`ReprOf`], a reference or a function pointer: the primitive a raw pointer
@@ -88,7 +120,14 @@ pub impl(crate) trait SealedValue {
     /// The weakest ordering an operation on it takes: a reference's `AcqRel`, an `Acquire` read and
     /// a `Release` write, so a thread that reads it sees the writes that made what it points to; a
     /// function pointer's `Relaxed`, as it points to code no write changes.
-    type OrderingFloor: OrderingFloor;
+    type OrderingFloor: const OrderingFloor;
+    /// The alignment of what the pointer points to, which leaves its low bits clear for a word's
+    /// tags: none for a function, whose code's alignment no type says.
+    ///
+    /// Only code reads it, never a type's layout, as [`Atom::POINTEE_ALIGNMENT`] says.
+    ///
+    /// [`Atom::POINTEE_ALIGNMENT`]: crate::Atom::POINTEE_ALIGNMENT
+    const POINTEE_ALIGNMENT: PointeeAlignment;
 }
 
 impl<T: ?Sized> SealedValue for &T
@@ -97,12 +136,15 @@ where
 {
     type Raw = <Metadata<T> as PointerMetadata<T>>::Repr;
     type OrderingFloor = AcqRel;
+    const POINTEE_ALIGNMENT: PointeeAlignment =
+        <Metadata<T> as PointerMetadata<T>>::POINTEE_ALIGNMENT;
 }
 
 // Beside the impl for references, through negative coherence: no reference is a function pointer.
 impl<F: FnPtr> SealedValue for F {
     type Raw = *mut ();
     type OrderingFloor = Relaxed;
+    const POINTEE_ALIGNMENT: PointeeAlignment = PointeeAlignment::NONE;
 }
 
 // Written out: a derive would bound `V` by each trait, a reference's pointee among them.
@@ -157,7 +199,8 @@ const _: () = {
     assert!(size_of::<ReprOf<fn()>>() == size_of::<usize>(), "a function pointer's is a word");
 };
 
-// Bits make null alone, as a `VtablePointer`'s do, and the floor is the value's.
+// Bits make null alone, as a `VtablePointer`'s do; a change of any bit but a tag's makes null too,
+// so the address stays one a `V` gave. The floor is the value's.
 #[diagnostic::do_not_recommend]
 const impl<V: SealedValue<Raw: [const] Primitive>> Primitive for ReprOf<V> {
     const BITS: u32 = V::Raw::BITS;
@@ -165,7 +208,7 @@ const impl<V: SealedValue<Raw: [const] Primitive>> Primitive for ReprOf<V> {
     type OrderingFloor = V::OrderingFloor;
     #[inline]
     fn from_bits(_: u128) -> Self {
-        Self { repr: V::Raw::from_bits(0), marker: PhantomData }
+        Self::null()
     }
     #[inline]
     fn is_bits(self, bits: u128) -> bool {
@@ -177,22 +220,79 @@ const impl<V: SealedValue<Raw: [const] Primitive>> Primitive for ReprOf<V> {
     }
     #[inline]
     fn with_packed_bits(self, bits: u128) -> Self {
-        if self.repr.packed_bits() == bits & mask(V::Raw::BITS) { self } else { Self::from_bits(0) }
+        let changed = (self.repr.packed_bits() ^ bits) & mask(V::Raw::BITS);
+        if changed & !alignment_mask::<V>() == 0 {
+            Self { repr: self.repr.with_packed_bits(bits), marker: PhantomData }
+        } else {
+            Self::null()
+        }
     }
+    // A mask of tag bits alone, as every word's decode clears, clears them as the raw pointer does,
+    // which tells LLVM they are clear.
     #[inline]
     fn clear_packed_bits(self, mask: u128) -> Self {
-        if self.repr.packed_bits() & mask == 0 { self } else { Self::from_bits(0) }
+        if mask & !alignment_mask::<V>() == 0 {
+            Self { repr: self.repr.clear_packed_bits(mask), marker: PhantomData }
+        } else {
+            self.with_packed_bits(self.packed_bits() & !mask)
+        }
     }
 }
 
-/// The cell of a [`ReprOf`]: the raw pointer's own, in a type only `into_cell` builds, so no cell
-/// holds a repr no `V` gave.
+// A thin reference's or a function's repr is one pointer, its provenance kept.
+const impl<V: SealedValue<Raw: const PointerRepr>> PointerRepr for ReprOf<V> {}
+
+// A double word holds a thin reference's or a function's repr beside another word: the cell
+// exposes the pointer's provenance, and takes it back from the bits `exposed_bits` gave alone.
+#[cfg(wide)]
+const impl<V: SealedValue<Raw: [const] Word + [const] Primitive>> Word for ReprOf<V> {
+    const IS_BITS_EXACT: bool = false;
+    type OrderingFloor = V::OrderingFloor;
+    #[inline]
+    fn from_bits(bits: u128) -> Self {
+        <Self as Primitive>::from_bits(bits)
+    }
+    #[inline]
+    fn is_bits(self, bits: u128) -> bool {
+        <Self as Primitive>::is_bits(self, bits)
+    }
+    #[inline]
+    fn packed_bits(self) -> u128 {
+        <Self as Primitive>::packed_bits(self)
+    }
+    #[inline]
+    fn with_packed_bits(self, bits: u128) -> Self {
+        <Self as Primitive>::with_packed_bits(self, bits)
+    }
+    #[inline]
+    fn clear_packed_bits(self, mask: u128) -> Self {
+        <Self as Primitive>::clear_packed_bits(self, mask)
+    }
+    #[inline]
+    fn exposed_bits(self) -> u64 {
+        self.repr.exposed_bits()
+    }
+    #[expect(unsafe_code, reason = "takes back a provenance the caller says the bits exposed")]
+    #[inline]
+    unsafe fn from_exposed_bits(bits: u64) -> Self {
+        // SAFETY: the caller's bits are what `exposed_bits` gave of a `ReprOf<V>`, so of its raw
+        // repr, a pointer a `V` gave, either tagged, or null, by the field INVARIANT.
+        Self { repr: unsafe { V::Raw::from_exposed_bits(bits) }, marker: PhantomData }
+    }
+}
+
+/// The cell of a [`ReprOf`]: the raw pointer's own, in a type only `into_cell` builds, so it holds
+/// only a repr a `V` gave, or null, either with tags in the bits its pointee's alignment leaves
+/// clear.
 #[repr(transparent)]
 pub struct SealedCell<V: SealedValue<Raw: CellAccess>> {
     // INVARIANT: holds a `ReprOf<V>`'s raw repr: null, or a pointer a `V`'s `to_repr` gave, its
-    // provenance kept. Its writers are `into_cell` and `set`, each of a `ReprOf<V>`; the
-    // exchanges, `store` and `swap`, each of a `ReprOf<V>` their caller passes; and the raw place
-    // `RawAccess` lends, whose `get_mut` takes only a `ReprOf<V>`, and whose pointer
+    // provenance kept; either with tags in the bits below `V`'s pointee alignment. Its writers are
+    // `into_cell` and `set`, each of a `ReprOf<V>`; the exchanges, `store`, `swap` and
+    // `store_by_exchange`, each of a `ReprOf<V>` their caller passes, and
+    // `compare_exchange_write_back_weak`, of one `with_packed_bits` gives, as its caller promises;
+    // the mask operations, which `tags_alone` and `address_kept` confine to the tag bits; and the
+    // raw place `RawAccess` lends, whose `get_mut` takes only a `ReprOf<V>`, and whose pointer
     // `Atomic::from_ptr` and `Atomic::as_ptr` bind to this invariant in their contracts.
     /// The raw pointer's cell.
     cell: <V::Raw as CellAccess>::Cell,
@@ -258,6 +358,20 @@ const unsafe impl<V: SealedValue<Raw: [const] RawAccess>> RawAccess for ReprOf<V
     }
 }
 
+/// `success`, an exchange's that writes `new`, raised to `V`'s floor: as a load's where `new` is
+/// null, which publishes nothing, as `load_rmw`'s exchange of null for null writes, else as an
+/// exchange's.
+#[inline]
+const fn raised_success<V: SealedValue<Raw: [const] Primitive>>(
+    new: ReprOf<V>, success: CoreOrdering,
+) -> CoreOrdering {
+    if new.repr.is_bits(0) {
+        V::OrderingFloor::raise_for_load(success)
+    } else {
+        V::OrderingFloor::raise_for_exchange(success)
+    }
+}
+
 /// The repr a result holds, sealed as the cell's was.
 #[inline]
 const fn sealed<V: SealedValue>(result: Result<V::Raw, V::Raw>) -> Result<ReprOf<V>, ReprOf<V>> {
@@ -267,13 +381,22 @@ const fn sealed<V: SealedValue>(result: Result<V::Raw, V::Raw>) -> Result<ReprOf
     }
 }
 
-// Each operation is the raw pointer's, on its cell, which holds only reprs a `V` gave, or null, so
-// each read gives one. Each is `do_not_recommend`, so a capability's refusal lists no `ReprOf`
-// beside the primitives.
+// Each operation is the raw pointer's, on its cell, which holds only reprs a `V` gave, or null,
+// either tagged, so each read gives one. Each that hands out a repr, or writes one of its own, runs
+// with the ordering it is passed raised to `V`'s floor, so no read of a reference misses the writes
+// that made what it points to, and no write of one fails to publish them, even where a caller of
+// these hidden operations passes `Relaxed`; `Atomic`'s own orderings meet the floor already, so for
+// them the raise folds away. Each that hands out bits alone, or a `bool`, and writes back the
+// reference it read, takes its ordering as it is: no reference leaves it, and its write continues
+// the release sequence of the store it read from. Each is `do_not_recommend`, so a capability's
+// refusal lists no `ReprOf` beside the primitives.
 #[diagnostic::do_not_recommend]
-const impl<V: SealedValue<Raw: [const] CompareExchange>> CompareExchange for ReprOf<V> {
+const impl<V: SealedValue<Raw: [const] CompareExchange + [const] Primitive>> CompareExchange
+    for ReprOf<V>
+{
     #[inline]
     fn read_for_rmw(cell: &SealedCell<V>, order: CoreOrdering) -> Self {
+        let order = V::OrderingFloor::raise_for_load(order);
         Self { repr: V::Raw::read_for_rmw(&cell.cell, order), marker: PhantomData }
     }
     #[inline]
@@ -281,6 +404,8 @@ const impl<V: SealedValue<Raw: [const] CompareExchange>> CompareExchange for Rep
         cell: &SealedCell<V>, current: Self, new: Self, success: CoreOrdering,
         failure: CoreOrdering,
     ) -> Result<Self, Self> {
+        let (success, failure) =
+            (raised_success(new, success), V::OrderingFloor::raise_for_load(failure));
         sealed(V::Raw::compare_exchange(&cell.cell, current.repr, new.repr, success, failure))
     }
     #[inline]
@@ -288,6 +413,25 @@ const impl<V: SealedValue<Raw: [const] CompareExchange>> CompareExchange for Rep
         cell: &SealedCell<V>, current: Self, new: Self, success: CoreOrdering,
         failure: CoreOrdering,
     ) -> Result<Self, Self> {
+        let (success, failure) =
+            (raised_success(new, success), V::OrderingFloor::raise_for_load(failure));
+        sealed(V::Raw::compare_exchange_weak(&cell.cell, current.repr, new.repr, success, failure))
+    }
+    // The reads hand out nothing; the write is `new`'s, raised as a store's.
+    #[inline]
+    fn store_by_exchange(cell: &SealedCell<V>, new: Self, order: CoreOrdering) {
+        V::Raw::store_by_exchange(&cell.cell, new.repr, V::OrderingFloor::raise_for_store(order));
+    }
+    // The write is `current`'s pointer, its tags alone changed, or null, as the caller promises,
+    // so it publishes nothing, and the read hands out a repr, so it acquires: a write-back's raise.
+    #[expect(unsafe_code, reason = "the raise trusts `new` to keep `current`'s pointer")]
+    #[inline]
+    unsafe fn compare_exchange_write_back_weak(
+        cell: &SealedCell<V>, current: Self, new: Self, success: CoreOrdering,
+        failure: CoreOrdering,
+    ) -> Result<Self, Self> {
+        let success = V::OrderingFloor::raise_for_write_back(success);
+        let failure = V::OrderingFloor::raise_for_load(failure);
         sealed(V::Raw::compare_exchange_weak(&cell.cell, current.repr, new.repr, success, failure))
     }
 }
@@ -296,7 +440,12 @@ const impl<V: SealedValue<Raw: [const] CompareExchange>> CompareExchange for Rep
 const impl<V: SealedValue<Raw: [const] Load>> Load for ReprOf<V> {
     #[inline]
     fn load(cell: &SealedCell<V>, order: CoreOrdering) -> Self {
+        let order = V::OrderingFloor::raise_for_load(order);
         Self { repr: V::Raw::load(&cell.cell, order), marker: PhantomData }
+    }
+    #[inline]
+    fn load_bits(cell: &SealedCell<V>, order: CoreOrdering) -> u128 {
+        V::Raw::load_bits(&cell.cell, order)
     }
 }
 
@@ -304,7 +453,7 @@ const impl<V: SealedValue<Raw: [const] Load>> Load for ReprOf<V> {
 const impl<V: SealedValue<Raw: [const] Store>> Store for ReprOf<V> {
     #[inline]
     fn store(cell: &SealedCell<V>, value: Self, order: CoreOrdering) {
-        V::Raw::store(&cell.cell, value.repr, order);
+        V::Raw::store(&cell.cell, value.repr, V::OrderingFloor::raise_for_store(order));
     }
 }
 
@@ -312,6 +461,7 @@ const impl<V: SealedValue<Raw: [const] Store>> Store for ReprOf<V> {
 const impl<V: SealedValue<Raw: [const] Swap>> Swap for ReprOf<V> {
     #[inline]
     fn swap(cell: &SealedCell<V>, value: Self, order: CoreOrdering) -> Self {
+        let order = V::OrderingFloor::raise_for_exchange(order);
         Self { repr: V::Raw::swap(&cell.cell, value.repr, order), marker: PhantomData }
     }
 }
@@ -320,4 +470,131 @@ const impl<V: SealedValue<Raw: [const] Swap>> Swap for ReprOf<V> {
 // zero for zero writes nothing new; a pointer's compares its address alone, as `ReadByExchange`
 // says, so neither a pointer nor its `ReprOf` reads by exchange.
 #[diagnostic::do_not_recommend]
-const impl<V: SealedValue<Raw: [const] ReadByExchange>> ReadByExchange for ReprOf<V> {}
+const impl<V: SealedValue<Raw: [const] ReadByExchange + [const] Primitive>> ReadByExchange
+    for ReprOf<V>
+{
+    #[inline]
+    fn load_bits_by_exchange(cell: &SealedCell<V>, order: CoreOrdering) -> u128 {
+        V::Raw::load_bits_by_exchange(&cell.cell, order)
+    }
+}
+
+/// `mask`, its bits outside the tags a `V`'s repr may hold cleared, so no operation it masks moves
+/// the address.
+#[inline]
+const fn tags_alone<V: SealedValue<Raw: [const] MaskBitwise>>(
+    mask: <V::Raw as MaskBitwise>::Mask,
+) -> <V::Raw as MaskBitwise>::Mask {
+    Primitive::from_bits(mask.to_bits() & alignment_mask::<V>())
+}
+
+/// `mask`, every bit outside the tags a `V`'s repr may hold set, so no `and` it masks moves the
+/// address.
+#[inline]
+const fn address_kept<V: SealedValue<Raw: [const] MaskBitwise>>(
+    mask: <V::Raw as MaskBitwise>::Mask,
+) -> <V::Raw as MaskBitwise>::Mask {
+    Primitive::from_bits(mask.to_bits() | !alignment_mask::<V>())
+}
+
+// Each mask is confined to the tag bits, so a word's tag fields change in place and the address,
+// one a `V` gave, stays as it is, whatever mask a caller passes. Each `fetch_` form reads back the
+// repr, so its ordering is raised to `V`'s floor as a read-back's, an acquiring read; each form
+// that discards it hands out nothing, so takes its ordering as it is.
+#[diagnostic::do_not_recommend]
+const impl<V: SealedValue<Raw: [const] MaskBitwise>> MaskBitwise for ReprOf<V> {
+    type Mask = <V::Raw as MaskBitwise>::Mask;
+    #[inline]
+    fn bit(position: u32) -> Self::Mask {
+        V::Raw::bit(position)
+    }
+    #[inline]
+    fn fetch_or_mask(cell: &SealedCell<V>, mask: Self::Mask, order: CoreOrdering) -> Self {
+        let order = V::OrderingFloor::raise_for_write_back(order);
+        let before = V::Raw::fetch_or_mask(&cell.cell, tags_alone::<V>(mask), order);
+        Self { repr: before, marker: PhantomData }
+    }
+    #[inline]
+    fn fetch_and_mask(cell: &SealedCell<V>, mask: Self::Mask, order: CoreOrdering) -> Self {
+        let order = V::OrderingFloor::raise_for_write_back(order);
+        let before = V::Raw::fetch_and_mask(&cell.cell, address_kept::<V>(mask), order);
+        Self { repr: before, marker: PhantomData }
+    }
+    #[inline]
+    fn fetch_xor_mask(cell: &SealedCell<V>, mask: Self::Mask, order: CoreOrdering) -> Self {
+        let order = V::OrderingFloor::raise_for_write_back(order);
+        let before = V::Raw::fetch_xor_mask(&cell.cell, tags_alone::<V>(mask), order);
+        Self { repr: before, marker: PhantomData }
+    }
+    #[inline]
+    fn or_mask(cell: &SealedCell<V>, mask: Self::Mask, order: CoreOrdering) {
+        V::Raw::or_mask(&cell.cell, tags_alone::<V>(mask), order);
+    }
+    #[inline]
+    fn and_mask(cell: &SealedCell<V>, mask: Self::Mask, order: CoreOrdering) {
+        V::Raw::and_mask(&cell.cell, address_kept::<V>(mask), order);
+    }
+    #[inline]
+    fn xor_mask(cell: &SealedCell<V>, mask: Self::Mask, order: CoreOrdering) {
+        V::Raw::xor_mask(&cell.cell, tags_alone::<V>(mask), order);
+    }
+}
+
+/// Whether the bit at `position`, modulo the width, is one a `V`'s repr may hold a tag in.
+#[inline]
+const fn is_tag_bit<V: SealedValue<Raw: [const] Primitive>>(position: u32) -> bool {
+    match position.checked_rem(V::Raw::BITS) {
+        Some(bit) => bit < V::POINTEE_ALIGNMENT.width(),
+        None => false,
+    }
+}
+
+/// The bit at `position` of the repr `cell` holds, read by an or of nothing: what a bit test past
+/// the tags gives, changing nothing.
+#[inline]
+const fn test_bit<V: SealedValue<Raw: [const] MaskBitwise>>(
+    cell: &SealedCell<V>, position: u32, order: CoreOrdering,
+) -> bool {
+    let nothing = Primitive::from_bits(0);
+    let bits = V::Raw::fetch_or_mask(&cell.cell, nothing, order).packed_bits();
+    bits & V::Raw::bit(position).to_bits() != 0
+}
+
+/// `BitTest`'s methods for a `ReprOf`, each `$method` at a position and `$field` at a field's: the
+/// raw pointer's at a tag bit, else the bit read and left as it is.
+macro_rules! tag_bit_tests {
+    ($($method:ident, $field:ident;)+) => {$(
+        #[inline]
+        fn $method(cell: &SealedCell<V>, position: u32, order: CoreOrdering) -> bool {
+            if is_tag_bit::<V>(position) {
+                V::Raw::$method(&cell.cell, position, order)
+            } else {
+                test_bit(cell, position, order)
+            }
+        }
+        #[inline]
+        fn $field<P: FieldPath>(cell: &SealedCell<V>, order: CoreOrdering) -> bool {
+            if is_tag_bit::<V>(P::OFFSET) {
+                V::Raw::$field::<P>(&cell.cell, order)
+            } else {
+                test_bit(cell, P::OFFSET, order)
+            }
+        }
+    )+};
+}
+
+// A tag bit's test is the raw pointer's, `lock bts` or `ldset` alike; a bit past the tags is read
+// and left as it is, so the address stays one a `V` gave.
+#[diagnostic::do_not_recommend]
+const impl<V: SealedValue<Raw: [const] BitTest>> BitTest for ReprOf<V> {
+    tag_bit_tests! {
+        test_and_set_bit, test_and_set_field;
+        test_and_clear_bit, test_and_clear_field;
+        test_and_toggle_bit, test_and_toggle_field;
+    }
+}
+
+// As the raw pointer's, whose cfg `atomic/field/mod.rs` repeats.
+#[cfg(aarch64_code)]
+#[diagnostic::do_not_recommend]
+impl<V: SealedValue<Raw: FetchBitwise>> FetchBitwise for ReprOf<V> {}

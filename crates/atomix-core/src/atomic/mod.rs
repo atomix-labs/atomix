@@ -10,8 +10,7 @@ use zerocopy::{FromBytes, IntoBytes, KnownLayout, Unaligned};
 
 use crate::atom::Atom;
 use crate::ordering::{
-    CoreLoadOrdering, CoreRmwOrdering, LoadOrdering, OrderingFloor, Relaxed, RmwOrdering,
-    StoreOrdering,
+    CoreLoadOrdering, CoreRmwOrdering, LoadOrdering, Relaxed, RmwOrdering, StoreOrdering,
 };
 #[cfg(not(loom))]
 use crate::primitive::RawAccess;
@@ -497,8 +496,7 @@ impl<T: Atom> Atomic<T> {
     /// Replaces the repr with `f` of it, until no other write intervenes, and returns the repr
     /// before; `Err` with the repr seen, without a write, when `f` returns `None`.
     ///
-    /// The loop of [`update`](Self::update) and [`try_update`](Self::try_update), and of each
-    /// field's.
+    /// The loop of [`update`](Self::update) and [`try_update`](Self::try_update).
     ///
     /// # Safety
     /// Each repr `f` returns decodes, as the field INVARIANT asks of each repr the cell holds.
@@ -529,6 +527,48 @@ impl<T: Atom> Atomic<T> {
         }
     }
 
+    /// Replaces the repr's packed bits with `f` of them, until no other write intervenes, and
+    /// returns the repr before; `Err` with the repr seen, without a write, when `f` returns `None`.
+    ///
+    /// The loop of each field's `update` and `try_update`, whose writes keep every pointer the repr
+    /// holds, its tags alone changed: through
+    /// [`compare_exchange_write_back_weak`](CompareExchange::compare_exchange_write_back_weak),
+    /// which a reference's floor raises as a read alone.
+    ///
+    /// # Safety
+    /// Each repr read, its packed bits replaced by `f` of them, decodes, as the field INVARIANT
+    /// asks of each repr the cell holds.
+    #[expect(unsafe_code, reason = "writes each repr its closure's bits make to the cell")]
+    #[inline]
+    pub(crate) const unsafe fn try_update_bits<
+        S: CoreRmwOrdering,
+        F: CoreLoadOrdering,
+        U: [const] FnMut(u128) -> Option<u128> + [const] Destruct,
+    >(
+        &self, set_order: S, fetch_order: F, mut f: U,
+    ) -> Result<T::Repr, T::Repr>
+    where
+        T::Repr: [const] CompareExchange,
+    {
+        let _ = (set_order, fetch_order);
+        let cell = self.primitive_cell();
+        let mut seen = T::Repr::read_for_rmw(cell, F::CORE);
+        loop {
+            let Some(bits) = f(seen.packed_bits()) else {
+                return Err(seen);
+            };
+            let next = seen.with_packed_bits(bits);
+            // SAFETY: `next` is `seen` with its packed bits replaced.
+            let exchanged = unsafe {
+                T::Repr::compare_exchange_write_back_weak(cell, seen, next, S::CORE, F::CORE)
+            };
+            match exchanged {
+                Ok(before) => return Ok(before),
+                Err(found) => seen = found,
+            }
+        }
+    }
+
     /// Reads the value with a compare-exchange, for a repr without [`Load`]: a 128-bit integer's,
     /// or a `DoubleWord`'s, where the target has no 16-byte load.
     ///
@@ -548,7 +588,7 @@ impl<T: Atom> Atomic<T> {
     }
 
     /// Reads the repr with a compare-exchange, which leaves it as it was: the read of
-    /// [`load_rmw`](Self::load_rmw), and of each field's.
+    /// [`load_rmw`](Self::load_rmw), and of a pointer field's.
     #[inline]
     const fn load_rmw_repr<O: CoreLoadOrdering>(&self, order: O) -> T::Repr
     where
@@ -570,7 +610,6 @@ impl<T: Atom> Atomic<T> {
     ///
     /// # Panics
     /// As [`store`](Self::store).
-    #[expect(unsafe_code, reason = "writes a value's repr to the cell")]
     #[inline]
     #[track_caller]
     pub const fn store_rmw<O: StoreOrdering<T>>(&self, value: T, order: O)
@@ -578,13 +617,12 @@ impl<T: Atom> Atomic<T> {
         T: [const] Atom,
         T::Repr: [const] CompareExchange,
     {
+        let _ = order;
         // Encoded once, so its refusal stands before the loop.
         let repr = value.to_repr();
         // ORDERING: `order` on the exchange that lands, pairing as the caller's store would;
         // Relaxed on the reads before it, which only feed the comparison and pair with nothing.
-        //
-        // SAFETY: the one repr the closure returns is `value`'s own, which decodes.
-        let _repr_before = unsafe { self.try_update_repr(order, Relaxed, const |_| Some(repr)) };
+        T::Repr::store_by_exchange(self.primitive_cell(), repr, O::CORE);
     }
 
     /// The repr's address, for interop.
@@ -703,14 +741,11 @@ impl<T: Atom> Atomic<T> {
     /// over itself.
     #[inline]
     pub(crate) fn load_or_exchange_repr(&self) -> T::Repr {
-        // ORDERING: Relaxed, as core's `Debug` and serde's `Serialize`, where the repr's floor
-        // takes it: a snapshot publishes nothing and pairs with no store. A reference's floor reads
-        // with Acquire, pairing with the Release store that published it, since printing it reads
-        // what it points to.
-        T::Repr::read_for_rmw(
-            self.primitive_cell(),
-            <<T::Repr as Primitive>::OrderingFloor as OrderingFloor>::CORE_LOAD,
-        )
+        // ORDERING: Relaxed, as core's `Debug` and serde's `Serialize`: a snapshot publishes
+        // nothing and pairs with no store. A reference's repr raises it to Acquire, its floor,
+        // pairing with the Release store that published it, since printing it reads what it
+        // points to.
+        T::Repr::read_for_rmw(self.primitive_cell(), Relaxed::CORE)
     }
 
     /// The value, read as [`load_or_exchange_repr`](Self::load_or_exchange_repr) reads its repr.

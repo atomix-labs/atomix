@@ -3,7 +3,9 @@
 //! operation through a packed struct's projection, a pointer word's tag operations, the load of a
 //! word through its pointer's place, a word's store and exchange, the store of a word over a word
 //! or a pointer enum, the load and match of each pointer enum and the store of each of its kinds of
-//! variant, an update of a pointer enum that keeps its pointer, and of a word over one; and, where
+//! variant, an update of a pointer enum that keeps its pointer, and of a word over one; a word over
+//! a reference's tag test, its tag's `Relaxed` load and set and `Acquire` update, its pointer's
+//! load, its exchange and its store, beside its twin over a `NonNull`; and, where
 //! the target has a 16-byte atomic, a struct of two words' load, exchange and counter's update,
 //! and a pair of pointers' store and exchange. The `x86-64-refused` feature adds each shape of two
 //! words, for the test that `x86_64` without `cmpxchg16b` refuses each once.
@@ -18,7 +20,7 @@ pub mod without_cmpxchg16b;
 
 use core::ptr::NonNull;
 
-use atomix::ordering::{AcqRel, Acquire, Release};
+use atomix::ordering::{AcqRel, Acquire, Relaxed, Release};
 use atomix::{Atom, AtomBitwise, Atomic, RangedU8, RangedU32};
 
 /// The side of the book an order rests on: one bit, its discriminant.
@@ -268,9 +270,81 @@ pub struct Guarded {
     pub locked: bool,
 }
 
+/// A Treiber stack's head over a reference: `Head`'s twin, the top node a `&'static`.
+#[derive(Clone, Copy, Atom)]
+pub struct ReferenceHead {
+    /// The top node.
+    pub top: Option<&'static Node>,
+    /// The version.
+    pub version: RangedU8<0, 3>,
+    /// Whether a pop is under way.
+    pub marked: bool,
+}
+
+/// A node by reference and a mark at bit 0: `Marked`'s twin.
+#[derive(Clone, Copy, Atom)]
+pub struct ReferenceMarked {
+    /// The node.
+    pub node: &'static Node,
+    /// The mark.
+    pub marked: bool,
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_head_test_and_set_marked(atomic: &Atomic<ReferenceHead>) -> bool {
+    atomic.fields().marked.test_and_set(AcqRel)
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_head_load_top(atomic: &Atomic<ReferenceHead>) -> Option<&'static Node> {
+    atomic.fields().top.load(Acquire)
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_head_compare_exchange(
+    atomic: &Atomic<ReferenceHead>, current: ReferenceHead, new: ReferenceHead,
+) -> bool {
+    atomic.compare_exchange(current, new, AcqRel, Acquire).is_ok()
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_marked_store(atomic: &Atomic<ReferenceMarked>, node: &'static Node) {
+    atomic.store(ReferenceMarked { node, marked: true }, Release);
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_head_load_marked(atomic: &Atomic<ReferenceHead>) -> bool {
+    atomic.fields().marked.load(Relaxed)
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_head_set_marked(atomic: &Atomic<ReferenceHead>) {
+    atomic.fields().marked.set(Relaxed);
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_head_update_marked(atomic: &Atomic<ReferenceHead>) -> ReferenceHead {
+    atomic.fields().marked.update(Acquire, Acquire, |marked| !marked)
+}
+
 #[unsafe(no_mangle)]
 pub fn head_test_and_set_marked(atomic: &Atomic<Head>) -> bool {
     atomic.fields().marked.test_and_set(AcqRel)
+}
+
+#[unsafe(no_mangle)]
+pub fn head_load_marked(atomic: &Atomic<Head>) -> bool {
+    atomic.fields().marked.load(Relaxed)
+}
+
+#[unsafe(no_mangle)]
+pub fn head_set_marked(atomic: &Atomic<Head>) {
+    atomic.fields().marked.set(Relaxed);
+}
+
+#[unsafe(no_mangle)]
+pub fn head_update_marked(atomic: &Atomic<Head>) -> Head {
+    atomic.fields().marked.update(Acquire, Acquire, |marked| !marked)
 }
 
 #[unsafe(no_mangle)]

@@ -344,8 +344,8 @@ mod tests {
 
         use atomix_core::cell::UnsafeCell;
         use atomix_core::model::{Arc, check, thread};
-        use atomix_core::ordering::{AcqRel, Acquire, Relaxed, Release};
-        use atomix_core::{Atomic, AtomicPtr};
+        use atomix_core::ordering::{AcqRel, Acquire, CoreRmwOrdering, Relaxed, Release};
+        use atomix_core::{Atom, Atomic, AtomicPtr, Load, Primitive, Store};
 
         /// A value written in place before a reference to it is published.
         struct Slot(UnsafeCell<u64>);
@@ -398,6 +398,35 @@ mod tests {
                 let theirs = other.join().expect("the other swapper does not panic");
                 assert!([1, 7].contains(&mine), "this thread reads the first slot or the other's");
                 assert!([1, 9].contains(&theirs), "and the other the first or this thread's");
+            });
+        }
+
+        /// The cell of `repr`, through the bound every repr has, as a caller of the hidden
+        /// primitive operations reaches one.
+        fn cell_of<R: Primitive>(repr: R) -> R::Cell {
+            R::into_cell(repr)
+        }
+
+        /// The repr of a reference to a slot.
+        type SlotRepr = <&'static Slot as Atom>::Repr;
+
+        // A caller of the hidden primitive operations may pass `Relaxed`, which a reference's
+        // repr raises to its floor: the store releases and the load acquires all the same.
+        #[test]
+        fn a_reference_stored_and_loaded_relaxed_through_its_primitive_is_published() {
+            check(|| {
+                let cell = Arc::new(cell_of(slot(1).to_repr()));
+                let writer = {
+                    let cell = Arc::clone(&cell);
+                    thread::spawn(move || {
+                        <SlotRepr as Store>::store(&cell, slot(7).to_repr(), Relaxed::CORE);
+                    })
+                };
+                let loaded = <SlotRepr as Load>::load(&cell, Relaxed::CORE);
+                let slot = <&Slot as Atom>::from_repr(loaded).expect("a slot is published");
+                let seen = read(slot);
+                assert!(seen == 1 || seen == 7, "the first slot, or the one published whole");
+                writer.join().expect("the writer does not panic");
             });
         }
 

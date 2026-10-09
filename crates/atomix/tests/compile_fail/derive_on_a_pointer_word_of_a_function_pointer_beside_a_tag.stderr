@@ -1,0 +1,9 @@
+error[E0080]: evaluation panicked: `$CRATE::Callback`: tag field `armed` needs 1 low bit, but `fn(u8) -> u8` keeps 0 for its own tags and leaves 0 clear above them: shrink the tags, raise its pointees' alignment to 2 bytes, or state `#[atom(repr = u128)]` for a word of their own
+ --> tests/compile_fail/derive_on_a_pointer_word_of_a_function_pointer_beside_a_tag.rs:7:8
+  |
+6 | #[derive(Clone, Copy, Atom)]
+  |                       ---- in this derive macro expansion
+7 | struct Callback {
+  |        ^^^^^^^^ evaluation of `_::_` failed here
+  |
+  = note: this error originates in the derive macro `Atom` (in Nightly builds, run with -Z macro-backtrace for more info)

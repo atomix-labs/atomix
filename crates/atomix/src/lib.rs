@@ -33,14 +33,14 @@
 //!   something for it, and [`FieldBitwise`] and [`FieldAdd`] those of a field of it. A shared
 //!   reference and a function pointer are stored as a [`ReprOf`] of themselves, which no bits
 //!   forge, and a reference's operations take no ordering weaker than an `Acquire` read and a
-//!   `Release` write. Two words hold a pair `(P, Q)` of values stored as pointers, and a pointer to
-//!   a slice, a `str` or a trait object. With the `derive` feature, each derives: `Atom` for a
-//!   struct or an enum, a pointer word or a pointer enum among them, which keeps small fields as
-//!   tags in its pointer's low bits and the pointer's provenance, and each capability for a newtype
-//!   whose field has it. A pointer word takes two words where a second pointer, a wide one or tags
-//!   no alignment holds need them. [`RangedU64<MIN, MAX>`](RangedU64) and its siblings, `RangedU8`
-//!   to `RangedIsize`, hold an integer from `MIN` to `MAX`, and [`RangeError`] and
-//!   [`ParseRangeError`] say why one refused an integer or a text.
+//!   `Release` write. Two words hold a pair `(P, Q)` of values stored as pointers, references among
+//!   them, and a pointer to a slice, a `str` or a trait object. With the `derive` feature, each
+//!   derives: `Atom` for a struct or an enum, a pointer word or a pointer enum among them, which
+//!   keeps small fields as tags in its pointer's low bits and the pointer's provenance, and each
+//!   capability for a newtype whose field has it. A pointer word takes two words where a second
+//!   pointer, a wide one or tags no alignment holds need them. [`RangedU64<MIN, MAX>`](RangedU64)
+//!   and its siblings, `RangedU8` to `RangedIsize`, hold an integer from `MIN` to `MAX`, and
+//!   [`RangeError`] and [`ParseRangeError`] say why one refused an integer or a text.
 //! - **Orderings.** The [`ordering`] types, each accepted only where it means something, and the
 //!   [`fence`](fn@fence) and [`compiler_fence`] they order.
 //! - **Primitives.** [`Primitive`], [`ExactBits`] where the bits are the whole value, a
