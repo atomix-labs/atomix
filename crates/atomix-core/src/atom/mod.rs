@@ -194,7 +194,7 @@ pub trait AtomOrd: Atom + Ord {}
     message = "`{Self}` has no atomic bitwise operations",
     label = "`and`, `or`, `xor`, `not`, their `fetch_` forms, and `bit_set`, `bit_clear` and `bit_toggle` need `AtomBitwise`",
     note = "for your own newtype over a value that has it, derive it: `#[derive(AtomBitwise)]`",
-    note = "for a pointer, whose bits are its address, keep tags beside it in a derived pointer word, whose tag fields have `or`, `and` and `xor`",
+    note = "for a raw pointer to a sized type, `and`, `or`, `xor` and their `fetch_` forms take a `usize` mask on its address; for another pointer, keep tags beside it in a derived pointer word, whose tag fields have `or`, `and` and `xor`",
     note = "to change the value in a compare-exchange loop, call `update`"
 )]
 pub trait AtomBitwise: Atom<Validity = Total, Repr: Bitwise> {}

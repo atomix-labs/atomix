@@ -90,7 +90,8 @@ What a change here keeps, beyond what the checks hold it to.
   loop, and a loop is `update`, by name; what each lowers to is pinned in
   `tests/codegen.rs`. Each takes core's name and meaning, `fetch_add` to
   `try_update`, though a field's returns its container before, not the field's
-  value; `bit_set`, `bit_clear` and `bit_toggle`, which core lacks, take
+  value; a raw pointer's `and`, `or` and `xor` take core's `usize` mask, and
+  `bit_set`, `bit_clear` and `bit_toggle`, which core lacks, take
   portable-atomic's, and return the bit before. A form that discards what it
   returns exists only where the `fetch_` form is not one instruction on every
   target: `and`, `or`, `xor` and `not`, and a `bool` field's `set`, `clear` and

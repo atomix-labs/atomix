@@ -38,7 +38,9 @@ pub use self::ptr::AtomicPtr;
 /// operation the target lacks for the repr does not exist ([`Load`], [`Store`], [`Swap`],
 /// [`FetchBitwise`](crate::FetchBitwise), [`MinMax`](crate::MinMax)), and a capability
 /// ([`AtomAdd`](crate::AtomAdd), [`AtomOrd`](crate::AtomOrd), [`AtomBitwise`](crate::AtomBitwise))
-/// gates each read-modify-write that means something only on some values.
+/// gates each read-modify-write that means something only on some values; a raw pointer's
+/// [`and`](Self::and), [`or`](Self::or) and [`xor`](Self::xor) take a `usize` mask, as core's
+/// `AtomicPtr`'s do.
 ///
 /// `Debug`, `fmt::Pointer` and, with the `serde` feature, serde's `Serialize` read the value
 /// Relaxed, as core's do: with a load where the target has one, else with the compare-exchange

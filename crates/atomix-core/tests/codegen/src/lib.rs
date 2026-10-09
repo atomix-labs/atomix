@@ -175,6 +175,27 @@ pub fn pointer_fetch_ptr_sub(atomic: &AtomicPtr<u64>, count: usize) -> *mut u64 
 }
 
 #[unsafe(no_mangle)]
+pub fn pointer_or(atomic: &AtomicPtr<u64>, mask: usize) {
+    atomic.or(mask, Release);
+}
+
+#[unsafe(no_mangle)]
+pub fn pointer_and(atomic: &AtomicPtr<u64>, mask: usize) {
+    atomic.and(mask, Release);
+}
+
+#[unsafe(no_mangle)]
+pub fn pointer_xor(atomic: &AtomicPtr<u64>, mask: usize) {
+    atomic.xor(mask, Release);
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", feature = "aarch64-only"))]
+#[unsafe(no_mangle)]
+pub fn pointer_fetch_or(atomic: &AtomicPtr<u64>, mask: usize) -> *mut u64 {
+    atomic.fetch_or(mask, AcqRel)
+}
+
+#[unsafe(no_mangle)]
 pub fn char_load(atomic: &Atomic<char>) -> char {
     atomic.load(Acquire)
 }

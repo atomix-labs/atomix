@@ -306,7 +306,8 @@
 //!
 //! - orderings are types ([`ordering`]), so `load(Release)` does not compile;
 //! - a read-modify-write needs the capability that makes it mean something: [`AtomAdd`],
-//!   [`AtomOrd`], [`AtomBitwise`]; anything else is [`update`](Atomic::update);
+//!   [`AtomOrd`], [`AtomBitwise`], or for a raw pointer's `and`, `or` and `xor`, a `usize` mask;
+//!   anything else is [`update`](Atomic::update);
 //! - an operation exists only where the target runs it without a compare-exchange loop, as
 //!   [Platforms](#platforms) tables: without a 16-byte [`Load`], [`load_rmw`](Atomic::load_rmw)
 //!   reads with one compare-exchange, which writes, by name; [`fetch_or`](Atomic::fetch_or),
