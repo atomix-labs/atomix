@@ -1,0 +1,41 @@
+error[E0080]: unable to turn pointer into integer
+ --> tests/compile_fail/wide_reference_built_in_a_constant.rs:7:38
+  |
+7 | static VENUE: Atomic<&'static str> = Atomic::new("XNAS");
+  |                                      ^^^^^^^^^^^^^^^^^^^ evaluation of `VENUE` failed inside this call
+  |
+  = help: this code performed an operation that depends on the underlying bytes representing a pointer
+  = help: the absolute address of a pointer is not known at compile-time, so such operations are not supported
+note: inside `<ReprOf<&str> as atomix_core::primitive::CellAccess>::into_cell`
+ --> src/primitive/sealed.rs
+  |
+  |         SealedCell { cell: self.repr.into_cell(), marker: PhantomData }
+  |                            ^^^^^^^^^^^^^^^^^^^^^
+note: inside `atomix_core::primitive::double::exposed::<impl atomix_core::primitive::CellAccess for DoubleWord<*mut (), usize>>::into_cell`
+ --> src/primitive/double.rs
+  |
+  |                     DoubleCell { bits: exposed_bits(self).into_cell(), marker: PhantomData }
+  |                                        ^^^^^^^^^^^^^^^^^^
+...
+  |     cells!(const);
+  |     ------------- in this macro invocation
+note: inside `atomix_core::primitive::double::exposed::exposed_bits::<*mut (), usize>`
+ --> src/primitive/double.rs
+  |
+  |         u128::from(words.first.exposed_bits())
+  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: inside `<*mut () as atomix_core::primitive::double::Word>::exposed_bits`
+ --> src/primitive/double.rs
+  |
+  |     pointer => exposed_address(pointer).wrapping_cast(),
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^
+note: inside `atomix_core::primitive::double::exposed_address::<()>`
+ --> src/primitive/double.rs
+  |
+  | /     const_eval_select(
+  | |         (pointer,),
+  | |         exposed_address_in_constant::<T>,
+  | |         exposed_address_at_run_time::<T>,
+  | |     )
+  | |_____^ the failure occurred here
+  = note: this error originates in the macro `cells` (in Nightly builds, run with -Z macro-backtrace for more info)

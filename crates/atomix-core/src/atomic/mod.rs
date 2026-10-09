@@ -9,11 +9,14 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
 use zerocopy::{FromBytes, IntoBytes, KnownLayout, Unaligned};
 
 use crate::atom::Atom;
-use crate::ordering::{LoadOrdering, Relaxed, RmwOrdering, StoreOrdering};
+use crate::ordering::{
+    CoreLoadOrdering, CoreRmwOrdering, LoadOrdering, OrderingFloor, Relaxed, RmwOrdering,
+    StoreOrdering,
+};
 #[cfg(not(loom))]
 use crate::primitive::RawAccess;
 use crate::primitive::{CellAccess, CompareExchange, Load, Primitive, ReadByExchange, Store, Swap};
-use crate::range::{ReprRange, Tags, assert_aligned};
+use crate::range::{Tags, assert_aligned};
 use crate::validity::Validity;
 
 mod capability;
@@ -42,10 +45,15 @@ pub use self::ptr::AtomicPtr;
 /// [`and`](Self::and), [`or`](Self::or) and [`xor`](Self::xor) take a `usize` mask, as core's
 /// `AtomicPtr`'s do.
 ///
+/// A value that holds a reference takes no ordering weaker than an `Acquire` read and a `Release`
+/// write, so a thread that loads the reference sees the writes that made what it points to:
+/// [`LoadOrdering<T>`](crate::ordering::LoadOrdering) and its siblings say which each operation
+/// takes. A function pointer, which points to code no write changes, takes any.
+///
 /// `Debug`, `fmt::Pointer` and, with the `serde` feature, serde's `Serialize` read the value
-/// Relaxed, as core's do: with a load where the target has one, else with the compare-exchange
-/// [`load_rmw`](Self::load_rmw) is, which writes the cache line, as core's `AtomicU128` prints on
-/// `aarch64` without LSE2.
+/// Relaxed, as core's do, or a value that holds a reference with Acquire: with a load where the
+/// target has one, else with the compare-exchange [`load_rmw`](Self::load_rmw) is, which writes the
+/// cache line, as core's `AtomicU128` prints on `aarch64` without LSE2.
 ///
 /// [`new`](Self::new) and [`into_inner`](Self::into_inner) need `T: const Atom`, so generic
 /// run-time code builds one with [`From`] and reads it back with [`get`](Self::get); a const caller
@@ -264,7 +272,7 @@ impl<T: Atom> Atomic<T> {
     /// Reads the value.
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub const fn load<O: LoadOrdering>(&self, order: O) -> T
+    pub const fn load<O: LoadOrdering<T>>(&self, order: O) -> T
     where
         T: [const] Atom,
         T::Repr: [const] Load,
@@ -282,7 +290,7 @@ impl<T: Atom> Atomic<T> {
     /// has a bit set where its tags go.
     #[inline]
     #[track_caller]
-    pub const fn store<O: StoreOrdering>(&self, value: T, order: O)
+    pub const fn store<O: StoreOrdering<T>>(&self, value: T, order: O)
     where
         T: [const] Atom,
         T::Repr: [const] Store,
@@ -298,7 +306,7 @@ impl<T: Atom> Atomic<T> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
     #[track_caller]
-    pub const fn swap<O: RmwOrdering>(&self, value: T, order: O) -> T
+    pub const fn swap<O: RmwOrdering<T>>(&self, value: T, order: O) -> T
     where
         T: [const] Atom,
         T::Repr: [const] Swap,
@@ -335,7 +343,7 @@ impl<T: Atom> Atomic<T> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
     #[track_caller]
-    pub const fn compare_exchange<S: RmwOrdering, F: LoadOrdering>(
+    pub const fn compare_exchange<S: RmwOrdering<T>, F: LoadOrdering<T>>(
         &self, current: T, new: T, success: S, failure: F,
     ) -> Result<T, T>
     where
@@ -364,7 +372,7 @@ impl<T: Atom> Atomic<T> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
     #[track_caller]
-    pub const fn compare_exchange_weak<S: RmwOrdering, F: LoadOrdering>(
+    pub const fn compare_exchange_weak<S: RmwOrdering<T>, F: LoadOrdering<T>>(
         &self, current: T, new: T, success: S, failure: F,
     ) -> Result<T, T>
     where
@@ -410,8 +418,8 @@ impl<T: Atom> Atomic<T> {
     #[inline]
     #[track_caller]
     pub const fn update<
-        S: RmwOrdering,
-        F: LoadOrdering,
+        S: RmwOrdering<T>,
+        F: LoadOrdering<T>,
         U: [const] FnMut(T) -> T + [const] Destruct,
     >(
         &self, set_order: S, fetch_order: F, mut f: U,
@@ -458,8 +466,8 @@ impl<T: Atom> Atomic<T> {
     #[inline]
     #[track_caller]
     pub const fn try_update<
-        S: RmwOrdering,
-        F: LoadOrdering,
+        S: RmwOrdering<T>,
+        F: LoadOrdering<T>,
         U: [const] FnMut(T) -> Option<T> + [const] Destruct,
     >(
         &self, set_order: S, fetch_order: F, mut f: U,
@@ -498,8 +506,8 @@ impl<T: Atom> Atomic<T> {
     #[inline]
     #[track_caller]
     const unsafe fn try_update_repr<
-        S: RmwOrdering,
-        F: LoadOrdering,
+        S: CoreRmwOrdering,
+        F: CoreLoadOrdering,
         U: [const] FnMut(T::Repr) -> Option<T::Repr> + [const] Destruct,
     >(
         &self, set_order: S, fetch_order: F, mut f: U,
@@ -529,7 +537,7 @@ impl<T: Atom> Atomic<T> {
     /// address alone, so one of null for null could strip a null's provenance.
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub const fn load_rmw<O: LoadOrdering>(&self, order: O) -> T
+    pub const fn load_rmw<O: LoadOrdering<T>>(&self, order: O) -> T
     where
         T: [const] Atom,
         T::Repr: [const] ReadByExchange,
@@ -542,7 +550,7 @@ impl<T: Atom> Atomic<T> {
     /// Reads the repr with a compare-exchange, which leaves it as it was: the read of
     /// [`load_rmw`](Self::load_rmw), and of each field's.
     #[inline]
-    const fn load_rmw_repr<O: LoadOrdering>(&self, order: O) -> T::Repr
+    const fn load_rmw_repr<O: CoreLoadOrdering>(&self, order: O) -> T::Repr
     where
         T::Repr: [const] ReadByExchange,
     {
@@ -565,7 +573,7 @@ impl<T: Atom> Atomic<T> {
     #[expect(unsafe_code, reason = "writes a value's repr to the cell")]
     #[inline]
     #[track_caller]
-    pub const fn store_rmw<O: StoreOrdering>(&self, value: T, order: O)
+    pub const fn store_rmw<O: StoreOrdering<T>>(&self, value: T, order: O)
     where
         T: [const] Atom,
         T::Repr: [const] CompareExchange,
@@ -582,8 +590,11 @@ impl<T: Atom> Atomic<T> {
     /// The repr's address, for interop.
     ///
     /// Every access through it while the atomic is shared is atomic and of the repr's width, and a
-    /// write leaves a repr [`from_repr`](Atom::from_repr) decodes. A repr of two words, whose cell
-    /// holds its pointers' addresses alone, lends none, as [`RawAccess`] says.
+    /// write leaves a repr [`from_repr`](Atom::from_repr) decodes: for a reference or a function
+    /// pointer, whose repr is a [`ReprOf`](crate::ReprOf), null or the pointer of a value of `T`,
+    /// a reference's to what lives as long as its lifetime, a function's of its signature. A repr
+    /// of two words, whose cell holds its pointers' addresses alone, lends none, as [`RawAccess`]
+    /// says.
     #[cfg(not(loom))]
     #[inline]
     #[must_use]
@@ -603,7 +614,10 @@ impl<T: Atom> Atomic<T> {
     /// For all of `'a`: `ptr` is aligned to `align_of::<Atomic<T>>()` and valid for reads and
     /// writes; no non-atomic or different-width access reaches it without synchronization; and
     /// the pointee holds a repr [`from_repr`](Atom::from_repr) decodes (any repr, where
-    /// `T::Validity` is [`Total`](crate::validity::Total)), which every write keeps.
+    /// `T::Validity` is [`Total`](crate::validity::Total)), which every write keeps: for a
+    /// reference or a function pointer, whose repr is a [`ReprOf`](crate::ReprOf), null or the
+    /// pointer of a value of `T`, a reference's to what lives as long as its lifetime, a function's
+    /// of its signature.
     ///
     /// # Examples
     /// ```
@@ -684,14 +698,19 @@ impl<T: Atom + Default> Default for Atomic<T> {
 }
 
 impl<T: Atom> Atomic<T> {
-    /// The repr, read Relaxed for `Debug`, `fmt::Pointer` and serde's `Serialize`: by the
-    /// target's pure load, else by the compare-exchange [`load_rmw`](Self::load_rmw) is, which
-    /// writes the repr over itself.
+    /// The repr, read for `Debug`, `fmt::Pointer` and serde's `Serialize`: by the target's pure
+    /// load, else by the compare-exchange [`load_rmw`](Self::load_rmw) is, which writes the repr
+    /// over itself.
     #[inline]
     pub(crate) fn load_or_exchange_repr(&self) -> T::Repr {
-        // ORDERING: Relaxed, as core's `Debug` and serde's `Serialize`: a snapshot publishes
-        // nothing and pairs with no store.
-        T::Repr::read_for_rmw(self.primitive_cell(), Relaxed::CORE)
+        // ORDERING: Relaxed, as core's `Debug` and serde's `Serialize`, where the repr's floor
+        // takes it: a snapshot publishes nothing and pairs with no store. A reference's floor reads
+        // with Acquire, pairing with the Release store that published it, since printing it reads
+        // what it points to.
+        T::Repr::read_for_rmw(
+            self.primitive_cell(),
+            <<T::Repr as Primitive>::OrderingFloor as OrderingFloor>::CORE_LOAD,
+        )
     }
 
     /// The value, read as [`load_or_exchange_repr`](Self::load_or_exchange_repr) reads its repr.
@@ -712,43 +731,6 @@ impl<T: Atom + fmt::Pointer> fmt::Pointer for Atomic<T> {
 impl<T: Atom + fmt::Debug> fmt::Debug for Atomic<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.load_or_exchange().fmt(f)
-    }
-}
-
-/// An atomic as a value: never true, so the one impl it bounds never applies, and rustc reports
-/// its message for an atomic inside an atomic.
-///
-/// `Copy` is its supertrait, so the bound fails here rather than at `Atom`'s own `Copy`, and no
-/// type implements it: an atomic is never `Copy`.
-#[diagnostic::on_unimplemented(
-    message = "`{Self}` is an atomic, a place a value lives in, not a value an atomic holds",
-    label = "an atomic, not a value",
-    note = "store its value instead, `Atomic<u64>` for `Atomic<AtomicU64>`; for a place inside a value, derive `Atom` for a struct of values, whose atomic lends each field as a place through `fields()`",
-    note = "to keep several atomics together, put them side by side in a struct; to point at one, store a `NonNull` to it"
-)]
-pub impl(crate) trait NotAnAtomic: Copy {}
-
-// It exists so that rustc reports `NotAnAtomic`'s message for an atomic inside an atomic, rather
-// than `Atom`'s, which advises deriving `Atom`; hidden, since rustdoc would list it among `Atom`'s
-// implementors.
-//
-// SAFETY: it never applies: its bound, `NotAnAtomic`, has no impl, and an `Atomic<T>` is not
-// `Copy`, which `NotAnAtomic` needs.
-#[expect(unsafe_code, reason = "an impl that never applies, for its diagnostic")]
-#[doc(hidden)]
-unsafe impl<T: Atom> Atom for Atomic<T>
-where
-    Self: NotAnAtomic,
-{
-    type Repr = T::Repr;
-    const REPRS: ReprRange<T::Repr> = T::REPRS;
-    #[inline]
-    fn to_repr(self) -> T::Repr {
-        T::Repr::from_cell(T::Validity::into_inner::<T::Repr>(self.cell))
-    }
-    #[inline]
-    fn from_repr(_: T::Repr) -> Option<Self> {
-        None
     }
 }
 

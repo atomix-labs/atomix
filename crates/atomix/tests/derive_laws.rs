@@ -31,7 +31,9 @@ mod tests {
     use core::ptr::NonNull;
 
     use atomix::validity::{Partial, Total, TotalZeroNiche, ZeroNiche, ZeroValid};
-    use atomix::{Atom, Atomic, ExactBits, Primitive, RangedI8, RangedU8, RangedU64, ReprRange};
+    use atomix::{
+        Atom, Atomic, ExactBits, Primitive, RangedI8, RangedU8, RangedU64, ReprOf, ReprRange,
+    };
     use proptest::prelude::{Just, Strategy, any, prop_oneof};
     use proptest::sample::select;
     use proptest::test_runner::TestCaseError;
@@ -121,6 +123,24 @@ mod tests {
     /// A sequence number, every repr of which decodes.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct Seq(u64);
+
+    /// What a trading service reads on every order: replaced whole, never changed in place.
+    #[derive(Debug, PartialEq, Eq)]
+    struct Config {
+        /// How many price levels a quote shows.
+        depth: u32,
+    }
+
+    /// The configurations the tests point to, for as long as the program runs.
+    static CONFIGS: [Config; 2] = [Config { depth: 10 }, Config { depth: 20 }];
+
+    /// The configuration in force: a newtype over a reference, stored as the reference is.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Current(&'static Config);
+
+    /// A hook that measures a symbol: a newtype over a function pointer, stored as it is.
+    #[derive(Clone, Copy, Debug, Atom)]
+    struct Measure(fn(&str) -> usize);
 
     /// A lock's owner, from 3, as its field's range.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
@@ -873,6 +893,8 @@ mod tests {
         repr_and_validity_are::<GuardedLink, *mut Linked, ZeroNiche>();
         repr_and_validity_are::<GenericLink<u64>, *mut GenericNode<u64>, ZeroValid>();
         repr_and_validity_are::<VenueHalves<u8>, u32, Total>();
+        repr_and_validity_are::<Current, ReprOf<&'static Config>, TotalZeroNiche>();
+        repr_and_validity_are::<Measure, ReprOf<fn(&str) -> usize>, TotalZeroNiche>();
         assert_eq!(Turn::REPRS, ReprRange::new(0, 0x1FF), "every repr up to the third's end");
         assert_eq!(Offer::Closed.to_repr(), 2, "and `Closed` above the side's 0 and 1");
     }
@@ -946,12 +968,17 @@ mod tests {
             id in any::<NonZero<u16>>().prop_map(Id),
             seq in any::<u64>().prop_map(Seq),
             owner in owner_ids(),
+            current in select(&[0_usize, 1]).prop_map(|index| Current(&CONFIGS[index])),
             bits in edge_or_random_bits(&[]),
         ) {
             value_obeys_the_laws(id, bits)?;
             value_obeys_the_laws(seq, bits)?;
             value_obeys_the_laws(owner, bits)?;
             value_obeys_the_laws(Marker, bits)?;
+            value_obeys_the_laws(current, bits)?;
+            value_obeys_the_laws(Some(current), bits)?;
+            keeps_provenance(current, |current| current.0.depth)?;
+            keeps_provenance(Measure(str::len), |measure| (measure.0)("AAPL"))?;
         }
 
         #[test]

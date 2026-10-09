@@ -1,0 +1,17 @@
+error[E0277]: a field stored as `ReprOf<&'static u64>` cannot be packed beside others
+ --> tests/compile_fail/derive_on_a_packed_struct_of_a_reference.rs:8:13
+  |
+6 | #[derive(Clone, Copy, Atom)]
+  |                       ---- in this derive macro expansion
+7 | struct Current {
+8 |     config: &'static u64,
+  |             ^^^^^^^^^^^^ a pointer, whose bits do not hold its provenance
+  |
+  = help: the trait `atomix::__private::FieldRepr` is not implemented for `ReprOf<&'static u64>`
+  = note: a pointer is stored alone, in a newtype or an `Option`, or as a pointer field of a pointer word or the one of a pointer enum's variant, marked `#[atom(pointer)]` where its type shows no pointer
+note: required by a bound in `atomix::__private::to_bits`
+ --> $WORKSPACE/crates/atomix-core/src/__private.rs
+  |
+  | pub const fn to_bits<F: const Atom<Repr: const FieldRepr>>(value: F) -> u128 {
+  |                                          ^^^^^^^^^^^^^^^ required by this bound in `to_bits`
+  = note: this error originates in the derive macro `Atom` (in Nightly builds, run with -Z macro-backtrace for more info)

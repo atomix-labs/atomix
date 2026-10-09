@@ -1,7 +1,8 @@
 //! The `Atom` laws over every built-in: a value's repr lies in its range, which may wrap, and
 //! decodes back to it; a repr that decodes re-encodes to itself, unchecked too; each validity's
 //! promise holds; a ranged integer's repr decodes, as itself, exactly where it lies in its range;
-//! and `None` takes a spare repr: zero where zero is the niche, else one outside its value's range.
+//! `None` takes a spare repr: zero where zero is the niche, else one outside its value's range;
+//! and no bits make a reference or a function pointer, but null.
 //!
 //! Each law runs on every repr of a byte, on the edges of each width and range, and on random bits;
 //! a 16-bit ranged integer's, on every repr of 16 bits too.
@@ -244,6 +245,40 @@ mod tests {
         decodes_as_promised::<Total, Option<NonNull<u8>>>(pointer)
     }
 
+    /// The type of a hook, whose signature is higher-ranked.
+    type Hook = fn(&str) -> usize;
+
+    /// A value a reference points to for as long as the program runs.
+    static DEPTH: u64 = 10;
+
+    /// Every law on the low bits of `bits` as the repr of a reference and of a function pointer,
+    /// which bits make only null, and on a reference and a function pointer whole.
+    fn sealed_laws(bits: u128) -> Result<(), TestCaseError> {
+        let reference: <&u64 as Atom>::Repr = Primitive::from_bits(bits);
+        let function: <Hook as Atom>::Repr = Primitive::from_bits(bits);
+        prop_assert!(reference.is_bits(0) && function.is_bits(0), "bits make null alone");
+        decodes_as_promised::<TotalZeroNiche, &u64>(reference)?;
+        decodes_as_promised::<Total, Option<&u64>>(reference)?;
+        decodes_as_promised::<TotalZeroNiche, Hook>(function)?;
+        decodes_as_promised::<Total, Option<Hook>>(function)?;
+        canonical::<Option<&u64>>(reference)?;
+        canonical::<Option<Hook>>(function)?;
+        round_trips::<&u64>(&DEPTH)?;
+        round_trips(Some(&DEPTH))?;
+        canonical::<&u64>((&DEPTH).to_repr())?;
+        // A wide reference's repr is sealed as a thin one's: no bits make one but null.
+        #[cfg(wide)]
+        {
+            let name: <&str as Atom>::Repr = Primitive::from_bits(bits);
+            decodes_as_promised::<TotalZeroNiche, &str>(name)?;
+            decodes_as_promised::<Total, Option<&str>>(name)?;
+            decodes_as_promised::<TotalZeroNiche, &str>("XNAS".to_repr())?;
+            round_trips("XNAS")?;
+        }
+        let hook: Hook = str::len;
+        canonical::<Hook>(hook.to_repr())
+    }
+
     #[test]
     fn every_byte_obeys_the_laws() {
         for bits in 0..=u128::from(u8::MAX) {
@@ -340,6 +375,11 @@ mod tests {
         #[test]
         fn pointers_obey_the_laws(bits in edge_or_random_bits(&[])) {
             pointer_laws(bits)?;
+        }
+
+        #[test]
+        fn references_and_function_pointers_obey_the_laws(bits in edge_or_random_bits(&[])) {
+            sealed_laws(bits)?;
         }
     }
 

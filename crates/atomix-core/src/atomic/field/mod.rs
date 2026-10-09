@@ -285,7 +285,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// pointer word's pointer, the word decoded.
     #[expect(unsafe_code, reason = "decodes a field of a repr read from the cell")]
     #[inline]
-    pub const fn load<O: LoadOrdering>(&self, order: O) -> P::Value
+    pub const fn load<O: LoadOrdering<P::Value>>(&self, order: O) -> P::Value
     where
         P: [const] FieldPath,
         ContainerRepr<P>: [const] Load,
@@ -303,7 +303,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// faults on read-only memory.
     #[expect(unsafe_code, reason = "decodes a field of a repr read from the cell")]
     #[inline]
-    pub const fn load_rmw<O: LoadOrdering>(&self, order: O) -> P::Value
+    pub const fn load_rmw<O: LoadOrdering<P::Value>>(&self, order: O) -> P::Value
     where
         P: [const] FieldPath,
         ContainerRepr<P>: [const] ReadByExchange,
@@ -320,8 +320,8 @@ impl<P: FieldPath> AtomicField<P> {
     #[expect(unsafe_code, reason = "decodes reprs read from the cell")]
     #[inline]
     pub const fn update<
-        S: RmwOrdering,
-        F: LoadOrdering,
+        S: RmwOrdering<P::Container>,
+        F: LoadOrdering<P::Container>,
         U: [const] FnMut(P::Value) -> P::Value + [const] Destruct,
     >(
         &self, set_order: S, fetch_order: F, mut f: U,
@@ -356,8 +356,8 @@ impl<P: FieldPath> AtomicField<P> {
     #[expect(unsafe_code, reason = "decodes reprs read from the cell")]
     #[inline]
     pub const fn try_update<
-        S: RmwOrdering,
-        F: LoadOrdering,
+        S: RmwOrdering<P::Container>,
+        F: LoadOrdering<P::Container>,
         U: [const] FnMut(P::Value) -> Option<P::Value> + [const] Destruct,
     >(
         &self, set_order: S, fetch_order: F, mut f: U,
@@ -388,7 +388,7 @@ impl<P: FieldPath> AtomicField<P> {
 
     /// Turns the bit on: `lock or` on `x86_64`, `ldset` on `aarch64`.
     #[inline]
-    pub const fn set<O: RmwOrdering>(&self, order: O)
+    pub const fn set<O: RmwOrdering<P::Value>>(&self, order: O)
     where
         P: [const] FieldPath<Value = bool>,
         ContainerRepr<P>: [const] MaskBitwise,
@@ -398,7 +398,7 @@ impl<P: FieldPath> AtomicField<P> {
 
     /// Turns the bit off: `lock and` on `x86_64`, `ldclr` on `aarch64`.
     #[inline]
-    pub const fn clear<O: RmwOrdering>(&self, order: O)
+    pub const fn clear<O: RmwOrdering<P::Value>>(&self, order: O)
     where
         P: [const] FieldPath<Value = bool>,
         ContainerRepr<P>: [const] MaskBitwise,
@@ -408,7 +408,7 @@ impl<P: FieldPath> AtomicField<P> {
 
     /// Inverts the bit: `lock xor` on `x86_64`, `ldeor` on `aarch64`.
     #[inline]
-    pub const fn toggle<O: RmwOrdering>(&self, order: O)
+    pub const fn toggle<O: RmwOrdering<P::Value>>(&self, order: O)
     where
         P: [const] FieldPath<Value = bool>,
         ContainerRepr<P>: [const] MaskBitwise,
@@ -421,12 +421,18 @@ impl<P: FieldPath> AtomicField<P> {
     /// A plain store of the field alone would race the other fields' read-modify-writes, so this
     /// is a read-modify-write of the whole word too, taking a store's orderings.
     #[inline]
-    pub const fn store<O: StoreOrdering>(&self, value: bool, order: O)
+    pub const fn store<O: StoreOrdering<P::Value>>(&self, value: bool, order: O)
     where
         P: [const] FieldPath<Value = bool>,
         ContainerRepr<P>: [const] MaskBitwise,
     {
-        if value { self.set(order) } else { self.clear(order) }
+        let _ = order;
+        let cell = self.cell();
+        if value {
+            ContainerRepr::<P>::fetch_or_mask(cell, operand::<P>(true), O::CORE);
+        } else {
+            ContainerRepr::<P>::fetch_and_mask(cell, and_operand::<P>(false), O::CORE);
+        }
     }
 
     /// Turns the bit on, and returns it before: `lock bts` on `x86_64`, `ldset` on `aarch64`.
@@ -434,7 +440,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// `x86_64` has no 8-bit `lock bts`, so a container of 8 bits has it on `aarch64` alone.
     #[must_use = "to discard the bit before, call `set`, which every target has"]
     #[inline]
-    pub const fn test_and_set<O: RmwOrdering>(&self, order: O) -> bool
+    pub const fn test_and_set<O: RmwOrdering<P::Value>>(&self, order: O) -> bool
     where
         P: FieldPath<Value = bool>,
         ContainerRepr<P>: [const] BitTest,
@@ -448,7 +454,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// As [`test_and_set`](Self::test_and_set), on the containers it takes.
     #[must_use = "to discard the bit before, call `clear`, which every target has"]
     #[inline]
-    pub const fn test_and_clear<O: RmwOrdering>(&self, order: O) -> bool
+    pub const fn test_and_clear<O: RmwOrdering<P::Value>>(&self, order: O) -> bool
     where
         P: FieldPath<Value = bool>,
         ContainerRepr<P>: [const] BitTest,
@@ -462,7 +468,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// As [`test_and_set`](Self::test_and_set), on the containers it takes.
     #[must_use = "to discard the bit before, call `toggle`, which every target has"]
     #[inline]
-    pub const fn test_and_toggle<O: RmwOrdering>(&self, order: O) -> bool
+    pub const fn test_and_toggle<O: RmwOrdering<P::Value>>(&self, order: O) -> bool
     where
         P: FieldPath<Value = bool>,
         ContainerRepr<P>: [const] BitTest,
@@ -476,7 +482,7 @@ impl<P: FieldPath> AtomicField<P> {
     ///
     /// Its operand keeps every other bit, so a field whose zero does not decode stays as it is.
     #[inline]
-    pub const fn and<O: RmwOrdering>(&self, value: P::Value, order: O)
+    pub const fn and<O: RmwOrdering<P::Value>>(&self, value: P::Value, order: O)
     where
         P: [const] FieldPath,
         P::Value: FieldBitwise,
@@ -489,7 +495,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// Applies `| value` to the field: [`fetch_or`](Self::fetch_or) with the container before
     /// discarded, at [`and`](Self::and)'s cost.
     #[inline]
-    pub const fn or<O: RmwOrdering>(&self, value: P::Value, order: O)
+    pub const fn or<O: RmwOrdering<P::Value>>(&self, value: P::Value, order: O)
     where
         P: [const] FieldPath,
         P::Value: FieldBitwise,
@@ -502,7 +508,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// Applies `^ value` to the field: [`fetch_xor`](Self::fetch_xor) with the container before
     /// discarded, at [`and`](Self::and)'s cost.
     #[inline]
-    pub const fn xor<O: RmwOrdering>(&self, value: P::Value, order: O)
+    pub const fn xor<O: RmwOrdering<P::Value>>(&self, value: P::Value, order: O)
     where
         P: [const] FieldPath,
         P::Value: FieldBitwise,
@@ -515,7 +521,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// Inverts every bit of the field: [`fetch_not`](Self::fetch_not) with the container before
     /// discarded, at [`and`](Self::and)'s cost.
     #[inline]
-    pub const fn not<O: RmwOrdering>(&self, order: O)
+    pub const fn not<O: RmwOrdering<P::Value>>(&self, order: O)
     where
         P: [const] FieldPath,
         P::Value: FieldBitwise,
@@ -530,7 +536,9 @@ impl<P: FieldPath> AtomicField<P> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[must_use = "to discard the container before, call `and`, which every target has"]
     #[inline]
-    pub const fn fetch_and<O: RmwOrdering>(&self, value: P::Value, order: O) -> P::Container
+    pub const fn fetch_and<O: RmwOrdering<P::Container>>(
+        &self, value: P::Value, order: O,
+    ) -> P::Container
     where
         P: [const] FieldPath,
         P::Value: FieldBitwise,
@@ -548,7 +556,9 @@ impl<P: FieldPath> AtomicField<P> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[must_use = "to discard the container before, call `or`, which every target has"]
     #[inline]
-    pub const fn fetch_or<O: RmwOrdering>(&self, value: P::Value, order: O) -> P::Container
+    pub const fn fetch_or<O: RmwOrdering<P::Container>>(
+        &self, value: P::Value, order: O,
+    ) -> P::Container
     where
         P: [const] FieldPath,
         P::Value: FieldBitwise,
@@ -565,7 +575,9 @@ impl<P: FieldPath> AtomicField<P> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[must_use = "to discard the container before, call `xor`, which every target has"]
     #[inline]
-    pub const fn fetch_xor<O: RmwOrdering>(&self, value: P::Value, order: O) -> P::Container
+    pub const fn fetch_xor<O: RmwOrdering<P::Container>>(
+        &self, value: P::Value, order: O,
+    ) -> P::Container
     where
         P: [const] FieldPath,
         P::Value: FieldBitwise,
@@ -582,7 +594,7 @@ impl<P: FieldPath> AtomicField<P> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[must_use = "to discard the container before, call `not`, which every target has"]
     #[inline]
-    pub const fn fetch_not<O: RmwOrdering>(&self, order: O) -> P::Container
+    pub const fn fetch_not<O: RmwOrdering<P::Container>>(&self, order: O) -> P::Container
     where
         P: [const] FieldPath,
         P::Value: FieldBitwise,
@@ -600,7 +612,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// The field ends at the repr's top bit ([`TopField`]), so the carry out of it leaves the word.
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub const fn fetch_add<O: RmwOrdering>(
+    pub const fn fetch_add<O: RmwOrdering<P::Container>>(
         &self, delta: <P::Value as Atom>::Repr, order: O,
     ) -> P::Container
     where
@@ -621,7 +633,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// As [`fetch_add`](Self::fetch_add), the borrow leaving the word.
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub const fn fetch_sub<O: RmwOrdering>(
+    pub const fn fetch_sub<O: RmwOrdering<P::Container>>(
         &self, delta: <P::Value as Atom>::Repr, order: O,
     ) -> P::Container
     where

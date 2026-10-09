@@ -40,6 +40,10 @@
 //! `vmovdqa` with AVX; its read without them, and its exchange, are `casp` and `cmpxchg16b`, on
 //! `x86_64` `u128`'s instructions exactly, with no branch or `cmov` to join the words found. Where
 //! `x86_64` has no `cmpxchg16b`, two words are refused as 128 bits are, naming the CPU they need.
+//!
+//! A reference's and a function pointer's every operation is a raw pointer's, instruction for
+//! instruction, and a wide reference's a `u128`'s: a reference's load acquires and its store
+//! releases, as its floor asks, and a function pointer's load is `Relaxed`'s `ldr`, or `mov`.
 
 // Miri cannot run the compiler, and loom's atomics are not what ships.
 #![cfg(on_hardware)]
@@ -49,17 +53,32 @@ mod testing;
 
 #[cfg(test)]
 mod tests {
-    use crate::testing::codegen::Lowering::{self, InOrder, Only, Refuses, Retry, RetryOnly};
+    use crate::testing::codegen::Lowering::{
+        self, InOrder, Only, Refuses, Retry, RetryOnly, SameAs,
+    };
     use crate::testing::codegen::{
         AARCH64_ANDROID, AARCH64_LINUX, AARCH64_MACOS, X86_64_LINUX, X86_64_MACOS, X86_64_WINDOWS,
         lowers_as_expected, refused,
     };
 
     /// Each function of the fixture on `aarch64` that lowers the same at every CPU: a store, a
-    /// fence, a ranged integer's comparison and conversions, and a tagged pointer's store, whose
-    /// test's cold refusal saves the frame record off the fast path.
+    /// reference's and a function pointer's operations, each a raw pointer's, a fence, a ranged
+    /// integer's comparison and conversions, and a tagged pointer's store, whose test's cold
+    /// refusal saves the frame record off the fast path.
     const AARCH64: &[(&str, Lowering)] = &[
         ("u64_store", InOrder(&["stlr"])),
+        ("pointer_load_relaxed", Only(&["ldr", "ret"])),
+        ("pointer_store", Only(&["stlr", "ret"])),
+        ("config_load", SameAs("pointer_load")),
+        ("config_store", SameAs("pointer_store")),
+        ("option_config_load", SameAs("pointer_load")),
+        ("hook_load", SameAs("pointer_load_relaxed")),
+        ("hook_load_acquire", SameAs("pointer_load")),
+        ("hook_store", SameAs("pointer_store")),
+        ("config_swap", SameAs("pointer_swap")),
+        ("config_compare_exchange", SameAs("pointer_compare_exchange")),
+        ("hook_compare_exchange", SameAs("pointer_compare_exchange")),
+        ("name_load_rmw", SameAs("u128_load_rmw")),
         ("store_store_fence", InOrder(&["str", "dmb ishst", "str"])),
         ("seq_cst_compiler_fence", Only(&["ret"])),
         ("acquire_fence", Only(&["dmb ishld", "ret"])),
@@ -106,6 +125,8 @@ mod tests {
         ("pair_load_rmw", Only(&["mov", "mov", "caspa", "mov", "mov", "ret"])),
         ("pair_compare_exchange", InOrder(&["caspal", "cmp", "ccmp", "cset"])),
         ("slice_compare_exchange", InOrder(&["caspal", "cmp", "ccmp", "cset"])),
+        ("pointer_swap", Only(&["swpal", "ret"])),
+        ("pointer_compare_exchange", InOrder(&["casal", "cmp", "cset"])),
         ("field_set", Only(&["mov", "ldsetl", "ret"])),
         ("field_clear", Only(&["mov", "ldclrl", "ret"])),
         ("field_toggle", Only(&["mov", "ldeorl", "ret"])),
@@ -198,6 +219,8 @@ mod tests {
     /// `Option` or a ranged integer, as every load, decodes without a check.
     const AARCH64_WITHOUT_LSE2: &[(&str, Lowering)] = &[
         ("u64_load", InOrder(&["ldar"])),
+        ("pointer_load", Only(&["ldar", "ret"])),
+        ("config_depth", Only(&["ldar", "ldr", "ret"])),
         ("char_load", Only(&["ldar", "ret"])),
         ("option_load", Only(&["ldar", "ret"])),
         ("ranged_load", Only(&["ldar", "ret"])),
@@ -241,6 +264,9 @@ mod tests {
     /// Acquire load is `ldapr`.
     const AARCH64_LSE2: &[(&str, Lowering)] = &[
         ("u64_load", InOrder(&["ldapr"])),
+        ("pointer_load", Only(&["ldapr", "ret"])),
+        ("config_depth", Only(&["ldapr", "ldr", "ret"])),
+        ("name_load", SameAs("u128_load")),
         ("char_load", Only(&["ldapr", "ret"])),
         ("option_load", Only(&["ldapr", "ret"])),
         ("ranged_load", Only(&["ldapr", "ret"])),
@@ -338,6 +364,8 @@ mod tests {
         ("pointer_and", InOrder(&["ldxr", "and", "stlxr"])),
         ("pointer_xor", InOrder(&["ldxr", "eor", "stlxr"])),
         ("pointer_fetch_or", InOrder(&["ldaxr", "orr", "stlxr"])),
+        ("pointer_swap", InOrder(&["ldaxr", "stlxr"])),
+        ("pointer_compare_exchange", InOrder(&["ldaxr", "cmp", "stlxr"])),
         ("u128_compare_exchange", InOrder(&["ldaxp", "cmp", "stlxp", "stlxp"])),
         ("u128_load_rmw", InOrder(&["ldaxp", "cmp", "stxp", "stxp"])),
         (
@@ -522,6 +550,22 @@ mod tests {
     /// 32 of 64. An atomic's bit goes through a register at every position, after an `and`.
     const X86_64: &[(&str, Lowering)] = &[
         ("u64_load", Only(&["movq", "retq"])),
+        ("pointer_load", Only(&["movq", "retq"])),
+        ("pointer_load_relaxed", Only(&["movq", "retq"])),
+        ("pointer_store", Only(&["movq", "retq"])),
+        ("pointer_swap", Only(&["movq", "xchgq", "retq"])),
+        ("pointer_compare_exchange", InOrder(&["lock cmpxchgq", "setne"])),
+        ("config_load", SameAs("pointer_load")),
+        ("config_depth", Only(&["movq", "movl", "retq"])),
+        ("config_store", SameAs("pointer_store")),
+        ("config_swap", SameAs("pointer_swap")),
+        ("config_compare_exchange", SameAs("pointer_compare_exchange")),
+        ("option_config_load", SameAs("pointer_load")),
+        ("hook_load", SameAs("pointer_load_relaxed")),
+        ("hook_load_acquire", SameAs("pointer_load")),
+        ("hook_store", SameAs("pointer_store")),
+        ("hook_compare_exchange", SameAs("pointer_compare_exchange")),
+        ("name_load_rmw", SameAs("u128_load_rmw")),
         ("u64_store", Only(&["movq", "retq"])),
         ("u64_swap", InOrder(&["xchgq"])),
         ("u64_fetch_add", InOrder(&["lock xaddq"])),
@@ -670,6 +714,7 @@ mod tests {
     /// `vmovdqa`, and an update's first read too.
     const X86_64_AVX: &[(&str, Lowering)] = &[
         ("u128_load", InOrder(&["vmovdqa"])),
+        ("name_load", SameAs("u128_load")),
         ("u128_load_relaxed", InOrder(&["vmovdqa"])),
         ("u128_load_seq_cst", InOrder(&["vmovdqa"])),
         ("u128_store", InOrder(&["vmovdqa"])),

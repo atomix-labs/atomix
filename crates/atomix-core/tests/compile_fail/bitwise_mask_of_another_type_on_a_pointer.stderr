@@ -9,7 +9,7 @@ error[E0308]: mismatched types
 note: method defined here
   --> src/atomic/capability.rs
    |
-   |     pub const fn or<V, O: RmwOrdering>(&self, operand: V, order: O)
+   |     pub const fn or<V, O: RmwOrdering<T>>(&self, operand: V, order: O)
    |                  ^^
 help: change the type of the numeric literal from `u32` to `usize`
    |

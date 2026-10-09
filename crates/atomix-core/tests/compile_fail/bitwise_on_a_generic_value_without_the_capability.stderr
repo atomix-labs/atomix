@@ -15,7 +15,7 @@ note: required by a bound in `atomix_core::atomic::capability::<impl atomix_core
   |
   | impl<T: Atom> Atomic<T> {
 ...
-  |     pub const fn and<V, O: RmwOrdering>(&self, operand: V, order: O)
+  |     pub const fn and<V, O: RmwOrdering<T>>(&self, operand: V, order: O)
   |     where
   |         Self: [const] TakesBitwiseOperand<T, V>,
   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `atomix_core::atomic::capability::<impl Atomic<T>>::and`
@@ -23,3 +23,25 @@ help: consider further restricting type parameter `T` with trait `AtomBitwise`
   |
 7 | fn clear_lowest_bit<T: Atom + atomix_core::AtomBitwise>(word: &Atomic<T>) {
   |                             ++++++++++++++++++++++++++
+
+error[E0277]: `T` can hold a reference, which is read with `Acquire` and written with `Release`
+ --> tests/compile_fail/bitwise_on_a_generic_value_without_the_capability.rs:8:24
+  |
+8 |     word.and(!1_usize, Relaxed);
+  |          ---           ^^^^^^^ too weak for a reference
+  |          |
+  |          required by a bound introduced by this call
+  |
+  = note: a thread that reads a reference with `Acquire` sees the writes that made what it points to, which the `Release` that wrote it publishes
+  = note: required for `atomix_core::ordering::Relaxed` to implement `RmwOrdering<T>`
+note: required by a bound in `atomix_core::atomic::capability::<impl atomix_core::Atomic<T>>::and`
+ --> src/atomic/capability.rs
+  |
+  | impl<T: Atom> Atomic<T> {
+...
+  |     pub const fn and<V, O: RmwOrdering<T>>(&self, operand: V, order: O)
+  |                            ^^^^^^^^^^^^^^ required by this bound in `atomix_core::atomic::capability::<impl Atomic<T>>::and`
+help: consider further restricting type parameter `T` with trait `HoldsNoReference`
+  |
+7 | fn clear_lowest_bit<T: Atom + atomix_core::ordering::HoldsNoReference>(word: &Atomic<T>) {
+  |                             +++++++++++++++++++++++++++++++++++++++++

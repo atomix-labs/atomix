@@ -1,11 +1,21 @@
 //! Memory orderings as types: each operation names the orderings it accepts, so a wrong one is a
 //! compile error rather than a panic.
 //!
+//! An operation on a value that holds a reference accepts no ordering weaker than an `Acquire` read
+//! and a `Release` write, so a thread that loads the reference sees the writes that made what it
+//! points to: [`LoadOrdering<T>`](LoadOrdering), [`StoreOrdering<T>`](StoreOrdering) and
+//! [`RmwOrdering<T>`](RmwOrdering) take the value, and a value takes the floor of its repr, so an
+//! `Option`, a newtype or a struct that holds a reference takes the reference's. Generic code that
+//! orders a `T` with `Relaxed` bounds it by [`HoldsNoReference`].
+//!
 //! Only the types here implement the traits. Each but [`StoreStore`], which core has no name for,
 //! converts to core's [`Ordering`](CoreOrdering) through `From`, for code that hands its ordering
 //! on to core, std or a C interface; nothing converts back, so an ordering stays a type.
 
 use core::sync::atomic::Ordering as CoreOrdering;
+
+use crate::atom::Atom;
+use crate::primitive::Primitive;
 
 /// Orders nothing beyond the operation's own atomicity.
 #[derive(Debug, Copy, Hash)]
@@ -33,36 +43,78 @@ pub struct SeqCst;
 #[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct StoreStore;
 
-/// An ordering a read-modify-write may take: every ordering but [`StoreStore`], which
-/// only a fence takes.
-///
-/// Each converts to core's [`Ordering`](CoreOrdering), so generic code hands one on with `into`.
-#[diagnostic::on_unimplemented(
-    message = "`{Self}` is not a read-modify-write ordering",
-    label = "expected `Relaxed`, `Acquire`, `Release`, `AcqRel` or `SeqCst` from `atomix::ordering`",
-    note = "`StoreStore` orders a fence, and nothing else"
-)]
-pub impl(crate) trait RmwOrdering: Copy + Into<CoreOrdering> {
+/// An ordering core's read-modify-write takes, whatever the value, and its spelling there: each
+/// ordering but [`StoreStore`], which core has no name for.
+#[doc(hidden)]
+pub impl(crate) trait CoreRmwOrdering: Copy + Into<CoreOrdering> {
     /// The ordering as `core` (and loom) spell it.
-    #[doc(hidden)]
     const CORE: CoreOrdering;
 }
 
-/// An ordering a load may take; also a compare-exchange's failure ordering.
+/// An ordering core's load takes, and so a compare-exchange's failure, whatever the value:
+/// [`Relaxed`], [`Acquire`] or [`SeqCst`].
+#[doc(hidden)]
+pub impl(crate) trait CoreLoadOrdering: CoreRmwOrdering {}
+
+/// An ordering a read-modify-write of a `T` may take: every ordering but [`StoreStore`], which
+/// only a fence takes, and, where `T` holds a reference, [`AcqRel`] or [`SeqCst`].
+///
+/// A reference read must see the writes that made what it points to, and a reference written must
+/// publish them, so an exchange of one both acquires and releases. With no `T`, the orderings a
+/// value that holds no reference takes.
+///
+/// Each converts to core's [`Ordering`](CoreOrdering), so generic code hands one on with `into`.
 #[diagnostic::on_unimplemented(
-    message = "`{Self}` is not a load ordering",
-    label = "expected `Relaxed`, `Acquire` or `SeqCst` from `atomix::ordering`",
+    message = "`{Self}` cannot order a read-modify-write of `{T}`",
+    label = "a read-modify-write takes `Relaxed`, `Acquire`, `Release`, `AcqRel` or `SeqCst` from `atomix::ordering`",
+    note = "`StoreStore` orders a fence, and nothing else"
+)]
+pub impl(crate) trait RmwOrdering<T = ()>: CoreRmwOrdering {}
+
+/// An ordering a load of a `T` may take, and so a compare-exchange's failure ordering:
+/// [`Relaxed`], [`Acquire`] or [`SeqCst`], and, where `T` holds a reference, `Acquire` or `SeqCst`.
+///
+/// A reference read must see the writes that made what it points to. With no `T`, the orderings a
+/// value that holds no reference takes.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot order a load of `{T}`",
+    label = "a load takes `Relaxed`, `Acquire` or `SeqCst` from `atomix::ordering`",
     note = "`Release` and `AcqRel` order a store, and a load has none"
 )]
-pub impl(crate) trait LoadOrdering: RmwOrdering {}
+pub impl(crate) trait LoadOrdering<T = ()>: CoreLoadOrdering {}
 
-/// An ordering a store may take.
+/// An ordering a store of a `T` may take: [`Relaxed`], [`Release`] or [`SeqCst`], and, where `T`
+/// holds a reference, `Release` or `SeqCst`.
+///
+/// A reference written must publish the writes that made what it points to. With no `T`, the
+/// orderings a value that holds no reference takes.
 #[diagnostic::on_unimplemented(
-    message = "`{Self}` is not a store ordering",
-    label = "expected `Relaxed`, `Release` or `SeqCst` from `atomix::ordering`",
+    message = "`{Self}` cannot order a store of `{T}`",
+    label = "a store takes `Relaxed`, `Release` or `SeqCst` from `atomix::ordering`",
     note = "`Acquire` and `AcqRel` order a load, and a store has none"
 )]
-pub impl(crate) trait StoreOrdering: RmwOrdering {}
+pub impl(crate) trait StoreOrdering<T = ()>: CoreRmwOrdering {}
+
+/// The weakest ordering an operation on a primitive takes: [`Relaxed`], so every one of the
+/// operation's kind, or, on a reference's repr, [`AcqRel`], so an `Acquire` read and a `Release`
+/// write.
+///
+/// A primitive's hidden `OrderingFloor` names it, so a value takes its repr's: an `Option`, a
+/// newtype or a struct holding a reference takes the reference's.
+#[doc(hidden)]
+pub impl(crate) trait OrderingFloor {
+    /// The `core` ordering of the weakest load the floor takes: what `Debug` and serde's
+    /// `Serialize` read with.
+    const CORE_LOAD: CoreOrdering;
+}
+
+impl OrderingFloor for Relaxed {
+    const CORE_LOAD: CoreOrdering = CoreOrdering::Relaxed;
+}
+
+impl OrderingFloor for AcqRel {
+    const CORE_LOAD: CoreOrdering = CoreOrdering::Acquire;
+}
 
 /// An ordering a fence may take.
 #[diagnostic::on_unimplemented(
@@ -89,7 +141,7 @@ macro_rules! core_orderings {
     )+};
 }
 
-core_orderings!(RmwOrdering::CORE: Relaxed, Acquire, Release, AcqRel, SeqCst);
+core_orderings!(CoreRmwOrdering::CORE: Relaxed, Acquire, Release, AcqRel, SeqCst);
 core_orderings!(FenceOrdering::CORE_FENCE: Acquire, Release, AcqRel, SeqCst);
 
 /// Implements `From` of each ordering for core's of the same name.
@@ -111,14 +163,65 @@ impl FenceOrdering for StoreStore {
     const IS_STORE_STORE: bool = true;
 }
 
-// Written out, not generated: a wrong ordering's error lists these impls, and would show a macro.
-impl LoadOrdering for Relaxed {}
-impl LoadOrdering for Acquire {}
-impl LoadOrdering for SeqCst {}
+impl CoreLoadOrdering for Relaxed {}
+impl CoreLoadOrdering for Acquire {}
+impl CoreLoadOrdering for SeqCst {}
 
-impl StoreOrdering for Relaxed {}
-impl StoreOrdering for Release {}
-impl StoreOrdering for SeqCst {}
+/// A value that holds no reference, so takes every ordering: one whose repr's floor is
+/// [`Relaxed`].
+///
+/// [`Relaxed`], and [`Acquire`] and [`Release`] in a read-modify-write, order a `T` only where it
+/// is one: generic code that orders a `T` with them bounds `T` by it, as rustc suggests, and a
+/// reference's refusal names the value and why. Sealed: a value's repr says whether it is one.
+///
+/// # Examples
+/// ```
+/// # extern crate atomix_core as atomix;
+/// use atomix::ordering::{HoldsNoReference, Relaxed};
+/// use atomix::{Atom, Atomic, Load, Swap};
+///
+/// /// Reads a count of any type that holds no reference, `Relaxed`.
+/// fn peek<T: Atom<Repr: Load> + HoldsNoReference>(count: &Atomic<T>) -> T {
+///     count.load(Relaxed)
+/// }
+///
+/// /// Resets it, `Relaxed` too: a read-modify-write's `Relaxed` asks the same.
+/// fn reset<T: Atom<Repr: Swap> + HoldsNoReference>(count: &Atomic<T>, zero: T) -> T {
+///     count.swap(zero, Relaxed)
+/// }
+///
+/// let count = Atomic::new(7_u64);
+/// assert_eq!(peek(&count), 7, "read back");
+/// assert_eq!(reset(&count, 0), 7, "the count before");
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` can hold a reference, which is read with `Acquire` and written with `Release`",
+    label = "too weak for a reference",
+    note = "a thread that reads a reference with `Acquire` sees the writes that made what it points to, which the `Release` that wrote it publishes"
+)]
+pub impl(crate) trait HoldsNoReference {}
+
+// `do_not_recommend`, so a reference's refusal reports this trait's message, which names the value,
+// not the floor's mismatch.
+#[diagnostic::do_not_recommend]
+impl<T: Atom<Repr: Primitive<OrderingFloor = Relaxed>>> HoldsNoReference for T {}
+
+// Written out, not generated: a wrong ordering's error lists these impls, and would show a macro.
+// Each impl that takes only a value holding no reference is bounded by `HoldsNoReference`, whose
+// message a reference's refusal reports.
+impl<T: HoldsNoReference> LoadOrdering<T> for Relaxed {}
+impl<T> LoadOrdering<T> for Acquire {}
+impl<T> LoadOrdering<T> for SeqCst {}
+
+impl<T: HoldsNoReference> StoreOrdering<T> for Relaxed {}
+impl<T> StoreOrdering<T> for Release {}
+impl<T> StoreOrdering<T> for SeqCst {}
+
+impl<T: HoldsNoReference> RmwOrdering<T> for Relaxed {}
+impl<T: HoldsNoReference> RmwOrdering<T> for Acquire {}
+impl<T: HoldsNoReference> RmwOrdering<T> for Release {}
+impl<T> RmwOrdering<T> for AcqRel {}
+impl<T> RmwOrdering<T> for SeqCst {}
 
 #[cfg(test)]
 mod tests {
@@ -128,6 +231,20 @@ mod tests {
     use super::{
         AcqRel, Acquire, CoreOrdering, FenceOrdering, LoadOrdering, Relaxed, Release, RmwOrdering,
         SeqCst, StoreOrdering, StoreStore,
+    };
+    use crate::atom::Atom;
+    use crate::primitive::Primitive;
+
+    /// Compiles only where `T`'s repr's floor is `F`.
+    const fn floor_is<T: Atom<Repr: Primitive<OrderingFloor = F>>, F>() {}
+
+    // A value takes its repr's floor.
+    const _: () = {
+        floor_is::<u64, Relaxed>();
+        floor_is::<&u64, AcqRel>();
+        floor_is::<Option<&u64>, AcqRel>();
+        floor_is::<fn(&str) -> usize, Relaxed>();
+        floor_is::<Option<unsafe extern "C" fn()>, Relaxed>();
     };
 
     /// Loads with `O`, and fails a compare-exchange with it, on `core`'s atomic, which panics on an

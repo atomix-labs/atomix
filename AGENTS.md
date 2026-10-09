@@ -129,6 +129,15 @@ What a change here keeps, beyond what the checks hold it to.
   from, one word or two, reads a pointee's alignment, since a type's layout may
   read them: only code and the checks read `POINTEE_ALIGNMENT`, so a node can
   hold an atomic of the word that points to it.
+- A reference and a function pointer are stored as a `ReprOf` of themselves, the
+  raw pointer's repr sealed: only a value's `to_repr` makes one, and bits make
+  null, so a safe `from_repr` hands out no reference or function pointer a value
+  did not give. A value that holds a reference takes no ordering weaker than an
+  `Acquire` read and a `Release` write: the floor is its repr's,
+  `Primitive::OrderingFloor`, which an `Option`, a newtype or a derived value
+  inherits with no code of its own, and each operation that reads or writes a
+  `T` takes `LoadOrdering<T>`, `StoreOrdering<T>` or `RmwOrdering<T>`. A
+  function pointer points to code no write changes, so it takes any.
 - A function that can be `const` is, and a trait whose impls can be is a `const
   trait`: each atomic operation is `const` where core's is, so not a pointer's
   compare-exchange, offsets or masks, nor any under loom, whose impls are plain.
@@ -144,21 +153,24 @@ What a change here keeps, beyond what the checks hold it to.
   seam rather than an integration, keeps its name.
 - A nightly feature is taken where it makes the API right, as `ptr_metadata`
   lets one `Atom` impl of a pointer choose its repr by its pointee's metadata,
-  never to reach core's internals beyond four: the 128-bit intrinsics; a ranged
-  integer's pattern-type field, which `transmute_neo` alone converts and a plain
-  integer replaces should a nightly break it; `DynMetadata`'s layout, its vtable
-  pointer, which `transmute` reads, as core's own `vtable_ptr` does, and writes
-  back, since the compiler hard-codes it: `transmute` refuses a change of its
-  size, and `crates/atomix-core/tests/double_words.rs` calls through a trait
-  object's pointer read back; and `const_eval_select`, whose callers do at run
-  time what no constant can. Four read in a constant no address of a pointer
-  with provenance, three null's alone and `exposed_address` that of a pointer
-  made of an integer, a tagged null, by a `transmute` a constant refuses of any
-  other: `address` reads a pointer's address with `addr`; `exposed_address`, a
-  double word's, exposes its provenance with `expose_provenance`; `clear_tags`,
-  a word's decode, clears its tag bits with `ptr_mask`'s `mask`, which tells
-  LLVM they are clear; and `subtract_tags`, a pointer enum's, offsets the
-  pointer back by its tag, which a match's arm knows, and tells LLVM through
+  and `fn_static`'s `FnPtr` lets one impl hold every function pointer beside the
+  one for references, as `with_negative_coherence` proves no reference is a
+  function pointer, never to reach core's internals beyond four: the 128-bit
+  intrinsics; a ranged integer's pattern-type field, which `transmute_neo` alone
+  converts and a plain integer replaces should a nightly break it;
+  `DynMetadata`'s layout, its vtable pointer, which `transmute` reads, as core's
+  own `vtable_ptr` does, and writes back, since the compiler hard-codes it:
+  `transmute` refuses a change of its size, and
+  `crates/atomix-core/tests/double_words.rs` calls through a trait object's
+  pointer read back; and `const_eval_select`, whose callers do at run time what
+  no constant can. Four read in a constant no address of a pointer with
+  provenance, three null's alone and `exposed_address` that of a pointer made of
+  an integer, a tagged null, by a `transmute` a constant refuses of any other:
+  `address` reads a pointer's address with `addr`; `exposed_address`, a double
+  word's, exposes its provenance with `expose_provenance`; `clear_tags`, a
+  word's decode, clears its tag bits with `ptr_mask`'s `mask`, which tells LLVM
+  they are clear; and `subtract_tags`, a pointer enum's, offsets the pointer
+  back by its tag, which a match's arm knows, and tells LLVM through
   `assert_unchecked` that the bits are clear. Four keep to run time what a
   constant cannot run, and in a constant, which runs on one thread, do the same
   plainly: an integer's `BitTest` on `x86_64`, `lock bts` and its kin in an

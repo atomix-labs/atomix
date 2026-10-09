@@ -5,11 +5,13 @@ mod option;
 mod pair;
 mod ptr;
 mod ranged;
+mod reference;
 mod scalar;
 
 pub use self::ptr::PointerAtom;
 #[cfg(wide)]
 pub use self::ptr::VtablePointer;
+pub(crate) use self::ptr::{Metadata, PointerMetadata};
 // For deranged's ranged integers, which take the impls atomix's own do.
 #[cfg(feature = "deranged-05")]
 pub(crate) use self::ranged::ranged_atom;
@@ -92,7 +94,9 @@ use crate::validity::{Partial, Total, Validity};
 #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot be stored in an atomic",
     label = "not `Atom`",
-    note = "for a type of your own, derive it, `#[derive(Atom)]`, with atomix's `derive` feature, or keep each promise of `Atom`'s `# Safety` section in a `const unsafe impl`"
+    note = "an atomic value is a primitive, a pointer or a shared reference, a core type such as `NonZero<u32>`, or a type that derives `Atom`: `Atom`'s implementors list each",
+    note = "for a type of your own, derive it, `#[derive(Atom)]`, with atomix's `derive` feature, or keep each promise of `Atom`'s `# Safety` section in a `const unsafe impl`",
+    note = "a function's name is a value of its own type, not a function pointer: name the pointer's type, as `Atomic<fn(&str) -> usize>` does"
 )]
 #[cfg_attr(
     x86_64_without_cmpxchg16b,

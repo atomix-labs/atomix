@@ -79,7 +79,7 @@ mod tests {
     }
 
     /// A value published behind the bit `ready`, which the writer sets with `order`.
-    fn publish<O: RmwOrdering + Send + Sync + 'static>(order: O) {
+    fn publish<O: RmwOrdering<bool> + Send + Sync + 'static>(order: O) {
         check(move || {
             let shared = Arc::new((AtomicU64::new(0), Atomic::new(ZERO)));
             let writer = {
@@ -176,7 +176,7 @@ mod tests {
     }
 
     /// A node published through a pointer enum, stored with `order`.
-    fn publish_a_node<O: StoreOrdering + Send + Sync + 'static>(order: O) {
+    fn publish_a_node<O: StoreOrdering<Slot> + Send + Sync + 'static>(order: O) {
         check(move || {
             let slot = Arc::new(Atomic::new(Slot::Empty));
             let writer = {
@@ -273,7 +273,7 @@ mod tests {
     /// Its first exchange guesses the stack open and empty, and one that fails reads the head: loom
     /// backtracks to an atomic's last access alone, so a load before the exchange would hide the
     /// exchange from the pop's load, and no model would pop the node beside the push.
-    fn push<O: RmwOrdering>(stack: &Atomic<StackHead>, value: u64, order: O) -> bool {
+    fn push<O: RmwOrdering<StackHead>>(stack: &Atomic<StackHead>, value: u64, order: O) -> bool {
         let node = StackNode { value: AtomicU64::new(0), next: Atomic::new(OPEN) };
         let pushed = NonNull::from(Box::leak(Box::new(node)));
         // ORDERING: Relaxed but for the exchange that lands, whose `order` publishes the node,
@@ -310,7 +310,7 @@ mod tests {
     }
 
     /// A push with `order` beside a pop and a close of a stack held in its own nodes.
-    fn push_beside_a_close<O: RmwOrdering + Send + Sync + 'static>(order: O) {
+    fn push_beside_a_close<O: RmwOrdering<StackHead> + Send + Sync + 'static>(order: O) {
         check(move || {
             let stack = Arc::new(Atomic::new(OPEN));
             let pusher = {

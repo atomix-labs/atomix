@@ -2,26 +2,11 @@ error[E0277]: `Order` cannot be stored in an atomic
  --> tests/compile_fail/not_an_atom.rs:8:25
   |
 8 |     let _ = Atomic::new(Order);
-  |             ----------- ^^^^^ not `Atom`
+  |             ----------- ^^^^^ the trait `Atom` is not implemented for `Order`
   |             |
   |             required by a bound introduced by this call
   |
-help: the trait `Atom` is not implemented for `Order`
- --> tests/compile_fail/not_an_atom.rs:5:1
-  |
-5 | struct Order;
-  | ^^^^^^^^^^^^
-  = note: for a type of your own, derive it, `#[derive(Atom)]`, with atomix's `derive` feature, or keep each promise of `Atom`'s `# Safety` section in a `const unsafe impl`
-  = help: the following other types implement trait `Atom`:
-            ()
-            (P, Q)
-            NonZero<i128>
-            NonZero<i16>
-            NonZero<i32>
-            NonZero<i64>
-            NonZero<i8>
-            NonZero<isize>
-          and $N others
+  = note: the trait bound `Order: Atom` is not satisfied
 note: required by a bound in `atomix_core::Atomic::<T>::new`
  --> src/atomic/mod.rs
   |
@@ -31,6 +16,10 @@ note: required by a bound in `atomix_core::Atomic::<T>::new`
   |     where
   |         T: const Atom,
   |            ^^^^^^^^^^ required by this bound in `Atomic::<T>::new`
+help: consider borrowing here
+  |
+8 |     let _ = Atomic::new(&Order);
+  |                         +
 
 error[E0277]: `Order` cannot be stored in an atomic
  --> tests/compile_fail/not_an_atom.rs:8:13
@@ -43,7 +32,9 @@ help: the trait `Atom` is not implemented for `Order`
   |
 5 | struct Order;
   | ^^^^^^^^^^^^
+  = note: an atomic value is a primitive, a pointer or a shared reference, a core type such as `NonZero<u32>`, or a type that derives `Atom`: `Atom`'s implementors list each
   = note: for a type of your own, derive it, `#[derive(Atom)]`, with atomix's `derive` feature, or keep each promise of `Atom`'s `# Safety` section in a `const unsafe impl`
+  = note: a function's name is a value of its own type, not a function pointer: name the pointer's type, as `Atomic<fn(&str) -> usize>` does
   = help: the following other types implement trait `Atom`:
             ()
             (P, Q)

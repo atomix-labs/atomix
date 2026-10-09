@@ -11,9 +11,9 @@ use crate::atom::Atom;
 use crate::atomic::Atomic;
 use crate::ranged::{self, each_ranged_integer};
 
-/// Serializes the value a `Relaxed` read gives, as serde does core's atomics, reading it as `Debug`
-/// does: a load where the target has one, else the compare-exchange `load_rmw` is, which writes the
-/// cache line.
+/// Serializes the value a read gives, `Relaxed` as serde reads core's atomics, or `Acquire` where
+/// the value holds a reference: a load where the target has one, else the compare-exchange
+/// `load_rmw` is, as `Debug` reads, which writes the cache line.
 impl<T: Atom + Serialize> Serialize for Atomic<T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.load_or_exchange().serialize(serializer)

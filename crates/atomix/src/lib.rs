@@ -3,8 +3,8 @@
 //! [`Atomic<T>`](Atomic) holds a `T` as its [`Repr`](Atom::Repr), one primitive an atomic
 //! instruction reads and writes, and decodes it on the way out. The integer, `bool` and pointer
 //! atomics are its aliases (`AtomicU64 = Atomic<u64>`), and any value implementing [`Atom`] is one
-//! more: a `NonZero`, a `char`, a float, a ranged integer, an `Option` that spends a spare repr on
-//! `None`, and a struct or an enum that derives it.
+//! more: a `NonZero`, a `char`, a float, a ranged integer, a shared reference, a function pointer,
+//! an `Option` that spends a spare repr on `None`, and a struct or an enum that derives it.
 //!
 //! A crate depends on `atomix-rs`, since crates.io's `atomix` is an unrelated 2017 placeholder:
 //!
@@ -30,15 +30,17 @@
 //! - **Values.** [`Atom`] encodes a value as its repr and back, its [`ReprRange`] says which reprs
 //!   it takes and its [`validity`] which decode, and [`PointerAtom`] is a value stored as a
 //!   pointer; [`AtomAdd`], [`AtomOrd`] and [`AtomBitwise`] add the read-modify-writes that mean
-//!   something for it, and [`FieldBitwise`] and [`FieldAdd`] those of a field of it. Two words hold
-//!   a pair `(P, Q)` of values stored as pointers, and a pointer to a slice, a `str` or a trait
-//!   object. With the `derive` feature, each derives: `Atom` for a struct or an enum, a pointer
-//!   word or a pointer enum among them, which keeps small fields as tags in its pointer's low bits
-//!   and the pointer's provenance, and each capability for a newtype whose field has it. A pointer
-//!   word takes two words where a second pointer, a wide one or tags no alignment holds need them.
-//!   [`RangedU64<MIN, MAX>`](RangedU64) and its siblings, `RangedU8` to `RangedIsize`, hold an
-//!   integer from `MIN` to `MAX`, and [`RangeError`] and [`ParseRangeError`] say why one refused an
-//!   integer or a text.
+//!   something for it, and [`FieldBitwise`] and [`FieldAdd`] those of a field of it. A shared
+//!   reference and a function pointer are stored as a [`ReprOf`] of themselves, which no bits
+//!   forge, and a reference's operations take no ordering weaker than an `Acquire` read and a
+//!   `Release` write. Two words hold a pair `(P, Q)` of values stored as pointers, and a pointer to
+//!   a slice, a `str` or a trait object. With the `derive` feature, each derives: `Atom` for a
+//!   struct or an enum, a pointer word or a pointer enum among them, which keeps small fields as
+//!   tags in its pointer's low bits and the pointer's provenance, and each capability for a newtype
+//!   whose field has it. A pointer word takes two words where a second pointer, a wide one or tags
+//!   no alignment holds need them. [`RangedU64<MIN, MAX>`](RangedU64) and its siblings, `RangedU8`
+//!   to `RangedIsize`, hold an integer from `MIN` to `MAX`, and [`RangeError`] and
+//!   [`ParseRangeError`] say why one refused an integer or a text.
 //! - **Orderings.** The [`ordering`] types, each accepted only where it means something, and the
 //!   [`fence`](fn@fence) and [`compiler_fence`] they order.
 //! - **Primitives.** [`Primitive`], [`ExactBits`] where the bits are the whole value, a
@@ -228,6 +230,33 @@
 //! # }
 //! ```
 //!
+//! ## Sharing a Reference or a Function
+//! ```
+//! use atomix::Atomic;
+//! use atomix::ordering::{Acquire, Relaxed, Release};
+//!
+//! /// What a trading service reads on every order: replaced whole, never changed in place.
+//! struct Config {
+//!     depth: u32,
+//! }
+//!
+//! /// The type of a hook, which measures a symbol.
+//! type Hook = fn(&str) -> usize;
+//!
+//! static DEFAULT: Config = Config { depth: 10 };
+//! static CONFIG: Atomic<&'static Config> = Atomic::new(&DEFAULT);
+//! static HOOK: Atomic<Option<Hook>> = Atomic::new(None);
+//!
+//! // A reference is stored with `Release` and loaded with `Acquire`, so the thread that loads it
+//! // sees the writes that made what it points to: `load(Relaxed)` does not compile.
+//! CONFIG.store(Box::leak(Box::new(Config { depth: 20 })), Release);
+//! assert_eq!(CONFIG.load(Acquire).depth, 20, "the new config, read through the reference");
+//! // A function pointer points to code, which no write changes, so any ordering reads it.
+//! HOOK.store(Some(str::len), Release);
+//! assert_eq!(HOOK.load(Relaxed).map(|measure| measure("AAPL")), Some(4), "the hook, called");
+//! assert_eq!(size_of_val(&HOOK), 8, "and an optional hook fits one pointer, `None` too");
+//! ```
+//!
 //! ## Handing Out Ids
 //! ```
 //! use core::num::NonZero;
@@ -304,7 +333,9 @@
 //!
 //! An operation exists only where it is what its name says:
 //!
-//! - orderings are types ([`ordering`]), so `load(Release)` does not compile;
+//! - orderings are types ([`ordering`]), so `load(Release)` does not compile, and a value that
+//!   holds a reference takes none weaker than an `Acquire` load and a `Release` store, so neither
+//!   does its `load(Relaxed)`;
 //! - a read-modify-write needs the capability that makes it mean something: [`AtomAdd`],
 //!   [`AtomOrd`], [`AtomBitwise`], or for a raw pointer's `and`, `or` and `xor`, a `usize` mask;
 //!   anything else is [`update`](Atomic::update);
@@ -480,7 +511,7 @@ pub use atomix_core::{
     FieldPath, Join, Load, MaskBitwise, MinMax, ParseRangeError, PointerAtom, Primitive,
     ProjectFields, RangeError, RangedI8, RangedI16, RangedI32, RangedI64, RangedI128, RangedIsize,
     RangedU8, RangedU16, RangedU32, RangedU64, RangedU128, RangedUsize, RawAccess, ReadByExchange,
-    ReprRange, Store, Swap, Then, TopField, Whole, compiler_fence, fence,
+    ReprOf, ReprRange, Store, Swap, Then, TopField, Whole, compiler_fence, fence,
 };
 #[cfg(any(
     target_arch = "aarch64",

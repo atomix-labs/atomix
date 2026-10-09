@@ -13,6 +13,12 @@
 //! closes a derived Treiber stack's `Head` with `lock bts`, or `ldsetal`, on its top node's
 //! pointer. [`PointerAtom`] is any value stored as a pointer.
 //!
+//! A shared reference and a function pointer are each stored as a [`ReprOf`] of itself, the raw
+//! pointer's repr, which no bits forge: `CONFIG.load(Acquire)` reads a `&'static Config` with
+//! `ldar`, `ldapr` with LSE2, or `mov`. A reference's operations take no ordering weaker than an
+//! `Acquire` read and a `Release` write, so the thread that loads one sees the writes that made
+//! what it points to.
+//!
 //! Two pointers, or one beside a counter or a slice's length, share a 16-byte atomic, a
 //! [`DoubleWord`], which exposes each pointer's provenance, as no Rust operation keeps one through
 //! 16 bytes: `HEAD.compare_exchange(pushed, popped, AcqRel, Acquire)` pops a derived Treiber
@@ -80,6 +86,7 @@
     derive_const,
     doc_cfg,
     f16,
+    fn_static,
     generic_pattern_types,
     impl_restriction,
     integer_casts,
@@ -90,7 +97,8 @@
     step_trait,
     stmt_expr_attributes,
     structural_match,
-    transmute_neo
+    transmute_neo,
+    with_negative_coherence
 )]
 #![cfg_attr(wide, feature(f128))]
 #![cfg_attr(core_atomic_u128, feature(integer_atomics))]
@@ -173,7 +181,7 @@ pub use crate::fence::{compiler_fence, fence};
 pub use crate::primitive::DoubleWord;
 pub use crate::primitive::{
     BitTest, ExactBits, FetchAdd, FetchBitwise, Load, MaskBitwise, MinMax, Primitive, RawAccess,
-    ReadByExchange, Store, Swap,
+    ReadByExchange, ReprOf, Store, Swap,
 };
 pub use crate::range::ReprRange;
 pub use crate::ranged::{

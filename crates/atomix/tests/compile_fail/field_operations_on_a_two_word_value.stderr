@@ -22,7 +22,7 @@ note: required by a bound in `AtomicField::<P>::set`
    |
    | impl<P: FieldPath> AtomicField<P> {
 ...
-   |     pub const fn set<O: RmwOrdering>(&self, order: O)
+   |     pub const fn set<O: RmwOrdering<P::Value>>(&self, order: O)
 ...
    |         ContainerRepr<P>: [const] MaskBitwise,
    |                           ^^^^^^^^^^^^^^^^^^^ required by this bound in `AtomicField::<P>::set`
@@ -51,7 +51,7 @@ note: required by a bound in `AtomicField::<P>::fetch_add`
    |
    | impl<P: FieldPath> AtomicField<P> {
 ...
-   |     pub const fn fetch_add<O: RmwOrdering>(
+   |     pub const fn fetch_add<O: RmwOrdering<P::Container>>(
 ...
    |         ContainerRepr<P>: [const] FetchAdd,
    |                           ^^^^^^^^^^^^^^^^ required by this bound in `AtomicField::<P>::fetch_add`
@@ -79,7 +79,7 @@ note: required by a bound in `atomix::Atomic::<T>::swap`
    |
    | impl<T: Atom> Atomic<T> {
 ...
-   |     pub const fn swap<O: RmwOrdering>(&self, value: T, order: O) -> T
+   |     pub const fn swap<O: RmwOrdering<T>>(&self, value: T, order: O) -> T
 ...
    |         T::Repr: [const] Swap,
    |                  ^^^^^^^^^^^^ required by this bound in `Atomic::<T>::swap`

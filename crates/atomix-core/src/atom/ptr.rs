@@ -30,7 +30,7 @@ use crate::validity::{Total, TotalZeroNiche, Validity};
 
 /// The metadata of a pointer to a `T`: `()` for a sized `T`, a length for a slice or a `str`, a
 /// `DynMetadata` for a trait object.
-type Metadata<T> = <T as Pointee>::Metadata;
+pub(crate) type Metadata<T> = <T as Pointee>::Metadata;
 
 /// How a pointer to a `T` is stored, chosen by `T`'s metadata: a sized pointee's pointer alone, in
 /// one word; a slice's or a `str`'s data pointer and length, and a trait object's data pointer and

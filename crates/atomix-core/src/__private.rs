@@ -1,6 +1,6 @@
 //! What the code `#[derive(Atom)]` writes calls, and the bounds rustc's messages name by this path:
-//! `NotAnAtomic`, of `Atomic`'s impl of `Atom` that never applies, and `RawValue`, of `get_mut`,
-//! `from_mut` and the slice conversions. Hidden, since nothing else should name them.
+//! `RawValue`, of `get_mut`, `from_mut` and the slice conversions. Hidden, since nothing else
+//! should name them.
 //!
 //! A derived impl for a type with no parameters calls the codecs here rather than `Atom`'s methods:
 //! their bound is `const`, never `[const]`, so the call needs no `const_trait_impl` in the crate
@@ -10,7 +10,7 @@ use core::any::type_name;
 use core::ptr;
 
 use crate::atom::{Atom, AtomAdd, AtomBitwise, AtomOrd, PointerAtom};
-pub use crate::atomic::{HasPackedField, NotAnAtomic, RawValue, Reach, project_field};
+pub use crate::atomic::{HasPackedField, RawValue, Reach, project_field};
 use crate::message::{Message, refuse};
 use crate::primitive::{CompareExchange, ExactBits, Primitive};
 #[cfg(wide)]

@@ -11,6 +11,7 @@ use core::panic::RefUnwindSafe;
 use core::sync::atomic::Ordering as CoreOrdering;
 
 use crate::atomic::FieldPath;
+use crate::ordering::{OrderingFloor, Relaxed};
 
 /// Writes `impl …` as `const impl …` off loom, where core's atomic operations are `const`, and as
 /// it is under loom, whose are not.
@@ -26,12 +27,14 @@ macro_rules! const_off_loom {
 #[cfg(wide)]
 mod double;
 mod narrow;
+mod sealed;
 #[cfg(wide)]
 mod wide;
 
 #[cfg(wide)]
 pub use self::double::{DoubleWord, Word};
 pub(crate) use self::narrow::{address, subtract_tags};
+pub use self::sealed::ReprOf;
 
 /// A primitive's cell, and every access to it that is not an atomic instruction.
 ///
@@ -76,6 +79,10 @@ macro_rules! primitive {
             /// Whether `is_bits` decides every `bits`; a pointer's decides only zero.
             #[doc(hidden)]
             const IS_BITS_EXACT: bool = true;
+            /// The weakest ordering an operation on it takes: `Relaxed`, but on a reference's repr
+            /// `AcqRel`, an `Acquire` read and a `Release` write.
+            #[doc(hidden)]
+            type OrderingFloor: OrderingFloor = Relaxed;
             /// The value of the low `BITS` of `bits`; a pointer built so has no provenance.
             #[doc(hidden)]
             fn from_bits(bits: u128) -> Self;
@@ -155,7 +162,9 @@ pub impl(crate) const unsafe trait RawAccess: [const] Primitive {
     label = "expected `bool` or an integer",
     note = "a pointer's bits do not hold its provenance: for a pure-read load of a pointer, call `load`"
 )]
-pub impl(crate) const trait ExactBits: [const] Primitive {
+pub impl(crate) const trait ExactBits:
+    [const] Primitive<OrderingFloor = Relaxed>
+{
     /// The value as unsigned bits: an integer's two's complement, `bool`'s 0 or 1.
     #[doc(hidden)]
     fn to_bits(self) -> u128;
@@ -275,7 +284,9 @@ pub impl(crate) const trait Swap: CompareExchange {
     note = "atomix has no 128-bit add",
     note = "to accept a compare-exchange loop, call `update`"
 )]
-pub impl(crate) const trait FetchAdd: CompareExchange {
+pub impl(crate) const trait FetchAdd:
+    CompareExchange + Primitive<OrderingFloor = Relaxed>
+{
     /// Adds `delta`, wrapping, and returns the value before.
     #[doc(hidden)]
     fn fetch_add(cell: &Self::Cell, delta: Self, order: CoreOrdering) -> Self;
@@ -304,7 +315,9 @@ pub(crate) const trait PointerOffset: CompareExchange {
 /// discards the value before: `lock or` on `x86_64`, `ldset` on `aarch64` (without LSE, an outline
 /// call or an LL/SC pair).
 #[doc(hidden)]
-pub impl(crate) const trait Bitwise: CompareExchange {
+pub impl(crate) const trait Bitwise:
+    CompareExchange + Primitive<OrderingFloor = Relaxed>
+{
     /// Applies `& value`, and returns the value before.
     fn fetch_and(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self;
     /// Applies `| value`, and returns the value before.
@@ -509,7 +522,9 @@ pub impl(crate) trait FetchBitwise: MaskBitwise {}
     label = "this would be a compare-exchange loop",
     note = "to accept a compare-exchange loop, call `update`"
 )]
-pub impl(crate) const trait MinMax: CompareExchange {
+pub impl(crate) const trait MinMax:
+    CompareExchange + Primitive<OrderingFloor = Relaxed>
+{
     /// Keeps the larger, and returns the value before.
     #[doc(hidden)]
     fn fetch_max(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self;

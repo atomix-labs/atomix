@@ -1,0 +1,7 @@
+error: lifetime may not live long enough
+ --> tests/compile_fail/reference_loaded_beyond_its_lifetime.rs:7:5
+  |
+6 | fn outlive<'a>(atomic: &Atomic<&'a u64>) -> &'static u64 {
+  |            -- lifetime `'a` defined here
+7 |     atomic.load(Acquire)
+  |     ^^^^^^^^^^^^^^^^^^^^ returning this value requires that `'a` must outlive `'static`

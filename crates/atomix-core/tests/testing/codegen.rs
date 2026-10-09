@@ -22,9 +22,23 @@ pub(crate) enum Lowering {
     /// popped, `stp` and `ldp` included, then one cold block that calls [`REFUSAL`]: a tagged
     /// pointer's encode, whose fast path saves no frame record.
     Refuses(&'static [&'static str]),
+    /// The instructions the function named lowers to, every one: an operation that is another's,
+    /// a reference's a raw pointer's, whose own lowering says what it costs.
+    SameAs(&'static str),
 }
 
-use Lowering::{InOrder, Only, Refuses, Retry, RetryOnly};
+use Lowering::{InOrder, Only, Refuses, Retry, RetryOnly, SameAs};
+
+impl Lowering {
+    /// The instructions it names: none for a `SameAs`, whose twin's lowering names them.
+    const fn mnemonics(&self) -> Option<&'static [&'static str]> {
+        match *self {
+            InOrder(wanted) | Only(wanted) | Retry(wanted) | RetryOnly(wanted)
+            | Refuses(wanted) => Some(wanted),
+            SameAs(_) => None,
+        }
+    }
+}
 
 /// The one function a lowering may call, by name: the cold refusal of a pointer misaligned for
 /// its tags, which an encode of a tagged pointer calls off its fast path.
@@ -271,8 +285,9 @@ fn reached(steps: &[Vec<usize>], start: usize) -> Vec<bool> {
 /// because the value differs. Where a target has no compare-exchange instruction, its
 /// compare-exchange is an LL/SC loop, which counts as one around a loop.
 fn assert_no_unnamed_cost(target: &str, name: &str, lines: &[Line], lowering: &Lowering) {
-    let (InOrder(wanted) | Only(wanted) | Retry(wanted) | RetryOnly(wanted) | Refuses(wanted)) =
-        *lowering;
+    let Some(wanted) = lowering.mnemonics() else {
+        return;
+    };
     let retries = matches!(lowering, Retry(_) | RetryOnly(_));
     let refuses = matches!(lowering, Refuses(_)) || wanted.iter().any(|mnemonic| is_call(mnemonic));
     // Each label, with the index of the instruction it marks.
@@ -375,6 +390,17 @@ fn assert_no_unnamed_cost(target: &str, name: &str, lines: &[Line], lowering: &L
     );
 }
 
+/// The mnemonics of a function's `lines`, its labels left out.
+fn mnemonics(lines: &[Line]) -> Vec<&str> {
+    lines
+        .iter()
+        .filter_map(|line| match line {
+            Line::Instruction { mnemonic, .. } => Some(mnemonic.as_str()),
+            Line::Label(_) => None,
+        })
+        .collect()
+}
+
 /// Checks every function of `target`'s fixture, for the floor or `cpu`, against `expected`.
 ///
 /// The tables together list each function once.
@@ -396,28 +422,32 @@ pub(crate) fn lowers_as_expected(
     assert_eq!(found, named, "{target}: the fixture's functions are the ones listed");
     for (name, lowering) in expected.iter().copied().flatten() {
         let lines = function(target, &assembly, name);
-        let mnemonics: Vec<&str> = lines
-            .iter()
-            .filter_map(|line| match line {
-                Line::Instruction { mnemonic, .. } => Some(mnemonic.as_str()),
-                Line::Label(_) => None,
-            })
-            .collect();
+        let instructions = mnemonics(&lines);
         match lowering {
+            SameAs(twin) => {
+                let twin_lines = function(target, &assembly, twin);
+                assert_eq!(
+                    instructions,
+                    mnemonics(&twin_lines),
+                    "{target}: `{name}` lowers to what `{twin}` does"
+                );
+                // The twin's own lowering checks what the instructions cost.
+                continue;
+            },
             InOrder(wanted) | Retry(wanted) => {
-                let mut rest = mnemonics.iter();
+                let mut rest = instructions.iter();
                 assert!(
                     wanted.iter().all(|want| rest.any(|have| have == want)),
-                    "{target}: `{name}` lowers to {wanted:?} in order, among {mnemonics:?}"
+                    "{target}: `{name}` lowers to {wanted:?} in order, among {instructions:?}"
                 );
             },
             Only(wanted) | RetryOnly(wanted) => {
-                assert_eq!(&mnemonics, wanted, "{target}: `{name}` is these and nothing else");
+                assert_eq!(&instructions, wanted, "{target}: `{name}` is these and nothing else");
             },
             Refuses(wanted) => {
-                let end = mnemonics.iter().position(|mnemonic| mnemonic.starts_with("ret"));
+                let end = instructions.iter().position(|mnemonic| mnemonic.starts_with("ret"));
                 let fast_path =
-                    &mnemonics[..end.map_or(mnemonics.len(), |end| end.saturating_add(1))];
+                    &instructions[..end.map_or(instructions.len(), |end| end.saturating_add(1))];
                 let mut rest = fast_path.iter();
                 assert!(
                     wanted.iter().all(|expected| rest.any(|mnemonic| mnemonic == expected)),

@@ -1,5 +1,5 @@
-//! An atomic is a place, not a value: one inside another is refused with a message of its own,
-//! not `Atom`'s advice to derive it.
+//! An atomic is a place, not a value, and no `Atom`: one inside another is refused, as a type, and
+//! inside an `Option`.
 
 use atomix_core::{Atomic, AtomicU64};
 
