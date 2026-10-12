@@ -31,6 +31,9 @@ pub impl(crate) const trait Array: [const] Atom {
     const LENGTH: usize;
     /// How many bits lie from one element's lowest bit to the next's.
     const STRIDE: u32;
+    /// Whether the repr's bits above the elements copy the last one's sign, as a packed value's
+    /// above its top field do: an array's slots leave the bits above them clear.
+    const EXTENDS_LAST: bool;
     /// The element at `index`, below `LENGTH`.
     fn element(self, index: usize) -> Self::Element;
     /// The place of each element of the array at `place`, and no other place: never `place`'s
@@ -51,6 +54,7 @@ where
         Self: 'a;
     const LENGTH: usize = N;
     const STRIDE: u32 = T::Repr::BITS;
+    const EXTENDS_LAST: bool = false;
     #[expect(clippy::indexing_slicing, reason = "the caller's index lies below `N`")]
     #[inline]
     fn element(self, index: usize) -> T {
@@ -75,11 +79,14 @@ impl FieldPlacement {
         // field of no bits lies at its running offset: an offset past it may lie past the repr.
         let offset =
             if width == 0 { 0 } else { index.wrapping_cast::<u32>().wrapping_mul(A::STRIDE) };
-        // A signed element governs its whole slot, whose bits above it copy its sign.
-        let end = if layout.is_signed() {
-            offset.wrapping_add(A::STRIDE)
-        } else {
+        // A signed element governs its whole slot, whose bits above it copy its sign, and the last
+        // one the repr's bits above the elements, where they copy it too.
+        let end = if !layout.is_signed() {
             offset.wrapping_add(width)
+        } else if A::EXTENDS_LAST && index.wrapping_add(1) == A::LENGTH {
+            <A::Repr as Primitive>::BITS
+        } else {
+            offset.wrapping_add(A::STRIDE)
         };
         let slot = Self {
             offset,
@@ -147,8 +154,10 @@ impl<A: Array, const INDEX: usize> Element<A, INDEX> {
 }
 
 // The element's slot holds its repr, as `to_repr` packs it, and `from_repr` decodes each slot
-// alone, checking only the bits above the slots, which no element governs: any repr of the element
-// that decodes, written in its bits, leaves an array that decodes, with that element alone changed.
+// alone, checking only the bits above the slots: clear, which no element governs, or, where
+// `EXTENDS_LAST` says, copies of the last one's sign, which it governs and each write extends. Any
+// repr of the element that decodes, written in its bits so, leaves an array that decodes, with
+// that element alone changed.
 const impl<A: [const] Array, const INDEX: usize> FieldPath for Element<A, INDEX> {
     type Container = A;
     type Value = A::Element;
@@ -292,9 +301,9 @@ impl<A: Array> Atomic<A> {
         unsafe { AtomicField::from_atomic(self) }
     }
 
-    /// The last element of the array, as the place of a field: where the slots fill the repr and
-    /// the element has [`AtomAdd`], its [`fetch_add`](AtomicField::fetch_add) is one instruction,
-    /// its carry leaving the word.
+    /// The last element of the array, as the place of a field: where an array's slots fill the repr
+    /// and the element has [`AtomAdd`], its [`fetch_add`](AtomicField::fetch_add) is one
+    /// instruction, its carry leaving the word; a [`Packed`](crate::Packed)'s never adds in place.
     ///
     /// # Examples
     /// ```

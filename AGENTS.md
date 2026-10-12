@@ -120,7 +120,9 @@ What a change here keeps, beyond what the checks hold it to.
   A place at a run-time index lends its fields' and elements' places, at
   `Indexed` too, and `elements()` is the array of them. Only a whole array's
   `last()` adds. Only an element stored as bits has a place: a pointer's
-  provenance is no bits.
+  provenance is no bits. `Packed<[T; N], R>` packs the elements at their range's
+  width in the integer it states, as a packed struct packs its fields, and lends
+  them alike.
 - A pointer word, a struct of pointers beside tags, and a pointer enum, an enum
   some of whose variants hold a pointer, keep their tags in the low bits a
   pointee's alignment leaves clear, or, a pointer word of two words, in an

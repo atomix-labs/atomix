@@ -32,7 +32,8 @@ mod tests {
 
     use atomix::validity::{Partial, Total, TotalZeroNiche, ZeroNiche, ZeroValid};
     use atomix::{
-        Atom, Atomic, ExactBits, Primitive, RangedI8, RangedU8, RangedU64, ReprOf, ReprRange,
+        Atom, Atomic, ExactBits, Packed, Primitive, RangedI8, RangedU8, RangedU64, ReprOf,
+        ReprRange,
     };
     use proptest::prelude::{Just, Strategy, any, prop_oneof};
     use proptest::sample::select;
@@ -66,6 +67,15 @@ mod tests {
         cells: [Side; 4],
         /// Who moves next.
         turn: Side,
+    }
+
+    /// The same board, its cells packed a bit each, and the last move's sign above them.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct PackedBoard {
+        /// Who holds each cell, a bit each.
+        cells: Packed<[Side; 4], u8>,
+        /// Which way the last move went.
+        sign: Sign,
     }
 
     /// The side of the book an order rests on: one bit, from zero.
@@ -941,6 +951,7 @@ mod tests {
         repr_and_validity_are::<Levels, u32, Total>();
         repr_and_validity_are::<Table, u16, ZeroValid>();
         repr_and_validity_are::<Board, u32, ZeroValid>();
+        repr_and_validity_are::<PackedBoard, u8, ZeroValid>();
         repr_and_validity_are::<MarkedHead, *mut Node, ZeroValid>();
         assert_eq!(Turn::REPRS, ReprRange::new(0, 0x1FF), "every repr up to the third's end");
         assert_eq!(Offer::Closed.to_repr(), 2, "and `Closed` above the side's 0 and 1");
@@ -979,6 +990,9 @@ mod tests {
         every_repr_obeys_the_laws::<Option<Step>>();
         every_repr_obeys_the_laws::<Option<Option<Reading>>>();
         every_repr_obeys_the_laws::<Table>();
+        every_repr_obeys_the_laws::<PackedBoard>();
+        every_repr_obeys_the_laws::<Option<PackedBoard>>();
+        every_repr_obeys_the_laws::<Packed<[Sign; 3], u8>>();
         every_repr_obeys_the_laws::<Option<Table>>();
         every_repr_obeys_the_laws::<[Side; 2]>();
         every_repr_obeys_the_laws::<[Sign; 2]>();

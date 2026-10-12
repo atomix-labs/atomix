@@ -24,6 +24,8 @@
 //! an [`AtomicField`] of an [`Indexed`] path at an index known at run time:
 //! `BUSY.element(worker).test_and_set(AcqRel)` claims a worker's bit with `lock bts`, or `ldsetal`,
 //! after the index's check, and `SLOTS.element(slot).fields().written` a field of an element.
+//! [`Packed`] packs an array at its elements' width in an integer it states: sixteen
+//! `RangedU8<0, 3>` in a `u32`.
 //!
 //! Two pointers, or one beside a counter or a slice's length, share a 16-byte atomic, a
 //! [`DoubleWord`], which exposes each pointer's provenance, as no Rust operation keeps one through
@@ -62,6 +64,9 @@
 //! | `arbitrary-int` | `Atom`, `AtomOrd`, `FieldBitwise` and `FieldAdd` for `UInt` and `Int`      |
 //! | `deranged-05`   | `Atom`, `AtomOrd` and `From` with atomix's own for deranged 0.5's integers |
 //! | `loom`          | loom's types under `--cfg loom`; nothing without the cfg                   |
+//!
+//! `serde`, `zerocopy-08` and `arbitrary` each give a [`Packed`] what its array has of that crate's
+//! traits, and `bytemuck` the array's `Zeroable`, `NoUninit` and `AnyBitPattern`.
 //!
 //! [platforms]: https://docs.rs/atomix-rs/latest/atomix/#platforms
 
@@ -163,7 +168,9 @@ pub mod validity;
     all(target_arch = "x86_64", target_feature = "cmpxchg16b")
 )))]
 pub use crate::atom::VtablePointer;
-pub use crate::atom::{Atom, AtomAdd, AtomBitwise, AtomOrd, FieldAdd, FieldBitwise, PointerAtom};
+pub use crate::atom::{
+    Atom, AtomAdd, AtomBitwise, AtomOrd, FieldAdd, FieldBitwise, Packed, PointerAtom,
+};
 pub use crate::atomic::{
     Atomic, AtomicBool, AtomicField, AtomicI8, AtomicI16, AtomicI32, AtomicI64, AtomicIsize,
     AtomicPtr, AtomicU8, AtomicU16, AtomicU32, AtomicU64, AtomicUsize, Element, Field, FieldPath,

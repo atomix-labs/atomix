@@ -38,15 +38,16 @@
 //!   reference and a function pointer are stored as a [`ReprOf`] of themselves, which no bits
 //!   forge, and a reference's operations take no ordering weaker than an `Acquire` read and a
 //!   `Release` write. An array `[T; N]` holds each element in a slot as wide as its repr, element 0
-//!   lowest: four bytes in a `u32`, their own bytes, and 64 `bool`s in a `u64`. Two words hold a
-//!   pair `(P, Q)` of values stored as pointers, references among them, two of them as an array,
-//!   and a pointer to a slice, a `str` or a trait object. With the `derive` feature, each derives:
-//!   `Atom` for a struct or an enum, a pointer word or a pointer enum among them, which keeps small
-//!   fields as tags in its pointer's low bits and the pointer's provenance, and each capability for
-//!   a newtype whose field has it. A pointer word takes two words where a second pointer, a wide
-//!   one or tags no alignment holds need them. [`RangedU64<MIN, MAX>`](RangedU64) and its siblings,
-//!   `RangedU8` to `RangedIsize`, hold an integer from `MIN` to `MAX`, and [`RangeError`] and
-//!   [`ParseRangeError`] say why one refused an integer or a text.
+//!   lowest: four bytes in a `u32`, their own bytes, and 64 `bool`s in a `u64`; [`Packed`] holds
+//!   each at the bits its range needs, in an integer it states. Two words hold a pair `(P, Q)` of
+//!   values stored as pointers, references among them, two of them as an array, and a pointer to a
+//!   slice, a `str` or a trait object. With the `derive` feature, each derives: `Atom` for a struct
+//!   or an enum, a pointer word or a pointer enum among them, which keeps small fields as tags in
+//!   its pointer's low bits and the pointer's provenance, and each capability for a newtype whose
+//!   field has it. A pointer word takes two words where a second pointer, a wide one or tags no
+//!   alignment holds need them. [`RangedU64<MIN, MAX>`](RangedU64) and its siblings, `RangedU8` to
+//!   `RangedIsize`, hold an integer from `MIN` to `MAX`, and [`RangeError`] and [`ParseRangeError`]
+//!   say why one refused an integer or a text.
 //! - **Orderings.** The [`ordering`] types, each accepted only where it means something, and the
 //!   [`fence`](fn@fence) and [`compiler_fence`] they order.
 //! - **Primitives.** [`Primitive`], [`ExactBits`] where the bits are the whole value, a
@@ -507,6 +508,9 @@
 //! | `deranged-05`   | `Atom`, `AtomOrd` and `From` with atomix's own for deranged 0.5's integers |
 //! | `loom`          | loom's types under `--cfg loom`; nothing without the cfg                   |
 //!
+//! `serde`, `zerocopy-08` and `arbitrary` each give a [`Packed`] what its array has of that crate's
+//! traits, and `bytemuck` the array's `Zeroable`, `NoUninit` and `AnyBitPattern`.
+//!
 //! atomix holds `atomix-derive`, which `derive` adds, at its own version whether the feature is
 //! on or not, so the code a derive writes always calls the hidden items it was written against.
 //!
@@ -538,11 +542,11 @@ pub use atomix_core::{
     Atom, AtomAdd, AtomBitwise, AtomOrd, Atomic, AtomicBool, AtomicField, AtomicI8, AtomicI16,
     AtomicI32, AtomicI64, AtomicIsize, AtomicPtr, AtomicU8, AtomicU16, AtomicU32, AtomicU64,
     AtomicUsize, BitTest, Element, ExactBits, FetchAdd, FetchBitwise, Field, FieldAdd,
-    FieldBitwise, FieldPath, Indexed, Join, Last, Load, MaskBitwise, MinMax, ParseRangeError,
-    PointerAtom, Primitive, ProjectFields, RangeError, RangedI8, RangedI16, RangedI32, RangedI64,
-    RangedI128, RangedIsize, RangedU8, RangedU16, RangedU32, RangedU64, RangedU128, RangedUsize,
-    RawAccess, ReadByExchange, ReprOf, ReprRange, Store, Swap, Then, TopField, Whole,
-    compiler_fence, fence,
+    FieldBitwise, FieldPath, Indexed, Join, Last, Load, MaskBitwise, MinMax, Packed,
+    ParseRangeError, PointerAtom, Primitive, ProjectFields, RangeError, RangedI8, RangedI16,
+    RangedI32, RangedI64, RangedI128, RangedIsize, RangedU8, RangedU16, RangedU32, RangedU64,
+    RangedU128, RangedUsize, RawAccess, ReadByExchange, ReprOf, ReprRange, Store, Swap, Then,
+    TopField, Whole, compiler_fence, fence,
 };
 #[cfg(any(
     target_arch = "aarch64",

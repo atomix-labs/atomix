@@ -1,7 +1,8 @@
 //! An array as an atomic value: each element in a slot as wide as its repr, element 0 lowest, two
-//! pointers in a double word; its validity, its range and `Option`'s niche; and its elements as
-//! places, at an index known at run time, whose place holds where its bits lie, or a constant, a
-//! row of an array of arrays lending each place a whole array lends.
+//! pointers in a double word; its validity, its range and `Option`'s niche; its elements as places,
+//! at an index known at run time, whose place holds where its bits lie, or a constant, a row of an
+//! array of arrays lending each place a whole array lends; and `Packed`, an array at its elements'
+//! width in the integer it states, and the traits it shares with its array.
 
 #![feature(const_trait_impl)]
 #![cfg(not(loom))]
@@ -349,4 +350,111 @@ mod tests {
         let none = Atomic::new(None::<[&Order; 1]>);
         assert_eq!(none.load(Acquire), None, "null is its `None`");
     }
+}
+
+#[cfg(test)]
+mod packed {
+    use core::cmp::Ordering;
+    use core::hash::BuildHasher;
+    use core::num::NonZero;
+    use std::collections::hash_map::RandomState;
+
+    use atomix_core::ordering::{AcqRel, Acquire, Relaxed, Release};
+    use atomix_core::validity::{Partial, ZeroNiche, ZeroValid};
+    use atomix_core::{Atom, Atomic, Packed, RangedI8, RangedU8};
+
+    use crate::testing::atom::repr_and_validity_are;
+    use crate::testing::law::{assert_holds, decodes_as_promised};
+
+    /// How full a queue is, in quarters.
+    type Quarter = RangedU8<0, 3>;
+
+    /// `count` quarters.
+    fn quarter(count: u8) -> Quarter {
+        Quarter::new(count).expect("each count passed lies in 0 to 3")
+    }
+
+    #[test]
+    fn each_element_takes_the_bits_its_range_needs() {
+        repr_and_validity_are::<Packed<[Quarter; 16], u32>, u32, Partial>();
+        repr_and_validity_are::<Packed<[bool; 3], u8>, u8, ZeroValid>();
+        repr_and_validity_are::<Packed<[NonZero<u8>; 2], u16>, u16, ZeroNiche>();
+        let packed = Packed::<_, u8>::new([0, 1, 2, 3].map(quarter));
+        assert_eq!(packed.to_repr(), 0b11_10_01_00, "two bits each, element 0 lowest");
+        assert_eq!(<Option<Packed<[bool; 3], u8>> as Atom>::to_repr(None), 0b1000, "above them");
+    }
+
+    #[test]
+    fn every_repr_of_a_byte_obeys_the_laws() {
+        for bits in 0..=u8::MAX {
+            assert_holds(decodes_as_promised::<_, Packed<[RangedI8<-1, 1>; 3], u8>>(bits));
+            assert_holds(decodes_as_promised::<_, Packed<[RangedU8<0, 2>; 4], u8>>(bits));
+            assert_holds(decodes_as_promised::<_, Packed<[bool; 8], u8>>(bits));
+            assert_holds(decodes_as_promised::<_, Packed<[bool; 5], u8>>(bits));
+            assert_holds(decodes_as_promised::<_, Packed<[NonZero<u8>; 1], u8>>(bits));
+            assert_holds(decodes_as_promised::<_, Option<Packed<[bool; 5], u8>>>(bits));
+        }
+    }
+
+    #[test]
+    fn each_element_is_a_place_in_its_bits() {
+        let fill = Atomic::new(Packed::<_, u32>::new([quarter(0); 16]));
+        fill.element(15).update(AcqRel, Acquire, |_| quarter(3));
+        fill.place::<7>().update(AcqRel, Acquire, |_| quarter(2));
+        assert_eq!(fill.element(15).load(Acquire), quarter(3), "the last element");
+        assert_eq!(fill.load(Relaxed).to_repr(), 0b11 << 30 | 0b10 << 14, "in its two bits");
+        let [first, ..] = fill.elements();
+        assert_eq!(first.load(Relaxed), quarter(0), "every element's place");
+        let flags = Atomic::new(Packed::<_, u8>::new([false; 5]));
+        flags.element(4).set(Release);
+        assert_eq!(flags.load(Relaxed).to_repr(), 0b1_0000, "the fifth");
+    }
+
+    #[test]
+    fn the_last_elements_sign_fills_the_bits_above() {
+        let zero = RangedI8::<-1, 1>::new(0).expect("zero lies in the range");
+        let signs = Atomic::new(Packed::<_, u8>::new([zero; 3]));
+        signs.element(2).update(AcqRel, Acquire, |_| RangedI8::new(-1).expect("so does -1"));
+        assert_eq!(signs.load(Relaxed).to_repr(), 0b1111_0000, "its sign above it");
+        signs.element(2).update(AcqRel, Acquire, |_| RangedI8::new(1).expect("and 1"));
+        assert_eq!(signs.load(Relaxed).to_repr(), 0b0001_0000, "and cleared again");
+        signs.element(0).update(AcqRel, Acquire, |_| RangedI8::new(-1).expect("and -1"));
+        assert_eq!(signs.load(Relaxed).to_repr(), 0b0001_0011, "below it, its own two bits");
+    }
+
+    #[test]
+    fn a_packed_array_dereferences_to_its_array_and_gives_it_back() {
+        let mut packed = Packed::<[u8; 3], u32>::from([3, 1, 2]);
+        assert_eq!(packed[0], 3, "indexed");
+        packed[0] = 0;
+        assert_eq!(packed.iter().sum::<u8>(), 3, "written and iterated");
+        assert_eq!(Packed::into_inner(packed), [0, 1, 2], "and given back");
+    }
+
+    #[test]
+    fn a_packed_array_compares_and_orders_as_its_array() {
+        let packed = Packed::<[u8; 3], u32>::new([0, 1, 2]);
+        let other = Packed::new([0, 1, 3]);
+        assert_eq!(packed.cmp(&other), [0_u8, 1, 2].cmp(&[0, 1, 3]), "by its elements in turn");
+        assert_eq!(packed.partial_cmp(&other), Some(Ordering::Less), "partially too");
+        assert_ne!(packed, other, "unequal where an element is");
+        assert_eq!(packed, packed.clone(), "and equal to its clone");
+    }
+
+    #[test]
+    fn a_packed_array_hashes_prints_and_defaults_as_its_array() {
+        let packed = Packed::<[u8; 3], u32>::new([0, 1, 2]);
+        let hasher = RandomState::new();
+        assert_eq!(hasher.hash_one(packed), hasher.hash_one([0_u8, 1, 2]), "its hash");
+        assert_eq!(format!("{packed:?}"), "[0, 1, 2]", "its print");
+        assert_eq!(Packed::<[u8; 2], u16>::default(), Packed::new([0, 0]), "its default");
+    }
+
+    // A packed array crosses threads as its array does.
+    const _: () = {
+        /// Compiles only where `T` may cross threads and be shared between them.
+        const fn crosses_threads<T: Send + Sync>() {}
+        crosses_threads::<Packed<[u8; 2], *mut u8>>();
+        crosses_threads::<Packed<[bool; 3], u8>>();
+    };
 }

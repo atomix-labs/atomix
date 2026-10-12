@@ -157,7 +157,7 @@ pub type Join<P, B> = <P as FieldPath>::Join<B>;
     label = "a carry out of this field would reach the bits above it",
     note = "only the field that ends at the repr's top bit adds in place, its carry leaving the word: make it the last field, of a width that fills the repr",
     note = "a field of a generic struct, or of a field, adds in place nowhere: no constant knows where it ends",
-    note = "an array's last element adds in place where its slots fill the repr and the element has `AtomAdd`",
+    note = "an array's last element adds in place where its slots fill the repr and the element has `AtomAdd`; a `Packed`'s, nowhere",
     note = "to add to another field, call `update`"
 )]
 pub impl(crate) trait TopField: FieldPath {}

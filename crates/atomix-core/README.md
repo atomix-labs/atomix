@@ -45,6 +45,10 @@ fn main() {
 | `deranged-05`   | `Atom`, `AtomOrd` and `From` with atomix's own for deranged 0.5's integers |
 | `loom`          | loom's types under `--cfg loom`; nothing without the cfg                   |
 
+`serde`, `zerocopy-08` and `arbitrary` each give a `Packed` what its array has
+of that crate's traits, and `bytemuck` the array's `Zeroable`, `NoUninit` and
+`AnyBitPattern`.
+
 None is on by default: `cargo add --git https://github.com/atomix-labs/atomix
 atomix-core --features serde`.
 

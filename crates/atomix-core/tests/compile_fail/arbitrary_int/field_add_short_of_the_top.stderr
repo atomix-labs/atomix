@@ -7,7 +7,7 @@ error[E0277]: `atomix_core::Field<Short, 1, UInt<u64, 61>>` does not end at its 
    = help: the trait `TopField` is not implemented for `atomix_core::Field<Short, 1, UInt<u64, 61>>`
    = note: only the field that ends at the repr's top bit adds in place, its carry leaving the word: make it the last field, of a width that fills the repr
    = note: a field of a generic struct, or of a field, adds in place nowhere: no constant knows where it ends
-   = note: an array's last element adds in place where its slots fill the repr and the element has `AtomAdd`
+   = note: an array's last element adds in place where its slots fill the repr and the element has `AtomAdd`; a `Packed`'s, nowhere
    = note: to add to another field, call `update`
 note: required by a bound in `AtomicField::<P>::fetch_add`
   --> src/atomic/field/mod.rs

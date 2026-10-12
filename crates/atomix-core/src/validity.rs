@@ -53,8 +53,9 @@ pub impl(crate) const trait Validity {
     #[doc(hidden)]
     type Elements: const Validity;
     /// The validity of an array of values of this validity whose slots leave bits of its repr
-    /// above them, always clear: as [`Elements`](Self::Elements)', but a repr with one of those
-    /// bits set does not decode.
+    /// above them, which `to_repr` writes one way, clear, or, a `Packed`'s, as copies of a signed
+    /// last element's sign: as [`Elements`](Self::Elements)', but a repr whose bits there differ
+    /// does not decode.
     #[doc(hidden)]
     type PaddedElements: const Validity;
     /// Wraps a primitive's cell.

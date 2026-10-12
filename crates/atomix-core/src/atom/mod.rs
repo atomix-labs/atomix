@@ -2,6 +2,7 @@
 
 mod array;
 mod option;
+mod packed;
 #[cfg(wide)]
 mod pair;
 mod ptr;
@@ -10,6 +11,7 @@ mod reference;
 mod scalar;
 
 pub use self::array::Slots;
+pub use self::packed::Packed;
 #[cfg(wide)]
 pub use self::ptr::VtablePointer;
 pub(crate) use self::ptr::{Metadata, PointerMetadata};

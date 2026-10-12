@@ -47,7 +47,8 @@
 //! repr's own width: a `bool`'s test-and-set is `lock bts` with the index in a register, or
 //! `ldsetal`; unchecked it is the atomic's `bit_set` without its `and`, and at a constant index
 //! the field's, the position an immediate. The last element of an array whose slots fill the repr
-//! adds in place, `lock xadd` or `ldaddal`.
+//! adds in place, `lock xadd` or `ldaddal`. A `Packed` element's is the same at its own width: a
+//! shift by twice the index, and a mask of its two bits.
 //!
 //! A reference's and a function pointer's every operation is a raw pointer's, instruction for
 //! instruction, and a wide reference's a `u128`'s: a reference's load acquires and its store
@@ -290,6 +291,8 @@ mod tests {
         ("byte_load", Refuses(&["cmp", "b.hs", "lsl", "ldar", "lsr", "ret"])),
         ("byte_load_unchecked", Only(&["lsl", "ldar", "lsr", "ret"])),
         ("byte_load_literal", Only(&["ldar", "lsr", "ret"])),
+        ("quarter_load", Refuses(&["cmp", "b.hs", "lsl", "ldar", "lsr", "and", "ret"])),
+        ("quarter_place_load", Only(&["ldar", "ubfx", "ret"])),
     ];
 
     /// Each update on `aarch64` at the `+lse` floor, which has no LSE2: with no 128-bit load,
@@ -349,6 +352,8 @@ mod tests {
         ("u32_load", Only(&["ldapr", "ret"])),
         ("byte_load_literal", Only(&["ldapr", "lsr", "ret"])),
         ("byte_update", Retry(&["cmp", "b.hs", "ldapr", "casal", "bl"])),
+        ("quarter_load", Refuses(&["cmp", "b.hs", "ldapr", "lsr", "and", "ret"])),
+        ("quarter_place_load", Only(&["ldapr", "ubfx", "ret"])),
     ];
 
     /// The rest on `aarch64` Linux with LSE2, `neoverse-v1`, which puts a word's instructions
@@ -811,6 +816,7 @@ mod tests {
         ),
         ("flag_place_test_and_set", Only(&["lock btsq", "setb", "retq"])),
         ("halves_last_fetch_add", Only(&["movl", "lock xaddl", "retq"])),
+        ("quarter_place_load", Only(&["movl", "shrl", "andb", "retq"])),
         ("halves_last_fetch_add_discarded", Only(&["lock addl", "retq"])),
         (
             "word_update",
@@ -933,6 +939,7 @@ mod tests {
         ("flag_set", Refuses(&["cmpq", "jae", "movl", "shlxq", "lock orq", "retq"])),
         ("flag_clear", Refuses(&["cmpq", "jae", "movq", "rolq", "lock andq", "retq"])),
         ("flag_test_and_set", Refuses(&["cmpq", "jae", "lock btsq", "setb", "retq"])),
+        ("quarter_load", Refuses(&["cmpq", "jae", "addl", "movl", "shrxq", "andb", "retq"])),
     ];
 
     /// The rest on `x86_64` Linux, where a function that calls aligns the stack with a push.
@@ -1298,6 +1305,13 @@ mod tests {
                 "movl",
                 "callq",
                 "ud2",
+            ]),
+        ),
+        (
+            "quarter_load",
+            Refuses(&[
+                "subq", "movq", "cmpq", "jae", "addl", "movl", "movl", "shrq", "andb", "addq",
+                "retq",
             ]),
         ),
     ];

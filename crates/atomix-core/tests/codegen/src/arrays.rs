@@ -1,9 +1,9 @@
 //! An array's operations, each its repr's, beside an integer's of the same width: four bytes are a
 //! `u32`, sixty-four `bool`s a `u64`; and its elements', at an index chosen at run time, checked,
-//! unchecked or a constant, each the instruction a field's is.
+//! unchecked or a constant, each the instruction a field's is, a `Packed` one's too.
 
 use atomix_core::ordering::{AcqRel, Acquire, Relaxed, Release};
-use atomix_core::{Atomic, AtomicU32};
+use atomix_core::{Atomic, AtomicU32, Packed, RangedU8};
 
 #[unsafe(no_mangle)]
 pub fn u32_load(atomic: &AtomicU32) -> u32 {
@@ -161,4 +161,17 @@ pub fn halves_last_fetch_add_discarded(atomic: &Atomic<[u16; 2]>) {
 #[unsafe(no_mangle)]
 pub fn byte_fetch_or(atomic: &Atomic<[u8; 4]>, index: usize, value: u8) -> [u8; 4] {
     atomic.element(index).fetch_or(value, AcqRel)
+}
+
+/// Sixteen quarters, two bits each, in a `u32`.
+type Fill = Packed<[RangedU8<0, 3>; 16], u32>;
+
+#[unsafe(no_mangle)]
+pub fn quarter_load(atomic: &Atomic<Fill>, index: usize) -> RangedU8<0, 3> {
+    atomic.element(index).load(Acquire)
+}
+
+#[unsafe(no_mangle)]
+pub fn quarter_place_load(atomic: &Atomic<Fill>) -> RangedU8<0, 3> {
+    atomic.place::<5>().load(Acquire)
 }

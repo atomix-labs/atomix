@@ -3,7 +3,8 @@
 //! promise holds; a ranged integer's repr decodes, as itself, exactly where it lies in its range;
 //! `None` takes a spare repr: zero where zero is the niche, else one outside its value's range;
 //! no bits make a reference or a function pointer, but null; and an array's repr decodes where
-//! each slot's does.
+//! each slot's does, and a `Packed` one's where each field's does and the
+//! bits above extend the last.
 //!
 //! Each law runs on every repr of a byte, on the edges of each width and range, and on random bits;
 //! a 16-bit ranged integer's, on every repr of 16 bits too.
@@ -27,7 +28,7 @@ mod tests {
     use atomix_core::ordering::Relaxed;
     use atomix_core::validity::{Partial, Total, TotalZeroNiche, ZeroNiche, ZeroValid};
     use atomix_core::{
-        Atom, ExactBits, Primitive, RangedI8, RangedI16, RangedI32, RangedI64, RangedIsize,
+        Atom, ExactBits, Packed, Primitive, RangedI8, RangedI16, RangedI32, RangedI64, RangedIsize,
         RangedU8, RangedU16, RangedU32, RangedU64, RangedUsize,
     };
     #[cfg(aarch64_code)]
@@ -313,6 +314,9 @@ mod tests {
             Total => [Option<NonZero<u8>>; 4], Partial => [RangedU8<1, 10>; 2],
             Partial => [RangedI8<-1, 1>; 4], Total => [[u8; 2]; 2],
             ZeroValid => Option<[u8; 3]>, ZeroValid => Option<[NonZero<u16>; 4]>,
+            Partial => Packed<[RangedU8<0, 2>; 4], u8>, Partial => Packed<[RangedI8<-1, 1>; 5], u16>,
+            ZeroValid => Packed<[bool; 13], u16>, ZeroNiche => Packed<[NonZero<u8>; 2], u32>,
+            ZeroValid => Packed<[u8; 3], u32>,
         );
         #[cfg(wide)]
         array_laws!(bits;
@@ -373,6 +377,7 @@ mod tests {
         none_laws!(NonZero<i8>, NonZero<i16>, NonZero<i32>, NonZero<i64>, NonZero<isize>);
         none_laws!(char, Option<char>, (), Option<()>, PhantomData<str>);
         none_laws!([u8; 3], [bool; 7], [NonZero<u8>; 4], [char; 2], [RangedU8<1, 10>; 2]);
+        none_laws!(Packed<[bool; 5], u8>, Packed<[NonZero<u8>; 2], u16>, Packed<[RangedU8<1, 3>; 4], u8>);
         none_laws!(RangedU8<1, 10>, RangedI8<-5, 5>, RangedI8<-100, -10>, RangedU16<3>);
         none_laws!(RangedI16<-300, 300>, RangedU32<7, 7>, RangedI32<{ i32::MIN }, -1>);
         none_laws!(RangedU64<3>, RangedI64<{ i64::MIN }, 5>, RangedUsize<1>, RangedIsize<-1, 1>);

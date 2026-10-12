@@ -1,5 +1,10 @@
-//! bytemuck's `Zeroable` for an atomic whose zero repr decodes, and `NoUninit`,
-//! `CheckedBitPattern` and `Contiguous` for each ranged integer.
+//! bytemuck's `Zeroable` for an atomic whose zero repr decodes, `NoUninit`, `CheckedBitPattern` and
+//! `Contiguous` for each ranged integer, and `Zeroable`, `NoUninit` and `AnyBitPattern` for a
+//! `Packed` whose array has them.
+//!
+//! A `Packed` has no `Pod` of its own: bytemuck gives every `Pod` its `NoUninit` and
+//! `AnyBitPattern`, so a `Packed` takes each alone, `NoUninit` where its array is of `bool`s too,
+//! and with `AnyBitPattern` the `CheckedBitPattern` bytemuck gives every `AnyBitPattern`.
 //!
 //! An atomic has none of the traits that lend or read its bytes, `Pod`, `AnyBitPattern`,
 //! `NoUninit` or `CheckedBitPattern`: each needs `Copy`, which no cell is, since its shared
@@ -7,12 +12,11 @@
 
 #![expect(unsafe_code, reason = "each of bytemuck's traits is an unsafe promise of layout")]
 
-#[cfg(not(loom))]
-use bytemuck::Zeroable;
-use bytemuck::{CheckedBitPattern, Contiguous, NoUninit};
+use bytemuck::{AnyBitPattern, CheckedBitPattern, Contiguous, NoUninit, Zeroable};
 
 #[cfg(not(loom))]
 use crate::atom::Atom;
+use crate::atom::Packed;
 #[cfg(not(loom))]
 use crate::atomic::Atomic;
 #[cfg(not(loom))]
@@ -36,6 +40,21 @@ where
     T::Repr: RawAccess,
 {
 }
+
+/// All zeros, where they are the array's.
+// SAFETY: `Packed` is `repr(transparent)` over the array, beside a marker of no bytes, so its bytes
+// are the array's.
+unsafe impl<A: Zeroable, R> Zeroable for Packed<A, R> {}
+
+/// Its bytes, the array's.
+// SAFETY: `repr(transparent)` over the array, beside a marker of no bytes, which a shared
+// reference does not write: what the array promises, `Packed` keeps.
+unsafe impl<A: NoUninit, R: 'static> NoUninit for Packed<A, R> {}
+
+/// Any bytes the array reads from, and so, as bytemuck gives each, `CheckedBitPattern` too.
+// SAFETY: `repr(transparent)` over the array, beside a marker of no bytes; every pattern of bytes
+// is an array, as `A`'s `AnyBitPattern` says, and so a `Packed`.
+unsafe impl<A: AnyBitPattern, R: 'static> AnyBitPattern for Packed<A, R> {}
 
 /// Implements `NoUninit`, `CheckedBitPattern` and `Contiguous` for a ranged integer, `$name`, over
 /// `$int`.

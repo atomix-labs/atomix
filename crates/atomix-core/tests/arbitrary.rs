@@ -1,5 +1,6 @@
 //! arbitrary on a ranged integer, which lands inside its range from any input, reaches each integer
-//! of it, and reads the bytes its size hint says; and on an atomic, as its value.
+//! of it, and reads the bytes its size hint says; on an atomic, as its value; and on a
+//! `Packed`, as its array.
 
 #![cfg(feature = "arbitrary")]
 
@@ -8,13 +9,14 @@
 #[cfg(loom)]
 const _: () = {
     use arbitrary::Arbitrary;
-    use atomix_core::{AtomicU64, RangedU8};
+    use atomix_core::{AtomicU64, Packed, RangedU8};
 
     /// Compiles only where arbitrary generates a `T`.
     const fn generates<T: for<'a> Arbitrary<'a>>() {}
 
     generates::<RangedU8<1, 10>>();
     generates::<AtomicU64>();
+    generates::<Packed<[RangedU8<1, 10>; 2], u8>>();
 };
 
 // Loom's cells exist only inside a model; `model.rs` holds the loom tests.
@@ -25,8 +27,8 @@ mod tests {
 
     use arbitrary::{Arbitrary, Unstructured};
     use atomix_core::{
-        Atomic, AtomicU64, RangedI8, RangedI16, RangedI32, RangedI64, RangedI128, RangedIsize,
-        RangedU8, RangedU16, RangedU32, RangedU64, RangedU128, RangedUsize,
+        Atomic, AtomicU64, Packed, RangedI8, RangedI16, RangedI32, RangedI64, RangedI128,
+        RangedIsize, RangedU8, RangedU16, RangedU32, RangedU64, RangedU128, RangedUsize,
     };
 
     /// How many levels of an order book a feed sends.
@@ -122,5 +124,18 @@ mod tests {
         assert_eq!(AtomicU64::size_hint(0), u64::size_hint(0), "its size hint");
         let tried = Atomic::<Depth>::try_size_hint(0).ok();
         assert_eq!(tried, Depth::try_size_hint(0).ok(), "and the one it tries");
+    }
+
+    #[test]
+    fn a_packed_array_is_its_array() {
+        let bytes = [3, 9, 1];
+        let (packed, bytes_read) = read::<Packed<[Depth; 2], u8>>(&bytes);
+        let (array, array_bytes_read) = read::<[Depth; 2]>(&bytes);
+        assert_eq!(
+            (Packed::into_inner(packed), bytes_read),
+            (array, array_bytes_read),
+            "the array"
+        );
+        assert_eq!(Packed::<[Depth; 2], u8>::size_hint(0), <[Depth; 2]>::size_hint(0), "its hint");
     }
 }

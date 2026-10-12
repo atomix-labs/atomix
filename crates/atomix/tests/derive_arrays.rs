@@ -1,7 +1,8 @@
 //! Arrays in derived values: a newtype over an array, a packed struct with an array field, padded
-//! or filling its slots, an array of packed structs, a pointer word whose tags are an array, beside
-//! a pointer or a reference, and two words whose integer word is one; and the places each projects
-//! onto, at an index known at run time or a constant, an element's fields among them.
+//! or filling its slots, or packed at its elements' width, an array of packed structs, a pointer
+//! word whose tags are an array, beside a pointer or a reference, and two words whose integer word
+//! is one; and the places each projects onto, at an index known at run time or a constant, an
+//! element's fields among them.
 
 #![cfg(feature = "derive")]
 #![cfg(not(loom))]
@@ -14,7 +15,7 @@ mod testing;
 mod tests {
     use atomix::ordering::{AcqRel, Acquire, Relaxed, Release};
     use atomix::validity::{Total, ZeroValid};
-    use atomix::{Atom, AtomBitwise, Atomic, RangedI8};
+    use atomix::{Atom, AtomBitwise, Atomic, Packed, RangedI8};
 
     use crate::testing::atom::{field_width, repr_and_validity_are};
     use crate::testing::law::{assert_holds, decodes_as_promised};
@@ -58,6 +59,35 @@ mod tests {
         cells: [Side; 4],
         /// Who moves next.
         turn: Side,
+    }
+
+    /// The same board, its cells packed a bit each.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct PackedBoard {
+        /// Who holds each cell, a bit each.
+        cells: Packed<[Side; 4], u8>,
+        /// Who moves next.
+        turn: Side,
+    }
+
+    /// A ticker's three last moves of a price, each down, flat or up, below whether the book
+    /// trades: the last move's sign stops at the flag.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Ticker {
+        /// Three moves, two bits each.
+        moves: Packed<[RangedI8<-1, 1>; 3], u8>,
+        /// Whether the book trades.
+        live: bool,
+    }
+
+    /// The same ticker, its moves above the flag, the top field: the last move's sign
+    /// fills the bits above.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct TopTicker {
+        /// Whether the book trades.
+        live: bool,
+        /// Three moves, two bits each.
+        moves: Packed<[RangedI8<-1, 1>; 3], u8>,
     }
 
     /// A ring buffer slot: whether it was written, and in which lap.
@@ -165,6 +195,38 @@ mod tests {
     }
 
     #[test]
+    fn a_packed_array_field_takes_a_bit_per_element() {
+        repr_and_validity_are::<PackedBoard, u8, ZeroValid>();
+        assert_eq!(field_width(<Packed<[Side; 4], u8> as Atom>::REPRS), 4, "a bit per cell");
+        let board =
+            Atomic::new(PackedBoard { cells: Packed::new([Side::Bid; 4]), turn: Side::Ask });
+        board.fields().cells.element(3).update(AcqRel, Acquire, |_| Side::Ask);
+        board.fields().cells.place::<0>().update(AcqRel, Acquire, |_| Side::Ask);
+        assert_eq!(board.load(Relaxed).to_repr(), 0b1_1001, "cells 0 and 3, the turn at bit 4");
+        assert_eq!(*board.load(Relaxed).cells, [Side::Ask, Side::Bid, Side::Bid, Side::Ask], "set");
+    }
+
+    #[test]
+    fn a_packed_array_fields_last_sign_stops_at_the_next_field() {
+        let [flat, down] = [0, -1].map(|step| RangedI8::new(step).expect("each lies in -1 to 1"));
+        let ticker = Atomic::new(Ticker { moves: Packed::new([flat; 3]), live: false });
+        ticker.fields().moves.element(2).update(AcqRel, Acquire, |_| down);
+        let moved = Ticker { moves: Packed::new([flat, flat, down]), live: false };
+        assert_eq!(ticker.load(Acquire), moved, "the flag above untouched");
+        assert_eq!(ticker.load(Relaxed).to_repr(), 0b0011_0000, "the sign in the move's two bits");
+    }
+
+    #[test]
+    fn a_packed_array_top_fields_last_sign_fills_the_bits_above() {
+        let [flat, down] = [0, -1].map(|step| RangedI8::new(step).expect("each lies in -1 to 1"));
+        let ticker = Atomic::new(TopTicker { live: true, moves: Packed::new([flat; 3]) });
+        ticker.fields().moves.element(2).update(AcqRel, Acquire, |_| down);
+        let moved = TopTicker { live: true, moves: Packed::new([flat, flat, down]) };
+        assert_eq!(ticker.load(Acquire), moved, "the flag below untouched");
+        assert_eq!(ticker.load(Relaxed).to_repr(), 0b1110_0001, "the sign above, to the top");
+    }
+
+    #[test]
     fn an_array_of_packed_structs_projects_each_one() {
         repr_and_validity_are::<[Slot; 4], u64, ZeroValid>();
         let slots = Atomic::new([Slot { written: false, lap: 0 }; 4]);
@@ -199,6 +261,20 @@ mod tests {
         grid.element(1).element(0).fields().lap.or(5, Relaxed);
         assert_eq!(grid.load(Acquire)[1], [Slot { written: false, lap: 5 }, EMPTY], "row 1");
         assert_eq!(format!("{:?}", grid.element(1).element(0).fields().lap), "5", "it prints");
+    }
+
+    #[test]
+    fn a_packed_elements_fields_are_places_at_its_width() {
+        let slots = Atomic::new(Packed::<_, u64>::new([Slot { written: false, lap: 0 }; 4]));
+        assert_eq!(field_width(<Packed<[Slot; 4], u64> as Atom>::REPRS), 36, "nine bits each");
+        assert!(!slots.element(2).fields().written.test_and_set(AcqRel), "slot 2, at bit 18");
+        slots.element(3).fields().lap.update(AcqRel, Acquire, |_| 0xFF);
+        assert_eq!(slots.load(Relaxed).to_repr(), 0xF_F004_0000, "bit 18, and bits 28 to 35");
+        assert!(
+            slots.place::<2>().fields().written.load(Acquire),
+            "the bit a constant index reads"
+        );
+        assert_eq!(slots.element(3).fields().lap.load(Acquire), 0xFF, "read back");
     }
 
     #[test]
