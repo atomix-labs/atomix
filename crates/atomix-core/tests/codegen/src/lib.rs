@@ -12,8 +12,8 @@
 //! beside an integer's, in `arrays`; the field operations' in `fields`, over packed structs
 //! `tests/testing/packed.rs` writes out; a pointer word's in `pointer_words`, over words
 //! `tests/testing/pointer_word.rs` writes out; a double word's, a pair's and a slice pointer's, in
-//! `double_words`; and a reference's and a function pointer's, beside a raw pointer's, in
-//! `references`.
+//! `double_words`; a reference's and a function pointer's, beside a raw pointer's, in
+//! `references`; and a tuple's and its fields', in `tuples`.
 //!
 //! The empty `[workspace]` in its manifest makes it a workspace of its own: the repository's does
 //! not list it, and the test builds it alone.
@@ -32,6 +32,7 @@ mod packed;
 mod pointer_word;
 pub mod pointer_words;
 pub mod references;
+pub mod tuples;
 #[cfg(feature = "x86-64-refused")]
 pub mod without_cmpxchg16b;
 

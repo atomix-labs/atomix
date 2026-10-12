@@ -8,6 +8,7 @@ use core::{fmt, ptr};
 #[doc(hidden)]
 pub use self::element::Array;
 pub use self::element::{Element, Last};
+pub(crate) use self::path::ReachesTop;
 pub use self::path::{Field, FieldPath, Indexed, Join, Then, TopField, Whole};
 #[doc(hidden)]
 pub use self::path::{HasPackedField, PlaceTail, Reach};
@@ -926,7 +927,8 @@ impl<P: FieldPath> AtomicField<P> {
     /// Adds `delta` to the field, wrapping, and returns the container before: `lock xadd` on
     /// `x86_64`, `ldadd` on `aarch64`.
     ///
-    /// The field ends at the repr's top bit ([`TopField`]), so the carry out of it leaves the word.
+    /// The field ends at the repr's top bit, or in a slot that does ([`TopField`]), so no carry
+    /// out of it reaches another field.
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
     pub const fn fetch_add<O: RmwOrdering<FieldOf<P::Container>>>(

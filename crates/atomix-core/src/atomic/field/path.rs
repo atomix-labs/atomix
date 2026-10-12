@@ -144,6 +144,9 @@ pub type Join<P, B> = <P as FieldPath>::Join<B>;
 /// A field that ends at its container repr's top bit, so a carry out of it leaves the word as it
 /// wraps the field: the one field an add changes alone.
 ///
+/// An array's last element, or a tuple's last field, may end below the top in a slot that reaches
+/// it, every repr of which decodes: the carry then stays in the slot, past no other field.
+///
 /// A field of a generic container, or of a field, and an element at an index known at run time
 /// have no such path: add to one with `update`.
 ///
@@ -157,7 +160,7 @@ pub type Join<P, B> = <P as FieldPath>::Join<B>;
     label = "a carry out of this field would reach the bits above it",
     note = "only the field that ends at the repr's top bit adds in place, its carry leaving the word: make it the last field, of a width that fills the repr",
     note = "a field of a generic struct, or of a field, adds in place nowhere: no constant knows where it ends",
-    note = "an array's last element adds in place where its slots fill the repr and the element has `AtomAdd`; a `Packed`'s, nowhere",
+    note = "an array's last element, or a tuple's last field, adds in place where the slots fill the repr and every repr of its slot decodes, as `AtomAdd`'s `Total` promises; a `Packed`'s last element, nowhere",
     note = "to add to another field, call `update`"
 )]
 pub impl(crate) trait TopField: FieldPath {}
@@ -174,9 +177,13 @@ pub impl(crate) trait TopField: FieldPath {}
 /// `V` is the type of the field `INDEX`, and `PLACEMENT` is `PackedField::new(V::REPRS, offset)`,
 /// so the field takes the bits [`FieldBitwise`](crate::FieldBitwise) and
 /// [`FieldAdd`](crate::FieldAdd) speak for; `to_repr` packs that field there, each other field in
-/// bits of its own, and extends the bits above the value's width as `LAYOUT` does; a repr decodes
-/// wherever each field's bits decode as its type and the bits above extend the layout; `Reach` is
-/// `Reach<true>` only where the field ends at the repr's top bit; and `field` returns the field.
+/// bits of its own; `END`, the field's own end or past it, is the bit after the last it governs,
+/// each bit from its end to `END` a copy of its top bit as `to_repr` writes it, no other field's
+/// among them; `LAYOUT`, which `END`'s default alone reads, is how `to_repr` extends the bits
+/// above the value's width; a repr decodes wherever each field's bits decode as its type and the
+/// bits above extend the layout; `Reach` reaches the top, `ReachesTop`, only where the field ends
+/// at the repr's top bit, or below it in a slot of its own up to the top, every pattern of which
+/// decodes as its type, as a tuple's last field may; and `field` returns the field.
 ///
 /// Where `Self`'s repr is a pointer, a pointer word's, each field lies below `Self::TAG_WIDTH`: its
 /// tag fields above its pointer field's own tags, and its `LAYOUT` is one whose top field is the
@@ -192,8 +199,17 @@ pub const unsafe trait HasPackedField<const INDEX: u32, V: Atom>: Atom {
     const PLACEMENT: PackedField;
     /// How the value lays out every field.
     const LAYOUT: PackedLayout;
-    /// `Reach<true>` where the field ends at the repr's top bit, else `Reach<false>`.
+    /// `Reach<true>` where the field ends at the repr's top bit, else `Reach<false>`; a tuple's
+    /// last field's, a type that reaches the top where its slot does and every repr of it decodes.
     type Reach;
+    /// The bit after the last the field governs: the repr's top where the layout copies the
+    /// field's sign above it, else the field's own end; a tuple's signed field, its slot's end.
+    const END: u32 =
+        if Self::LAYOUT.is_extended_by(Self::PLACEMENT, <Self::Repr as Primitive>::BITS) {
+            <Self::Repr as Primitive>::BITS
+        } else {
+            Self::PLACEMENT.next_offset()
+        };
     /// The field's value.
     fn field(self) -> V;
 }
@@ -204,7 +220,8 @@ pub const unsafe trait HasPackedField<const INDEX: u32, V: Atom>: Atom {
 #[derive(Debug)]
 pub struct Reach<const TOP: bool>;
 
-/// A field's [`Reach`] at its container repr's top bit: `Reach<true>` alone.
+/// A field's [`Reach`] at its container repr's top bit: `Reach<true>`, or a tuple's last field's
+/// where its slot ends there and every repr of it decodes.
 #[doc(hidden)]
 pub impl(crate) trait ReachesTop {}
 
@@ -241,11 +258,7 @@ const impl<C: [const] HasPackedField<INDEX, V> + [const] Atom, const INDEX: u32,
     const OFFSET: u32 = C::PLACEMENT.offset();
     const WIDTH: u32 = C::PLACEMENT.layout().width();
     const IS_SIGNED: bool = C::PLACEMENT.layout().is_signed();
-    const END: u32 = if C::LAYOUT.is_extended_by(C::PLACEMENT, C::Repr::BITS) {
-        C::Repr::BITS
-    } else {
-        C::PLACEMENT.next_offset()
-    };
+    const END: u32 = <C as HasPackedField<INDEX, V>>::END;
     type Tail = ();
     type Join<B: FieldPath<Container = Self::Value, Tail = ()>> = Then<Self, B>;
     #[inline]
@@ -281,7 +294,8 @@ const impl<A: [const] FieldPath<Tail = ()>, B: [const] FieldPath<Container = A::
 }
 
 // `do_not_recommend`, so a field below the top reports `TopField`'s message, not `ReachesTop`'s.
-// The derive selects `Reach<true>` only where the field ends at the repr's top bit.
+// The derive selects `Reach<true>` only where the field ends at the repr's top bit, and a tuple
+// `LastReach<Reach<true>, Total>` only for its last field, whose slot ends there.
 #[diagnostic::do_not_recommend]
 impl<C: HasPackedField<INDEX, V>, const INDEX: u32, V: Atom> TopField for Field<C, INDEX, V> where
     C::Reach: ReachesTop

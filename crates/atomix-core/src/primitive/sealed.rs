@@ -12,8 +12,8 @@ use super::FetchBitwise;
 #[cfg(wide)]
 use super::Word;
 use super::{
-    BitTest, CellAccess, CompareExchange, ExactBits, Load, MaskBitwise, PointerRepr, Primitive,
-    RawAccess, ReadByExchange, Store, Swap,
+    BitTest, CellAccess, Code, CompareExchange, Data, ExactBits, Load, MaskBitwise, PointerRepr,
+    Primitive, RawAccess, ReadByExchange, Store, Swap,
 };
 use crate::atom::{Metadata, PointerMetadata};
 use crate::atomic::FieldPath;
@@ -128,6 +128,9 @@ pub impl(crate) trait SealedValue {
     ///
     /// [`Atom::POINTEE_ALIGNMENT`]: crate::Atom::POINTEE_ALIGNMENT
     const POINTEE_ALIGNMENT: PointeeAlignment;
+    /// What the pointer points to, by its type alone, which a tuple's layout reads: [`Data`], but
+    /// a function pointer's [`Code`].
+    type Pointee = Data;
 }
 
 impl<T: ?Sized> SealedValue for &T
@@ -145,6 +148,7 @@ impl<F: FnPtr> SealedValue for F {
     type Raw = *mut ();
     type OrderingFloor = Relaxed;
     const POINTEE_ALIGNMENT: PointeeAlignment = PointeeAlignment::NONE;
+    type Pointee = Code;
 }
 
 // Written out: a derive would bound `V` by each trait, a reference's pointee among them.
@@ -240,7 +244,27 @@ const impl<V: SealedValue<Raw: [const] Primitive>> Primitive for ReprOf<V> {
 }
 
 // A thin reference's or a function's repr is one pointer, its provenance kept.
-const impl<V: SealedValue<Raw: const PointerRepr>> PointerRepr for ReprOf<V> {}
+//
+// SAFETY: `into_raw` is the raw repr's, and `from_raw` that raw repr's `from_raw`, which gives it
+// back as it was, by its own impl's promise, wrapped again.
+#[expect(unsafe_code, reason = "a sealed repr's rebuild trusts the round trip")]
+const unsafe impl<V: SealedValue<Raw: const PointerRepr>> PointerRepr for ReprOf<V> {
+    type Pointee = V::Pointee;
+    #[inline]
+    fn into_raw(self) -> *mut () {
+        self.repr.into_raw()
+    }
+    #[expect(unsafe_code, reason = "rebuilds a sealed repr from the pointer it gave")]
+    #[inline]
+    unsafe fn from_raw(pointer: *mut ()) -> Self {
+        // SAFETY: the caller's pointer is one `into_raw` gave a `ReprOf<V>`, so the raw pointer's
+        // `into_raw` gave it.
+        let repr = unsafe { V::Raw::from_raw(pointer) };
+        // SAFETY: that repr is the one this type held, since the raw repr's `from_raw` undoes its
+        // `into_raw`, by `PointerRepr`'s promise, which keeps its INVARIANT.
+        unsafe { Self::new(repr) }
+    }
+}
 
 // A double word holds a thin reference's or a function's repr beside another word: the cell
 // exposes the pointer's provenance, and takes it back from the bits `exposed_bits` gave alone.

@@ -78,6 +78,15 @@ mod tests {
         sign: Sign,
     }
 
+    /// The best bid and ask beside whether the book trades: a tuple as a field.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Spread {
+        /// The best bid and ask, in ticks.
+        best: (u16, u16),
+        /// Whether the book trades.
+        live: bool,
+    }
+
     /// The side of the book an order rests on: one bit, from zero.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     enum Side {
@@ -990,6 +999,9 @@ mod tests {
         every_repr_obeys_the_laws::<Option<Step>>();
         every_repr_obeys_the_laws::<Option<Option<Reading>>>();
         every_repr_obeys_the_laws::<Table>();
+        every_repr_obeys_the_laws::<(Side, Sign)>();
+        every_repr_obeys_the_laws::<(Side, NonZeroByte)>();
+        every_repr_obeys_the_laws::<Option<(Side, Side)>>();
         every_repr_obeys_the_laws::<PackedBoard>();
         every_repr_obeys_the_laws::<Option<PackedBoard>>();
         every_repr_obeys_the_laws::<Packed<[Sign; 3], u8>>();
@@ -1013,6 +1025,7 @@ mod tests {
         none_laws!(Link, Guarded, Bucket, Flagged<NonNull<Node>>, Either<NonNull<Node>, *mut Node>);
         none_laws!(MarkedLink, GuardedLink);
         none_laws!(Table, Board, [Side; 4], [Quote; 1]);
+        none_laws!((Side, Sign), (Step, bool), Spread, (Quote,));
     }
 
     proptest! {
@@ -1100,6 +1113,20 @@ mod tests {
         }
 
         #[test]
+        fn tuples_of_derived_values_obey_the_laws(
+            pair in (sides(), signs()),
+            step in (steps(), any::<bool>()),
+            spread in (any::<(u16, u16)>(), any::<bool>()).prop_map(|(best, live)| Spread { best, live }),
+            quote in quotes().prop_map(|quote| (quote,)),
+            bits in edge_or_random_bits(&[]),
+        ) {
+            value_obeys_the_laws(pair, bits)?;
+            value_obeys_the_laws(step, bits)?;
+            value_obeys_the_laws(spread, bits)?;
+            value_obeys_the_laws(quote, bits)?;
+        }
+
+        #[test]
         fn enums_with_fields_obey_the_laws(
             slot in slots(),
             reading in readings(),
@@ -1174,6 +1201,9 @@ mod tests {
             let marked = MarkedHead { top: head.top, marks: [head.marked, link.marked] };
             value_obeys_the_laws(marked, bits)?;
             keeps_provenance(marked, |marked| marked.top.map(read))?;
+            let tuple = (head.top, head.marked, link.marked);
+            value_obeys_the_laws(tuple, bits)?;
+            keeps_provenance(tuple, |tuple| tuple.0.map(read))?;
         }
 
         #[test]

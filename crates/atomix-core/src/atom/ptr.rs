@@ -414,7 +414,7 @@ const impl<T: [const] Atom<Repr = *mut P>, P> PointerAtom for T {
 /// [`PointerAtom`], or a thin reference or a function pointer, stored as a
 /// [`ReprOf`](crate::ReprOf).
 ///
-/// A pointer word's pointer field is one, as the derive's bound says, and so is each of a pair's.
+/// A pointer word's pointer field is one, as the derive's bound says, and so is each of a tuple's.
 #[doc(hidden)]
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not stored as a pointer, so no tag can share its bits",
@@ -423,10 +423,10 @@ const impl<T: [const] Atom<Repr = *mut P>, P> PointerAtom for T {
     note = "a pointer to a slice, a `str` or a trait object is two words, which the derive sees where the field's type writes the pointer out, never through an alias"
 )]
 pub impl(crate) const trait PointerReprAtom:
-    [const] Atom<Repr: [const] PointerRepr>
+    [const] Atom<Repr: const PointerRepr>
 {
 }
 
 // `do_not_recommend`, so a value whose repr is no pointer reports `PointerReprAtom`'s message.
 #[diagnostic::do_not_recommend]
-const impl<T: [const] Atom<Repr: [const] PointerRepr>> PointerReprAtom for T {}
+const impl<T: [const] Atom<Repr: const PointerRepr>> PointerReprAtom for T {}

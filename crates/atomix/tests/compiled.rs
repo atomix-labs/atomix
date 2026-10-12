@@ -63,6 +63,9 @@ mod codegen {
     //! tag's `Acquire` update, whose write puts the reference back and needs no `Release`, and its
     //! pointer's load. Its store and exchange test no tag bit, since a reference is aligned, so
     //! they have no refusal at all.
+    //!
+    //! A tuple lowers as the struct of its fields does: `(NonNull<Node>, bool)`'s store, its flag's
+    //! test-and-set and its pointer's load are `Marked`'s, instruction for instruction.
 
     use crate::testing::codegen::Lowering::{
         self, InOrder, Only, Refuses, Retry, RetryOnly, SameAs,
@@ -98,6 +101,10 @@ mod codegen {
         ("reference_head_test_and_set_marked", SameAs("head_test_and_set_marked")),
         ("reference_head_load_top", SameAs("head_load_top")),
         ("reference_marked_store", Only(&["add", "stlr", "ret"])),
+        ("marked_test_and_set", Only(&["mov", "ldsetal", "and", "ret"])),
+        ("tuple_marked_store", SameAs("marked_store")),
+        ("tuple_marked_test_and_set", SameAs("marked_test_and_set")),
+        ("tuple_marked_load_node", SameAs("marked_load_node")),
         ("reference_head_compare_exchange", InOrder(&["add", "add", "casal", "cmp", "cset"])),
         ("head_load_marked", Only(&["ldr", "ubfx", "ret"])),
         ("head_set_marked", Only(&["mov", "ldset", "ret"])),
@@ -141,6 +148,7 @@ mod codegen {
         ("niche_filling_enum_load", InOrder(&["ldarb"])),
         ("field_load", Only(&["ldar", "ubfx", "ret"])),
         ("head_load_top", Only(&["ldar", "and", "ret"])),
+        ("marked_load_node", Only(&["ldar", "and", "ret"])),
         ("next_load_match", Only(&["ldar", "cbz", "ldr", "ret", "mov", "ret"])),
         ("child_load_match", Only(&["ldar", "ubfiz", "and", "ldr", "ret"])),
         ("child_load_leaf", Only(&["ldar", "tbz", "mov", "ret", "ldr", "ret"])),
@@ -226,6 +234,7 @@ mod codegen {
         ("niche_filling_enum_load", InOrder(&["ldaprb"])),
         ("field_load", Only(&["ldapr", "ubfx", "ret"])),
         ("head_load_top", Only(&["ldapr", "and", "ret"])),
+        ("marked_load_node", Only(&["ldapr", "and", "ret"])),
         ("next_load_match", Only(&["ldapr", "cbz", "ldr", "ret", "mov", "ret"])),
         ("child_load_match", Only(&["ldapr", "and", "ubfiz", "ldr", "ret"])),
         ("child_load_leaf", Only(&["ldapr", "tbz", "mov", "ret", "ldr", "ret"])),
@@ -387,6 +396,11 @@ mod codegen {
         ("reference_head_test_and_set_marked", SameAs("head_test_and_set_marked")),
         ("reference_head_load_top", SameAs("head_load_top")),
         ("reference_marked_store", Only(&["incq", "movq", "retq"])),
+        ("marked_test_and_set", Only(&["lock btsq", "setb", "retq"])),
+        ("marked_load_node", Only(&["movq", "andq", "retq"])),
+        ("tuple_marked_store", SameAs("marked_store")),
+        ("tuple_marked_test_and_set", SameAs("marked_test_and_set")),
+        ("tuple_marked_load_node", SameAs("marked_load_node")),
         ("reference_head_compare_exchange", InOrder(&["leaq", "addq", "lock cmpxchgq", "sete"])),
         ("next_load_match", Only(&["movq", "testq", "je", "movq", "retq", "movl", "retq"])),
         ("child_load_match", Only(&["movq", "movq", "andq", "andl", "movq", "retq"])),

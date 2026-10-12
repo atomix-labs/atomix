@@ -53,6 +53,13 @@
 //! encodes them alike, by one multiply, or by `ushl; addp` or `vpsllw; vpmovmskb`: no loop over its
 //! bits.
 //!
+//! A tuple's every operation is its repr's after its fields are joined, a shift and an or, and its
+//! field's a derived struct field's: `(u32, u32)`'s `or` is `lock orq` or `ldsetl`, its second
+//! field's load a shift, `(u32, bool)`'s flag `lock bts` at bit 32, and `(u8, u8, u16)`'s last
+//! field, at the top, adds in place. Beside a reference, a flag's `Relaxed` load and set and a
+//! count's `Relaxed` read are its twin's beside a `NonNull`, instruction for instruction, raised by
+//! no floor; and a hook beside a flag takes two words, its flag read from the second.
+//!
 //! A reference's and a function pointer's every operation is a raw pointer's, instruction for
 //! instruction, and a wide reference's a `u128`'s: a reference's load acquires and its store
 //! releases, as its floor asks, its `store_rmw` reading with `Relaxed`'s `ldr` as a raw pointer's
@@ -113,6 +120,11 @@ mod tests {
         ("word_store", Refuses(&["tbnz", "add", "stlr", "ret"])),
         ("nested_store", Refuses(&["tst", "b.ne", "add", "stlr", "ret"])),
         ("eight_bools_store", Only(&["mov", "movk", "movk", "movk", "mul", "lsr", "stlrb", "ret"])),
+        ("halves_store", Only(&["mov", "orr", "stlr", "ret"])),
+        ("marked_pointer_load_flag", Only(&["ldr", "and", "ret"])),
+        ("marked_reference_load_flag", SameAs("marked_pointer_load_flag")),
+        ("marked_reference_set_flag", SameAs("marked_pointer_set_flag")),
+        ("counted_reference_load_count", SameAs("counted_pointer_load_count")),
     ];
 
     /// Each read-modify-write on `aarch64` with LSE, the same at the floor, with LSE2 and on macOS:
@@ -271,6 +283,19 @@ mod tests {
                 "adrp", "add", "mov", "mov", "bl",
             ]),
         ),
+        ("halves_or", Only(&["mov", "orr", "ldsetl", "ret"])),
+        ("counted_bytes_fetch_add", Only(&["mov", "ldaddal", "ret"])),
+        ("live_quote_test_and_set", Only(&["mov", "ldsetal", "ubfx", "ret"])),
+        ("marked_pointer_set_flag", Only(&["mov", "ldset", "ret"])),
+        ("counted_pointer_load_count", Only(&["mov", "mov", "casp", "mov", "ret"])),
+        ("armed_load_flag", Only(&["mov", "mov", "casp", "and", "ret"])),
+        (
+            "slot_test_and_set_written",
+            Only(&[
+                "cmp", "b.hs", "lsl", "mov", "lsl", "ldsetal", "tst", "cset", "ret", "stp", "mov",
+                "adrp", "add", "mov", "mov", "bl",
+            ]),
+        ),
     ];
 
     /// Each load on `aarch64` without LSE2, at the `+lse` floor and at Android's default CPU,
@@ -297,6 +322,7 @@ mod tests {
         ("byte_load_literal", Only(&["ldar", "lsr", "ret"])),
         ("quarter_load", Refuses(&["cmp", "b.hs", "lsl", "ldar", "lsr", "and", "ret"])),
         ("quarter_place_load", Only(&["ldar", "ubfx", "ret"])),
+        ("halves_load_second", Only(&["ldar", "lsr", "ret"])),
         ("bools_load", InOrder(&["ldar", "dup", "tbl", "ushl", "and", "stp", "ret"])),
         ("bools_store", InOrder(&["ldp", "ushl", "addp", "fmov", "stlr", "ret"])),
         (
@@ -366,6 +392,7 @@ mod tests {
         ("byte_update", Retry(&["cmp", "b.hs", "ldapr", "casal", "bl"])),
         ("quarter_load", Refuses(&["cmp", "b.hs", "ldapr", "lsr", "and", "ret"])),
         ("quarter_place_load", Only(&["ldapr", "ubfx", "ret"])),
+        ("halves_load_second", Only(&["ldapr", "lsr", "ret"])),
     ];
 
     /// The rest on `aarch64` Linux with LSE2, `neoverse-v1`, which puts a word's instructions
@@ -687,6 +714,19 @@ mod tests {
                 "tst", "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl",
             ]),
         ),
+        ("halves_or", Only(&["mov", "orr", "ldxr", "orr", "stlxr", "cbnz", "ret"])),
+        ("counted_bytes_fetch_add", Only(&["ldaxr", "add", "stlxr", "cbnz", "mov", "ret"])),
+        ("live_quote_test_and_set", Only(&["ldaxr", "orr", "stlxr", "cbnz", "ubfx", "ret"])),
+        ("marked_pointer_set_flag", Only(&["ldxr", "orr", "stxr", "cbnz", "ret"])),
+        ("counted_pointer_load_count", InOrder(&["ldxp", "cmp", "stxp", "stxp"])),
+        ("armed_load_flag", InOrder(&["ldxp", "cmp", "stxp", "stxp", "and"])),
+        (
+            "slot_test_and_set_written",
+            Only(&[
+                "stp", "mov", "cmp", "b.hs", "lsl", "mov", "lsl", "ldaxr", "orr", "stlxr", "cbnz",
+                "tst", "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl",
+            ]),
+        ),
     ];
 
     /// Each function of the fixture on `x86_64` with `cmpxchg16b`: at the `x86-64-v3` floor on
@@ -862,6 +902,11 @@ mod tests {
             ]),
         ),
         ("eight_bools_store", Only(&["movabsq", "imulq", "shrq", "movb", "retq"])),
+        ("halves_or", Only(&["movl", "shlq", "orq", "lock orq", "retq"])),
+        ("halves_store", Only(&["movl", "shlq", "orq", "movq", "retq"])),
+        ("halves_load_second", Only(&["movq", "shrq", "retq"])),
+        ("counted_bytes_fetch_add", Only(&["movl", "lock xaddl", "retq"])),
+        ("live_quote_test_and_set", Only(&["lock btsq", "setb", "retq"])),
         ("halves_last_fetch_add_discarded", Only(&["lock addl", "retq"])),
         (
             "word_update",
@@ -888,6 +933,13 @@ mod tests {
                 "retq",
             ]),
         ),
+        ("marked_pointer_load_flag", Only(&["movq", "andb", "retq"])),
+        ("marked_pointer_set_flag", Only(&["lock orq", "retq"])),
+        ("counted_pointer_load_count", InOrder(&["lock cmpxchg16b"])),
+        ("armed_load_flag", InOrder(&["lock cmpxchg16b", "andb"])),
+        ("marked_reference_load_flag", SameAs("marked_pointer_load_flag")),
+        ("marked_reference_set_flag", SameAs("marked_pointer_set_flag")),
+        ("counted_reference_load_count", SameAs("counted_pointer_load_count")),
     ];
 
     /// The rest on `x86_64` with AVX, at the `x86-64-v3` floor: a 128-bit load or store is
@@ -1098,6 +1150,22 @@ mod tests {
                 "callq",
             ]),
         ),
+        (
+            "slot_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "pushq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
     ];
 
     /// The rest on `x86_64` macOS, where every function's frame record aligns the stack.
@@ -1159,6 +1227,21 @@ mod tests {
                 "cmpq",
                 "jae",
                 "leaq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "slot_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "shlq",
                 "lock btsq",
                 "setb",
                 "retq",
@@ -1418,6 +1501,24 @@ mod tests {
                 "movabsq", "movq", "imulq", "shrq", "imulq", "andl", "shrq", "orl", "movw", "retq",
             ]),
         ),
+        (
+            "slot_test_and_set_written",
+            Only(&[
+                "subq",
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "addq",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+                "ud2",
+            ]),
+        ),
     ];
 
     #[test]
@@ -1583,12 +1684,13 @@ mod tests {
                 "error[E0277]: `(NonNull<without_cmpxchg16b::Node>, \
                  NonNull<without_cmpxchg16b::Node>)` cannot be stored in an atomic",
                 "error[E0277]: `NonNull<[u64]>` cannot be stored in an atomic",
+                "error[E0277]: `(Option<fn(u64) -> u64>, bool)` cannot be stored in an atomic",
             ],
-            "the pair and the slice's pointer, each refused as no `Atom`:\n{stderr}"
+            "the pair, the slice's pointer and the armed hook, each refused as no `Atom`:\n{stderr}"
         );
         let advice = "= note: a 128-bit value needs `cmpxchg16b` on x86_64: build with `-C \
                       target-cpu=x86-64-v2` or newer";
-        assert_eq!(stderr.matches(advice).count(), 2, "each names the CPU it needs:\n{stderr}");
+        assert_eq!(stderr.matches(advice).count(), 3, "each names the CPU it needs:\n{stderr}");
         assert!(!stderr.contains("PointerMetadata"), "and no hidden trait:\n{stderr}");
     }
 

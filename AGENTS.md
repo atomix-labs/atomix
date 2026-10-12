@@ -123,6 +123,22 @@ What a change here keeps, beyond what the checks hold it to.
   provenance is no bits. `Packed<[T; N], R>` packs the elements at their range's
   width in the integer it states, as a packed struct packs its fields, and lends
   them alike.
+- A tuple of one to twelve values is laid out as `#[derive(Atom)]` lays out the
+  struct of its fields, by the hidden table of shapes in
+  `crates/atomix-core/src/atom/tuple/table.rs`, which `tests/tuples.rs` writes
+  and checks: fields stored as bits side by side in slots of their reprs'
+  widths; one pointer, the others in its low bits up to 29 bits, else in an
+  integer word beside it; two pointers, the others in the first one's low bits.
+  Beside a function pointer, the others take an integer word whatever their
+  bits, since code leaves no low bit clear, which its repr's
+  `PointerRepr::Pointee` says by type, `Data` or `Code`, never by an alignment.
+  Every use of a tuple, its encode, decodes and projection, refuses one whose
+  first pointer leaves too few bits for them. A pointer field is set apart as a
+  `*mut ()` and rebuilt by its own repr's `PointerRepr::from_raw`, so a sealed
+  `ReprOf` keeps its seal. Its projection is a tuple of its fields' places,
+  `fields().0`, on the derive's own `Field` paths, and its last field adds in
+  place where the slots fill the repr and every repr of its slot decodes,
+  `Total`, as an array's last element asks `AtomAdd`.
 - A pointer word, a struct of pointers beside tags, and a pointer enum, an enum
   some of whose variants hold a pointer, keep their tags in the low bits a
   pointee's alignment leaves clear, or, a pointer word of two words, in an
@@ -150,7 +166,7 @@ What a change here keeps, beyond what the checks hold it to.
   and so does a change of any bit but the low bits its pointee's alignment
   leaves clear, a word's tags, so a safe `from_repr` hands out no reference or
   function pointer a value did not give, and refuses a tagged one. A pointer
-  word or a pair holds a reference as it holds a `NonNull`, and a pointer word
+  word or a tuple holds a reference as it holds a `NonNull`, and a pointer word
   keeps its tags in those low bits, to which `ReprOf` confines each operation's
   mask. A value that holds a reference takes no ordering weaker than an
   `Acquire` read and a `Release` write: the floor is its repr's,

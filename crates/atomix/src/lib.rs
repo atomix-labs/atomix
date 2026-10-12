@@ -4,8 +4,8 @@
 //! instruction reads and writes, and decodes it on the way out. The integer, `bool` and pointer
 //! atomics are its aliases (`AtomicU64 = Atomic<u64>`), and any value implementing [`Atom`] is one
 //! more: a `NonZero`, a `char`, a float, a ranged integer, a shared reference, a function pointer,
-//! an array, an `Option` that spends a spare repr on `None`, and a struct or an enum that derives
-//! it.
+//! an array, a tuple, an `Option` that spends a spare repr on `None`, and a struct or an enum that
+//! derives it.
 //!
 //! A crate depends on `atomix-rs`, since crates.io's `atomix` is an unrelated 2017 placeholder:
 //!
@@ -39,15 +39,17 @@
 //!   forge, and a reference's operations take no ordering weaker than an `Acquire` read and a
 //!   `Release` write. An array `[T; N]` holds each element in a slot as wide as its repr, element 0
 //!   lowest: four bytes in a `u32`, their own bytes, and 64 `bool`s in a `u64`; [`Packed`] holds
-//!   each at the bits its range needs, in an integer it states. Two words hold a pair `(P, Q)` of
-//!   values stored as pointers, references among them, two of them as an array, and a pointer to a
-//!   slice, a `str` or a trait object. With the `derive` feature, each derives: `Atom` for a struct
-//!   or an enum, a pointer word or a pointer enum among them, which keeps small fields as tags in
-//!   its pointer's low bits and the pointer's provenance, and each capability for a newtype whose
-//!   field has it. A pointer word takes two words where a second pointer, a wide one or tags no
-//!   alignment holds need them. [`RangedU64<MIN, MAX>`](RangedU64) and its siblings, `RangedU8` to
-//!   `RangedIsize`, hold an integer from `MIN` to `MAX`, and [`RangeError`] and [`ParseRangeError`]
-//!   say why one refused an integer or a text.
+//!   each at the bits its range needs, in an integer it states. A tuple of one to twelve values is
+//!   laid out as the derived struct of its fields would be, its fields places through `fields().0`
+//!   and its kin. Two words hold two values stored as pointers, references among them, as a tuple
+//!   or an array, a pointer beside more tags than its word holds, a function pointer beside any,
+//!   and a pointer to a slice, a `str` or a trait object. With the `derive` feature, each derives:
+//!   `Atom` for a struct or an enum, a pointer word or a pointer enum among them, which keeps small
+//!   fields as tags in its pointer's low bits and the pointer's provenance, and each capability for
+//!   a newtype whose field has it. A pointer word takes two words where a second pointer, a wide
+//!   one or tags no alignment holds need them. [`RangedU64<MIN, MAX>`](RangedU64) and its siblings,
+//!   `RangedU8` to `RangedIsize`, hold an integer from `MIN` to `MAX`, and [`RangeError`] and
+//!   [`ParseRangeError`] say why one refused an integer or a text.
 //! - **Orderings.** The [`ordering`] types, each accepted only where it means something, and the
 //!   [`fence`](fn@fence) and [`compiler_fence`] they order.
 //! - **Primitives.** [`Primitive`], [`ExactBits`] where the bits are the whole value, a

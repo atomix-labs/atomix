@@ -25,6 +25,7 @@ mod ptr;
 
 #[doc(hidden)]
 pub use self::exclusive::RawValue;
+pub(crate) use self::field::ReachesTop;
 #[doc(hidden)]
 pub use self::field::{Array, HasPackedField, PlaceTail, Reach, project_field};
 pub use self::field::{

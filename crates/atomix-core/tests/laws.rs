@@ -2,9 +2,9 @@
 //! decodes back to it; a repr that decodes re-encodes to itself, unchecked too; each validity's
 //! promise holds; a ranged integer's repr decodes, as itself, exactly where it lies in its range;
 //! `None` takes a spare repr: zero where zero is the niche, else one outside its value's range;
-//! no bits make a reference or a function pointer, but null; and an array's repr decodes where
-//! each slot's does, and a `Packed` one's where each field's does and the
-//! bits above extend the last.
+//! no bits make a reference or a function pointer, but null; an array's repr decodes where each
+//! slot's does, and a `Packed` one's where each field's does and the bits above extend the last;
+//! and a tuple's of bits where each field's does in its slot.
 //!
 //! Each law runs on every repr of a byte, on the edges of each width and range, and on random bits;
 //! a 16-bit ranged integer's, on every repr of 16 bits too.
@@ -326,12 +326,28 @@ mod tests {
         Ok(())
     }
 
+    /// Every law on the low bits of `bits` as the repr of tuples of each shape of bits and
+    /// validity, and on the tuples they decode as.
+    fn tuple_laws(bits: u128) -> Result<(), TestCaseError> {
+        array_laws!(bits;
+            Total => (u8,), Total => (u8, u8), ZeroValid => (u8, u8, u8), Total => (i16, u16),
+            ZeroValid => (bool, u8), ZeroValid => (u32, bool), Total => (u32, i32),
+            ZeroNiche => (NonZero<u8>, u16), Partial => (RangedU8<1, 10>, u8),
+            Partial => (u8, RangedI8<-1, 1>), ZeroValid => (char, bool),
+            ZeroValid => Option<(u8, u8, u8)>,
+        );
+        #[cfg(wide)]
+        array_laws!(bits; Total => (u64, u64), ZeroValid => (u64, u32, u8));
+        Ok(())
+    }
+
     #[test]
     fn every_byte_obeys_the_laws() {
         for bits in 0..=u128::from(u8::MAX) {
             assert_holds(narrow_integer_laws(bits, bits.wrapping_add(1)));
             assert_holds(narrow_ranged_laws(bits, bits.wrapping_add(1)));
             assert_holds(array_laws(bits));
+            assert_holds(tuple_laws(bits));
             let byte = u8::from_bits(bits);
             assert_holds(decodes_as_promised::<ZeroValid, ()>(byte));
             assert_holds(decodes_as_promised::<ZeroValid, PhantomData<str>>(byte));
@@ -366,6 +382,7 @@ mod tests {
             assert_holds(float_laws(bits));
             assert_holds(pointer_laws(bits));
             assert_holds(array_laws(bits));
+            assert_holds(tuple_laws(bits));
             #[cfg(wide)]
             assert_holds(wide_laws(bits, bits.wrapping_sub(1)));
         }
@@ -377,6 +394,7 @@ mod tests {
         none_laws!(NonZero<i8>, NonZero<i16>, NonZero<i32>, NonZero<i64>, NonZero<isize>);
         none_laws!(char, Option<char>, (), Option<()>, PhantomData<str>);
         none_laws!([u8; 3], [bool; 7], [NonZero<u8>; 4], [char; 2], [RangedU8<1, 10>; 2]);
+        none_laws!((u8, u8, u8), (bool, bool), (NonZero<u8>, u16), (RangedU8<1, 10>, u8), (char,));
         none_laws!(Packed<[bool; 5], u8>, Packed<[NonZero<u8>; 2], u16>, Packed<[RangedU8<1, 3>; 4], u8>);
         none_laws!(RangedU8<1, 10>, RangedI8<-5, 5>, RangedI8<-100, -10>, RangedU16<3>);
         none_laws!(RangedI16<-300, 300>, RangedU32<7, 7>, RangedI32<{ i32::MIN }, -1>);
@@ -431,6 +449,11 @@ mod tests {
         #[test]
         fn arrays_obey_the_laws(bits in edge_or_random_bits(&[])) {
             array_laws(bits)?;
+        }
+
+        #[test]
+        fn tuples_obey_the_laws(bits in edge_or_random_bits(&[])) {
+            tuple_laws(bits)?;
         }
 
         #[test]

@@ -1,6 +1,6 @@
-//! Two words where no atomic holds them, `x86_64` without `cmpxchg16b`: a pair of pointers' and a
-//! slice pointer's exchange, which the `x86-64-refused` feature adds, each refused as a 128-bit
-//! value is, naming the CPU it needs.
+//! Two words where no atomic holds them, `x86_64` without `cmpxchg16b`: a pair of pointers', a
+//! slice pointer's and a function pointer beside a flag's exchange, which the `x86-64-refused`
+//! feature adds, each refused as a 128-bit value is, naming the CPU it needs.
 
 use core::ptr::NonNull;
 
@@ -27,5 +27,16 @@ pub fn pair_compare_exchange_without_cmpxchg16b(
 pub fn slice_compare_exchange_without_cmpxchg16b(
     atomic: &Atomic<NonNull<[u64]>>, current: NonNull<[u64]>, new: NonNull<[u64]>,
 ) -> Result<NonNull<[u64]>, NonNull<[u64]>> {
+    atomic.compare_exchange(current, new, AcqRel, Acquire)
+}
+
+/// A hook beside whether it is armed: two words, since a function's code leaves no low bit clear
+/// for the flag.
+pub type Armed = (Option<fn(u64) -> u64>, bool);
+
+#[unsafe(no_mangle)]
+pub fn armed_compare_exchange_without_cmpxchg16b(
+    atomic: &Atomic<Armed>, current: Armed, new: Armed,
+) -> Result<Armed, Armed> {
     atomic.compare_exchange(current, new, AcqRel, Acquire)
 }

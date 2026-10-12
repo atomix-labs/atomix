@@ -213,6 +213,41 @@ impl<R: Primitive> ReprRange<R> {
         )
     }
 
+    /// The range of integer fields side by side from bit 0, each `(start, end, width)` a field's
+    /// range in a slot of `width` bits, the bits above them clear: each slot's bounds side by side
+    /// where none below the top wraps; a wrapping one below the top holds any bits; and a wrapping
+    /// top one, below the repr's top, makes the range every repr up to its end.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn of_fields(fields: &[(u128, u128, u32)]) -> Self {
+        let (mut low, mut high, mut offset) = (0, 0, 0_u32);
+        let mut rest = fields;
+        while let [(start, end, width), after @ ..] = rest {
+            let (start, end, width) = (*start, *end, *width);
+            let span = Span { start, end, width };
+            let next = offset.saturating_add(width);
+            if span.wraps() && !after.is_empty() {
+                high |= mask(width).unbounded_shl(offset);
+            } else if span.wraps() && next < R::BITS {
+                return Self::from_bounds(0, mask(next));
+            } else {
+                low |= start.unbounded_shl(offset);
+                high |= end.unbounded_shl(offset);
+            }
+            offset = next;
+            rest = after;
+        }
+        let largest = mask(R::BITS);
+        Self::from_bounds(low & largest, high & largest)
+    }
+
+    /// The range's bounds, its start and end as unsigned bits.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn bounds(self) -> (u128, u128) {
+        (self.start, self.end)
+    }
+
     /// The smallest range that holds this one and `bits`, a repr's unsigned bits: grown down to
     /// them or up to them, whichever adds fewer reprs, down on a tie.
     #[inline]

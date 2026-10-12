@@ -10,9 +10,14 @@ use core::any::type_name;
 use core::ptr;
 
 use crate::atom::{Atom, AtomAdd, AtomBitwise, AtomOrd, PointerAtom};
-pub use crate::atom::{FieldPatternsDecode, PointerReprAtom, Slots};
+pub use crate::atom::{
+    FieldPatternsDecode, Fill, Fold, Integer, IntegerWord, Integers, IntegersBeside, LastField,
+    LastReach, Padding, Pointer, PointerReprAtom, Pointers, Push, ReachOf, Shape, Slots, Tagged,
+    TupleFieldRepr, TwoPointers,
+};
 pub use crate::atomic::{Array, HasPackedField, PlaceTail, RawValue, Reach, project_field};
 use crate::message::{Message, refuse};
+pub use crate::primitive::{Code, Data};
 use crate::primitive::{CompareExchange, ExactBits, Primitive};
 #[cfg(wide)]
 use crate::primitive::{DoubleWord, Word};

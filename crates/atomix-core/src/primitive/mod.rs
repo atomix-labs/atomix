@@ -161,10 +161,31 @@ macro_rules! pointer_repr {
         /// A primitive that is one pointer, its provenance kept: a `*mut T`, or the [`ReprOf`] of
         /// a thin reference or a function pointer.
         ///
-        /// A pointer word's pointer field is stored as one, and so is each of a pair's, which a
-        /// double word holds.
+        /// A pointer word's pointer field is stored as one, and so is each of a tuple's, which a
+        /// double word holds where there are two.
+        ///
+        /// # Safety
+        /// `from_raw(into_raw(r))` is `r`, its provenance kept: a sealed repr rebuilt so is one
+        /// its type held, and a tuple's shape gives back each pointer as it was.
         #[doc(hidden)]
-        pub impl(crate) const trait PointerRepr: [const] Primitive + CompareExchange $($word)* {}
+        #[expect(unsafe_code, reason = "a sealed repr's rebuild trusts the round trip")]
+        pub impl(crate) const unsafe trait PointerRepr:
+            [const] Primitive + CompareExchange $($word)*
+        {
+            /// What it points to, by its type: [`Data`], whose alignment may leave its low bits
+            /// clear, or [`Code`], a function's, which leaves none, where a tuple's integer fields
+            /// beside it take a word of their own.
+            type Pointee;
+            /// The pointer, its provenance kept, as a `*mut ()`: a tuple's pointer field, set
+            /// apart from its others until the tuple's shape rebuilds it.
+            fn into_raw(self) -> *mut ();
+            /// The repr `into_raw` gave `pointer`.
+            ///
+            /// # Safety
+            /// `pointer` is one `into_raw` gave a repr of this type.
+            #[expect(unsafe_code, reason = "a sealed repr is rebuilt only from what it gave")]
+            unsafe fn from_raw(pointer: *mut ()) -> Self;
+        }
     };
 }
 
@@ -172,6 +193,18 @@ macro_rules! pointer_repr {
 pointer_repr!(+ const Word);
 #[cfg(not(wide))]
 pointer_repr!();
+
+/// What a pointer to data points to, as [`PointerRepr::Pointee`] names it: a value, whose
+/// alignment may leave the pointer's low bits clear.
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct Data;
+
+/// What a function pointer points to, as [`PointerRepr::Pointee`] names it: code, whose alignment
+/// no type says, so it leaves no low bit clear.
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct Code;
 
 /// A primitive whose bits are its whole value: `bool` or an integer, never a pointer, whose
 /// provenance its bits do not hold.

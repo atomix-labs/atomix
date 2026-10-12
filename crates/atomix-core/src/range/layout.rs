@@ -114,6 +114,21 @@ impl PackedField {
         Self::from_span(reprs.span(), offset)
     }
 
+    /// The field, moved to `offset`.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn with_offset(self, offset: u32) -> Self {
+        Self { offset, ..self }
+    }
+
+    /// The place of a pointer field, its own tags in its low `tag_width` bits, at `offset`: a
+    /// tuple's pointer field, whose value is read through the whole word.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn of_pointer(tag_width: u32, offset: u32) -> Self {
+        Self::from_span(Span { start: 0, end: mask(tag_width), width: usize::BITS }, offset)
+    }
+
     /// A field of the numbers of `reprs`, whose lowest bit lies at `offset`.
     #[inline]
     #[must_use]

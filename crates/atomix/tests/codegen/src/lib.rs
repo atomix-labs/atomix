@@ -634,3 +634,31 @@ pub fn marked_pair_compare_exchange(
 ) -> Result<MarkedPair, MarkedPair> {
     atomic.compare_exchange(current, new, AcqRel, Acquire)
 }
+
+/// A node and a mark at bit 0, as a tuple: `Marked`'s twin.
+pub type TupleMarked = (NonNull<Node>, bool);
+
+#[unsafe(no_mangle)]
+pub fn tuple_marked_store(atomic: &Atomic<TupleMarked>, node: NonNull<Node>) {
+    atomic.store((node, true), Release);
+}
+
+#[unsafe(no_mangle)]
+pub fn marked_test_and_set(atomic: &Atomic<Marked>) -> bool {
+    atomic.fields().marked.test_and_set(AcqRel)
+}
+
+#[unsafe(no_mangle)]
+pub fn tuple_marked_test_and_set(atomic: &Atomic<TupleMarked>) -> bool {
+    atomic.fields().1.test_and_set(AcqRel)
+}
+
+#[unsafe(no_mangle)]
+pub fn marked_load_node(atomic: &Atomic<Marked>) -> NonNull<Node> {
+    atomic.fields().node.load(Acquire)
+}
+
+#[unsafe(no_mangle)]
+pub fn tuple_marked_load_node(atomic: &Atomic<TupleMarked>) -> NonNull<Node> {
+    atomic.fields().0.load(Acquire)
+}

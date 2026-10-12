@@ -106,7 +106,7 @@ impl Tags {
     /// These tags, beside the tags of a word that take `mask` and are `bits`, each in its place.
     #[inline]
     #[must_use]
-    pub(super) const fn with(self, mask: usize, bits: usize) -> Self {
+    pub(crate) const fn with(self, mask: usize, bits: usize) -> Self {
         Self { mask: self.mask | mask, bits: self.bits | (bits & mask) }
     }
 

@@ -4,12 +4,11 @@ mod array;
 mod bool_array;
 mod option;
 mod packed;
-#[cfg(wide)]
-mod pair;
 mod ptr;
 mod ranged;
 mod reference;
 mod scalar;
+mod tuple;
 
 pub use self::array::Slots;
 pub use self::packed::Packed;
@@ -20,6 +19,10 @@ pub use self::ptr::{PointerAtom, PointerReprAtom};
 // For deranged's ranged integers, which take the impls atomix's own do.
 #[cfg(feature = "deranged-05")]
 pub(crate) use self::ranged::ranged_atom;
+pub use self::tuple::{
+    Fill, Fold, Integer, IntegerWord, Integers, IntegersBeside, LastField, LastReach, Padding,
+    Pointer, Pointers, Push, ReachOf, Shape, Tagged, TupleFieldRepr, TwoPointers,
+};
 use crate::primitive::{Bitwise, CompareExchange, ExactBits, FetchAdd, Primitive};
 use crate::range::{PointeeAlignment, ReprRange, Tags};
 use crate::validity::{Partial, Total, Validity};
@@ -99,7 +102,7 @@ use crate::validity::{Partial, Total, Validity};
 #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot be stored in an atomic",
     label = "not `Atom`",
-    note = "an atomic value is a primitive, a pointer or a shared reference, an array of atomic values that fits 128 bits, a core type such as `NonZero<u32>`, or a type that derives `Atom`: `Atom`'s implementors list each",
+    note = "an atomic value is a primitive, a pointer or a shared reference, an array or a tuple of atomic values that fits 128 bits, a core type such as `NonZero<u32>`, or a type that derives `Atom`: `Atom`'s implementors list each",
     note = "for a type of your own, derive it, `#[derive(Atom)]`, with atomix's `derive` feature, or keep each promise of `Atom`'s `# Safety` section in a `const unsafe impl`",
     note = "a function's name is a value of its own type, not a function pointer: name the pointer's type, as `Atomic<fn(&str) -> usize>` does"
 )]

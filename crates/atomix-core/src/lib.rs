@@ -27,6 +27,10 @@
 //! [`Packed`] packs an array at its elements' width in an integer it states: sixteen
 //! `RangedU8<0, 3>` in a `u32`.
 //!
+//! A tuple of one to twelve values is laid out as the derived struct of its fields would be, each
+//! field a place of its own: `(Option<NonNull<Node>>, bool)` is one word, its flag in the pointer's
+//! low bits, and `HEAD.fields().1.test_and_set(AcqRel)` is `lock bts`, or `ldsetal`, on it.
+//!
 //! Two pointers, or one beside a counter or a slice's length, share a 16-byte atomic, a
 //! [`DoubleWord`], which exposes each pointer's provenance, as no Rust operation keeps one through
 //! 16 bytes: `HEAD.compare_exchange(pushed, popped, AcqRel, Acquire)` pops a derived Treiber
