@@ -1,7 +1,9 @@
 //! The ranged integers, [`RangedU8`] to [`RangedIsize`]: each an integer held to its range.
 
 use core::cmp::Ordering;
-use core::fmt::{self, Binary, Debug, Display, Formatter, LowerHex, Octal, UpperHex};
+use core::fmt::{
+    self, Binary, Debug, Display, Formatter, LowerExp, LowerHex, Octal, UpperExp, UpperHex,
+};
 use core::hash::{Hash, Hasher};
 use core::iter::Step;
 use core::marker::StructuralPartialEq;
@@ -46,9 +48,12 @@ macro_rules! ranged {
         ranged!(@construct $name $int);
         ranged!(@arithmetic $name $int);
         // The traits are written over `get()`: the field's pattern type implements only `Clone`
-        // and `Copy`, so no derive, std's or derive_more's, can read it.
+        // and `Copy`, so no derive, std's or derive_more's, can read it. Each is `const` where
+        // `NonZero`'s is.
         ranged!(@compare $name $int);
-        ranged!(@format $name $int: Debug, Display, Binary, Octal, LowerHex, UpperHex);
+        ranged!(
+            @format $name $int: Debug, Display, Binary, Octal, LowerHex, UpperHex, LowerExp, UpperExp
+        );
         ranged!(@convert $name $int);
         ranged!(@step $name $int);
     };
@@ -62,7 +67,8 @@ macro_rules! ranged {
         /// `Option` keeps its `None` there, in the integer's own width. As with `NonZero`, an
         /// operation is infallible only where the range is closed under it: [`min`](Ord::min),
         /// [`max`](Ord::max) and [`clamp`](Ord::clamp) are, and arithmetic is `checked_` or
-        /// `saturating_`. There is no `Default`, since zero may lie outside the range.
+        /// `saturating_`. There is no `Default`, since zero may lie outside the range. Its
+        /// comparisons, conversions and steps are `const`, as `NonZero`'s are.
         ///
         /// Wherever its integer is an [`Atom`](crate::Atom), so is it: an [`Atomic`](crate::Atomic)
         /// stores it as its integer, and an `Option`'s `None` as an integer outside the range, so
@@ -102,7 +108,8 @@ macro_rules! ranged {
         ///
         /// [`NonZero`]: core::num::NonZero
         #[repr(transparent)]
-        #[derive(Clone, Copy)]
+        #[derive(Copy)]
+        #[derive_const(Clone)]
         pub struct $name<const MIN: $int, const MAX: $int = { $int::MAX }>(
             /// The integer, as a pattern type whose values are those from `MIN` to `MAX`.
             pattern_type!($int is MIN..=MAX),
@@ -227,26 +234,26 @@ macro_rules! ranged {
 
     // Equality, order and hashing, the integer's, within one range.
     (@compare $name:ident $int:ident) => {
-        impl<const MIN: $int, const MAX: $int> PartialEq for $name<MIN, MAX> {
+        const impl<const MIN: $int, const MAX: $int> PartialEq for $name<MIN, MAX> {
             #[inline]
             fn eq(&self, other: &Self) -> bool {
                 self.get() == other.get()
             }
         }
 
-        impl<const MIN: $int, const MAX: $int> Eq for $name<MIN, MAX> {}
+        const impl<const MIN: $int, const MAX: $int> Eq for $name<MIN, MAX> {}
 
         // A constant is a pattern only where its `PartialEq` is structural, as a derived one is.
         impl<const MIN: $int, const MAX: $int> StructuralPartialEq for $name<MIN, MAX> {}
 
-        impl<const MIN: $int, const MAX: $int> PartialOrd for $name<MIN, MAX> {
+        const impl<const MIN: $int, const MAX: $int> PartialOrd for $name<MIN, MAX> {
             #[inline]
             fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
                 Some(self.cmp(other))
             }
         }
 
-        impl<const MIN: $int, const MAX: $int> Ord for $name<MIN, MAX> {
+        const impl<const MIN: $int, const MAX: $int> Ord for $name<MIN, MAX> {
             #[inline]
             fn cmp(&self, other: &Self) -> Ordering {
                 self.get().cmp(&other.get())
@@ -272,14 +279,14 @@ macro_rules! ranged {
 
     // To the integer, and from it or from text, checked against the range.
     (@convert $name:ident $int:ident) => {
-        impl<const MIN: $int, const MAX: $int> From<$name<MIN, MAX>> for $int {
+        const impl<const MIN: $int, const MAX: $int> From<$name<MIN, MAX>> for $int {
             #[inline]
             fn from(value: $name<MIN, MAX>) -> Self {
                 value.get()
             }
         }
 
-        impl<const MIN: $int, const MAX: $int> TryFrom<$int> for $name<MIN, MAX> {
+        const impl<const MIN: $int, const MAX: $int> TryFrom<$int> for $name<MIN, MAX> {
             type Error = RangeError<$int>;
 
             #[inline]
@@ -288,19 +295,24 @@ macro_rules! ranged {
             }
         }
 
-        impl<const MIN: $int, const MAX: $int> FromStr for $name<MIN, MAX> {
+        const impl<const MIN: $int, const MAX: $int> FromStr for $name<MIN, MAX> {
             type Err = ParseRangeError<$int>;
 
             fn from_str(text: &str) -> Result<Self, Self::Err> {
-                let integer = $int::from_str(text).map_err(ParseRangeError::Integer)?;
-                Self::try_from(integer).map_err(ParseRangeError::Range)
+                match $int::from_str(text) {
+                    Ok(integer) => match Self::try_from(integer) {
+                        Ok(value) => Ok(value),
+                        Err(refused) => Err(ParseRangeError::Range(refused)),
+                    },
+                    Err(refused) => Err(ParseRangeError::Integer(refused)),
+                }
             }
         }
     };
 
     // Steps through the range, so `MIN..=MAX` iterates; a step past either end saturates there.
     (@step $name:ident $int:ident) => {
-        impl<const MIN: $int, const MAX: $int> Step for $name<MIN, MAX> {
+        const impl<const MIN: $int, const MAX: $int> Step for $name<MIN, MAX> {
             #[inline]
             fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
                 Step::steps_between(&start.get(), &end.get())

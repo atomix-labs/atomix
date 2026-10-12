@@ -1,6 +1,9 @@
 //! Each of the twelve ranged integers at the edges of its range and of its integer, each refusal
-//! compared whole; and in a debug build, `new_unchecked`'s check of its contract.
+//! compared whole; its comparisons, conversions and steps in a constant; and in a debug build,
+//! `new_unchecked`'s check of its contract.
 
+use core::cmp::Ordering;
+use core::iter::Step;
 use core::str::FromStr;
 
 use super::{
@@ -73,6 +76,24 @@ fn each_ranged_integer_parses_its_range_and_refuses_the_rest() {
     }
     each_ranged_integer!(check);
 }
+
+// Each ranged integer compares, converts and steps in a constant.
+const _: () = {
+    macro_rules! check {
+        ($name:ident($int:ident)) => {{
+            type Depth = $name<1, 10>;
+            let (three, four) = (Depth::MIN.saturating_add(2), Depth::MIN.saturating_add(3));
+            assert!(three == three.clone() && three != four, "equal to its clone, in const");
+            assert!(three < four && matches!(three.cmp(&four), Ordering::Less), "and ordered");
+            assert!($int::from(four) == 4, "to its integer");
+            assert!(Depth::try_from(11).is_err(), "from one, checked");
+            assert!(matches!(Depth::from_str("10"), Ok(Depth::MAX)), "from text, checked");
+            assert!(matches!(Step::forward_checked(four, 6), Some(Depth::MAX)), "and stepped");
+            assert!(Step::backward_checked(four, 4).is_none(), "but never past `MIN`");
+        }};
+    }
+    each_ranged_integer!(check);
+};
 
 #[cfg(debug_assertions)]
 #[test]

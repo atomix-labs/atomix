@@ -287,6 +287,7 @@ mod tests {
             "1010 12 a 0xA",
             "and in each base"
         );
+        assert_eq!(format!("{depth:e} {:E}", PriceMove::MIN), "1e1 -5E0", "and as exponents");
         assert_eq!(format!("{:?}", Some(PriceMove::MIN)), "Some(-5)", "and in an `Option`");
     }
 
