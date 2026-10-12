@@ -410,10 +410,10 @@ impl Span {
         let signed = if first > last {
             self.width
         } else {
-            let (low, high) = (signed_bit_length(first), signed_bit_length(last));
+            let (low, high) = (signed_bit_width(first), signed_bit_width(last));
             if low > high { low } else { high }
         };
-        let unsigned = if self.wraps() { self.width } else { bit_length(self.end) };
+        let unsigned = if self.wraps() { self.width } else { self.end.bit_width() };
         if signed < unsigned {
             FieldLayout { width: signed, signed: true }
         } else {
@@ -551,20 +551,13 @@ pub(crate) const fn mask(width: u32) -> u128 {
     u128::MAX.unbounded_shr(u128::BITS.saturating_sub(width))
 }
 
-/// How many bits `value` needs unsigned: none for zero.
-#[inline]
-#[must_use]
-const fn bit_length(value: u128) -> u32 {
-    u128::BITS.wrapping_sub(value.leading_zeros())
-}
-
 /// How many bits `value` needs in two's complement: one for 0 and -1.
 #[inline]
 #[must_use]
-const fn signed_bit_length(value: i128) -> u32 {
+const fn signed_bit_width(value: i128) -> u32 {
     // A negative value needs what its complement, which is not negative, needs.
-    let magnitude = value ^ value.unbounded_shr(i128::BITS.wrapping_sub(1));
-    bit_length(magnitude.cast_unsigned()).wrapping_add(1)
+    let complement = value ^ value.unbounded_shr(i128::BITS.wrapping_sub(1));
+    complement.cast_unsigned().bit_width().wrapping_add(1)
 }
 
 /// The two's complement value of the low `width` bits of `bits`.
