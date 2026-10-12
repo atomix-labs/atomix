@@ -8,7 +8,14 @@
 //! and a tag set Relaxed beside it publishes it still, as one updated with Acquire alone does,
 //! whose read sees it whole.
 //!
-//! Each `should_panic` model is a bug loom must report; the rest hold under every interleaving.
+//! The structures the cookbook and the examples build are modelled from the files their pages and
+//! the examples include: a free list hands each node to one thread and takes each back, a lock word
+//! keeps two holders apart, a quote is taken once and whole, a stale key finds its value or
+//! nothing, a sequence lock is read whole, a bitmap hands each slot out once, and a node linked
+//! after one on its way out is not lost.
+//!
+//! Each `should_panic` model is a bug loom must report; the rest hold under every interleaving loom
+//! explores.
 
 // Loom's types exist only under `--cfg loom`; a crate-level `cfg` would empty the crate, and with
 // it the attributes `just check-rust-lints` injects.
@@ -81,6 +88,7 @@ mod tests {
         });
     }
 
+    // ANCHOR: publish
     /// A value published behind the bit `ready`, which the writer sets with `order`.
     fn publish<O: RmwOrdering<bool> + Send + Sync + 'static>(order: O) {
         check(move || {
@@ -109,6 +117,7 @@ mod tests {
     fn a_relaxed_set_does_not() {
         publish(Relaxed);
     }
+    // ANCHOR_END: publish
 
     /// A node, aligned to 8, its value a loom atomic so a model sees its accesses.
     #[repr(align(8))]
@@ -434,6 +443,108 @@ mod tests {
             }
             writer.join().expect("the writer does not panic");
             marker.join().expect("the marker does not panic");
+        });
+    }
+}
+
+// The structures the examples build, from the files the examples include, so the code they run is
+// the code loom checks.
+#[cfg(all(loom, feature = "derive"))]
+#[cfg(test)]
+#[path = "../examples/free-list/free_list.rs"]
+mod free_list;
+#[cfg(all(loom, feature = "derive"))]
+#[cfg(test)]
+#[path = "../examples/lock-word/lock_word.rs"]
+mod lock_word;
+#[cfg(all(loom, feature = "derive"))]
+#[cfg(test)]
+#[path = "../examples/quote-book/quote_book.rs"]
+mod quote_book;
+
+/// Models of the structures the examples build, two or three threads at a time, under every
+/// interleaving loom explores.
+#[cfg(all(loom, feature = "derive"))]
+#[cfg(test)]
+mod structures {
+    use core::num::NonZero;
+
+    use atomix::model::{Arc, check, thread};
+    use atomix::ordering::Relaxed;
+    use atomix::{AtomicU64, RangedU64};
+
+    use crate::free_list::{FreeList, Index};
+    use crate::lock_word::{LockWord, OwnerId};
+    use crate::quote_book::{Book, Side};
+
+    #[test]
+    fn a_free_list_hands_its_node_from_holder_to_holder() {
+        check(|| {
+            let shared = Arc::new((FreeList::new(1), AtomicU64::new(0)));
+            // Bumps the node's count, by a load and a store that only the list's pop and push keep
+            // in order: a holder that missed the last one's bump would lose it.
+            let hold_once = |shared: &(FreeList, AtomicU64)| {
+                let (list, bumps) = shared;
+                let node = list.pop()?;
+                // ORDERING: Relaxed: the pop's Acquire and the push's Release order the two.
+                bumps.store(bumps.load(Relaxed).wrapping_add(1), Relaxed);
+                list.push(node);
+                Some(node)
+            };
+            let other = {
+                let shared = Arc::clone(&shared);
+                thread::spawn(move || hold_once(&shared))
+            };
+            let held = [hold_once(&shared), other.join().expect("no thread panics")];
+            let holders: u64 = held.iter().map(|node| u64::from(node.is_some())).sum();
+            assert_eq!(shared.1.load(Relaxed), holders, "each holder saw the last one's bump");
+            assert_eq!(shared.0.pop().map(Index::get), Some(0), "and the node came back");
+        });
+    }
+
+    #[test]
+    fn a_lock_word_keeps_two_holders_apart() {
+        check(|| {
+            let shared = Arc::new((LockWord::new(), AtomicU64::new(0)));
+            let count_once = |shared: &(LockWord, AtomicU64), owner: u64| {
+                let (lock, count) = shared;
+                let owner = OwnerId(RangedU64::MIN.saturating_add(owner));
+                let _guard = lock.lock(owner).expect("no holder panics");
+                // ORDERING: Relaxed: the lock orders the two accesses.
+                count.store(count.load(Relaxed).wrapping_add(1), Relaxed);
+            };
+            let other = {
+                let shared = Arc::clone(&shared);
+                thread::spawn(move || count_once(&shared, 1))
+            };
+            count_once(&shared, 0);
+            other.join().expect("no thread panics");
+            assert_eq!(shared.1.load(Relaxed), 2, "neither count lost");
+        });
+    }
+
+    #[test]
+    fn a_quote_is_taken_once_whole() {
+        check(|| {
+            let book = Arc::new(Book::new(1));
+            let quantity = NonZero::new(5).expect("5 is not zero");
+            let feed = {
+                let book = Arc::clone(&book);
+                thread::spawn(move || {
+                    assert!(book.post(0, Side::Ask, quantity), "the level is free");
+                })
+            };
+            let other = {
+                let book = Arc::clone(&book);
+                thread::spawn(move || book.take(0))
+            };
+            let mine = book.take(0);
+            feed.join().expect("the feed does not panic");
+            let theirs = other.join().expect("no taker panics");
+            let taken: Vec<_> = [mine, theirs, book.take(0)].into_iter().flatten().collect();
+            assert_eq!(taken.len(), 1, "one taker took the quote");
+            assert_eq!(taken[0].quantity, 5, "whole");
+            assert_eq!(taken[0].side, Side::Ask, "on its side");
         });
     }
 }

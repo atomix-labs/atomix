@@ -42,6 +42,18 @@ workspace = true
 name  = "atomix"
 bench = false
 
+[[example]]
+name              = "free-list"
+required-features = ["derive"]
+
+[[example]]
+name              = "lock-word"
+required-features = ["derive"]
+
+[[example]]
+name              = "quote-book"
+required-features = ["derive"]
+
 [[bench]]
 name              = "operations"
 harness           = false
