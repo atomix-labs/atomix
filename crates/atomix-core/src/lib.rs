@@ -116,8 +116,9 @@
 #![expect(
     internal_features,
     reason = "a ranged integer's field is a pattern type, with AVX the 16-byte load and store are \
-              core's atomic intrinsics, and a pointer's address is read, and its tags cleared, \
-              in a constant through `const_eval_select`"
+              core's atomic intrinsics, and through `const_eval_select` a pointer's address is \
+              read, and its tags cleared, in a constant, and an array of `bool`s decoded and \
+              encoded by a vector at run time"
 )]
 #![expect(
     incomplete_features,

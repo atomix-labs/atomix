@@ -203,8 +203,13 @@ What a change here keeps, beyond what the checks hold it to.
   on `x86_64`, `cmpxchg16b`, there a read and a write; `fence(StoreStore)` on
   `aarch64`, `dmb ishst`, there nothing; and the lock of Miri's double-word
   cell, taken and given back around each operation, there none, as a constant
-  reads no `static` with interior mutability. `generic_const_exprs`,
-  `specialization` and `unsafe_fields` stay out.
+  reads no `static` with interior mutability. Two vectorize at run time what a
+  constant does by multiplies, eight `bool`s to a multiply, and give the same
+  result: `spread_word`, an array of `bool`s' decode, by NEON's `tbl; ushl; and`
+  or AVX2's `vpshufb; vpand; vpcmpeqb`, and `gather_word`, its encode, by NEON's
+  `ushl; addp` or AVX2's `vpsllw; vpmovmskb`; each where the build enables the
+  vector's feature, and NEON's off Miri, which runs none of it.
+  `generic_const_exprs`, `specialization` and `unsafe_fields` stay out.
 
 ### Docs
 

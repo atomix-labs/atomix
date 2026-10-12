@@ -48,7 +48,10 @@
 //! `ldsetal`; unchecked it is the atomic's `bit_set` without its `and`, and at a constant index
 //! the field's, the position an immediate. The last element of an array whose slots fill the repr
 //! adds in place, `lock xadd` or `ldaddal`. A `Packed` element's is the same at its own width: a
-//! shift by twice the index, and a mask of its two bits.
+//! shift by twice the index, and a mask of its two bits. An array of `bool`s decodes eight from a
+//! byte by one multiply, and 64 from a word by a vector, `tbl; ushl; and` or `vpshufb; vpand`, and
+//! encodes them alike, by one multiply, or by `ushl; addp` or `vpsllw; vpmovmskb`: no loop over its
+//! bits.
 //!
 //! A reference's and a function pointer's every operation is a raw pointer's, instruction for
 //! instruction, and a wide reference's a `u128`'s: a reference's load acquires and its store
@@ -109,6 +112,7 @@ mod tests {
         ("flag_place_test_and_set", SameAs("u64_bit_set_5")),
         ("word_store", Refuses(&["tbnz", "add", "stlr", "ret"])),
         ("nested_store", Refuses(&["tst", "b.ne", "add", "stlr", "ret"])),
+        ("eight_bools_store", Only(&["mov", "movk", "movk", "movk", "mul", "lsr", "stlrb", "ret"])),
     ];
 
     /// Each read-modify-write on `aarch64` with LSE, the same at the floor, with LSE2 and on macOS:
@@ -293,6 +297,14 @@ mod tests {
         ("byte_load_literal", Only(&["ldar", "lsr", "ret"])),
         ("quarter_load", Refuses(&["cmp", "b.hs", "lsl", "ldar", "lsr", "and", "ret"])),
         ("quarter_place_load", Only(&["ldar", "ubfx", "ret"])),
+        ("bools_load", InOrder(&["ldar", "dup", "tbl", "ushl", "and", "stp", "ret"])),
+        ("bools_store", InOrder(&["ldp", "ushl", "addp", "fmov", "stlr", "ret"])),
+        (
+            "eight_bools_load",
+            Only(&["mov", "ldarb", "movk", "movk", "and", "mul", "orr", "and", "ret"]),
+        ),
+        ("sixteen_bools_load", InOrder(&["ldarh", "tbl", "ushl", "and", "str", "ret"])),
+        ("sixteen_bools_store", InOrder(&["ushl", "add", "add", "addp", "stlrh", "ret"])),
     ];
 
     /// Each update on `aarch64` at the `+lse` floor, which has no LSE2: with no 128-bit load,
@@ -361,6 +373,14 @@ mod tests {
     const AARCH64_LINUX_LSE2: &[(&str, Lowering)] = &[
         ("byte_load", Refuses(&["cmp", "b.hs", "ldapr", "lsl", "lsr", "ret"])),
         ("byte_load_unchecked", Only(&["ldapr", "lsl", "lsr", "ret"])),
+        ("bools_load", InOrder(&["ldapr", "dup", "tbl", "ushl", "and", "stp", "ret"])),
+        ("bools_store", InOrder(&["ldp", "ushl", "addp", "fmov", "stlr", "ret"])),
+        (
+            "eight_bools_load",
+            Only(&["ldaprb", "mov", "movk", "movk", "and", "mul", "orr", "and", "ret"]),
+        ),
+        ("sixteen_bools_load", InOrder(&["ldaprh", "tbl", "ushl", "and", "str", "ret"])),
+        ("sixteen_bools_store", InOrder(&["ushl", "add", "add", "addp", "stlrh", "ret"])),
         ("word_load", Only(&["ldapr", "and", "and", "ubfx", "str", "strb", "strb", "ret"])),
         ("option_word_load", Only(&["ldapr", "mov", "and", "cmp", "and", "csel", "ret"])),
         (
@@ -384,6 +404,23 @@ mod tests {
     const AARCH64_MACOS_LSE2: &[(&str, Lowering)] = &[
         ("byte_load", Refuses(&["cmp", "b.hs", "lsl", "ldapr", "lsr", "ret"])),
         ("byte_load_unchecked", Only(&["lsl", "ldapr", "lsr", "ret"])),
+        (
+            "bools_load",
+            InOrder(&["ldapr", "dup.2d", "tbl.16b", "ushl.16b", "and.16b", "stp", "ret"]),
+        ),
+        ("bools_store", InOrder(&["ldp", "ushl.16b", "addp.16b", "fmov", "stlr", "ret"])),
+        (
+            "eight_bools_load",
+            Only(&["ldaprb", "and", "mov", "movk", "movk", "mul", "orr", "and", "ret"]),
+        ),
+        (
+            "sixteen_bools_load",
+            InOrder(&["ldaprh", "tbl.16b", "ushl.16b", "and.16b", "str", "ret"]),
+        ),
+        (
+            "sixteen_bools_store",
+            InOrder(&["ushl.16b", "add.16b", "add.16b", "addp.16b", "stlrh", "ret"]),
+        ),
         ("word_load", Only(&["ldapr", "and", "and", "str", "strb", "ubfx", "strb", "ret"])),
         ("option_word_load", Only(&["ldapr", "and", "cmp", "mov", "csel", "and", "ret"])),
         (
@@ -817,6 +854,14 @@ mod tests {
         ("flag_place_test_and_set", Only(&["lock btsq", "setb", "retq"])),
         ("halves_last_fetch_add", Only(&["movl", "lock xaddl", "retq"])),
         ("quarter_place_load", Only(&["movl", "shrl", "andb", "retq"])),
+        (
+            "eight_bools_load",
+            Only(&[
+                "movzbl", "movzbl", "movl", "andl", "movabsq", "imulq", "shlq", "orq", "movabsq",
+                "andq", "retq",
+            ]),
+        ),
+        ("eight_bools_store", Only(&["movabsq", "imulq", "shrq", "movb", "retq"])),
         ("halves_last_fetch_add_discarded", Only(&["lock addl", "retq"])),
         (
             "word_update",
@@ -846,7 +891,8 @@ mod tests {
     ];
 
     /// The rest on `x86_64` with AVX, at the `x86-64-v3` floor: a 128-bit load or store is
-    /// `vmovdqa`, and an update's first read too.
+    /// `vmovdqa`, and an update's first read too; an array of more than eight `bool`s decodes and
+    /// encodes with AVX2.
     const X86_64_AVX: &[(&str, Lowering)] = &[
         ("u128_load", InOrder(&["vmovdqa"])),
         ("name_load", SameAs("u128_load")),
@@ -858,6 +904,42 @@ mod tests {
         ("pair_load", Only(&["vmovdqa", "vmovq", "vpextrq", "retq"])),
         ("pair_store", Only(&["vmovq", "vmovq", "vpunpcklqdq", "vmovdqa", "retq"])),
         ("pair_update", Retry(&["vmovdqa", "lock cmpxchg16b"])),
+        (
+            "bools_load",
+            InOrder(&["vpbroadcastq", "vpshufb", "vpand", "vpshufb", "vpand", "vmovdqu", "retq"]),
+        ),
+        (
+            "bools_store",
+            Only(&[
+                "vmovdqu",
+                "vmovdqu",
+                "vpsllw",
+                "vpsllw",
+                "vpmovmskb",
+                "shlq",
+                "vpmovmskb",
+                "orq",
+                "movq",
+                "vzeroupper",
+                "retq",
+            ]),
+        ),
+        (
+            "sixteen_bools_load",
+            Only(&[
+                "movzwl",
+                "vmovd",
+                "vpshufb",
+                "movq",
+                "vpbroadcastq",
+                "vpand",
+                "vpcmpeqb",
+                "vpand",
+                "vmovdqu",
+                "retq",
+            ]),
+        ),
+        ("sixteen_bools_store", Only(&["vmovdqu", "vpsllw", "vpmovmskb", "movw", "retq"])),
     ];
 
     /// The rest on `x86_64` Linux and macOS: the System V calling convention passes the arguments
@@ -1090,8 +1172,9 @@ mod tests {
 
     /// The rest on `x86_64` Windows at its default CPU, which has `cmpxchg16b` but no AVX: a
     /// 128-bit atomic has no load or store, and its update reads with a compare-exchange. A
-    /// function that calls the refusal reserves its stack on the fast path, a `subq` and an `addq`,
-    /// and an element's shift by its slot goes through `cl`, with no BMI2.
+    /// function that calls the refusal reserves its stack on the fast path, a `subq` and an `addq`;
+    /// an element's shift by its slot goes through `cl`, with no BMI2; and an array of `bool`s
+    /// decodes and encodes by multiplies alone, eight `bool`s to each, with no AVX2.
     const X86_64_WINDOWS_DEFAULT: &[(&str, Lowering)] = &[
         ("u128_update", Retry(&["lock cmpxchg16b", "lock cmpxchg16b"])),
         ("pair_update", Retry(&["lock cmpxchg16b", "lock cmpxchg16b"])),
@@ -1312,6 +1395,27 @@ mod tests {
             Refuses(&[
                 "subq", "movq", "cmpq", "jae", "addl", "movl", "movl", "shrq", "andb", "addq",
                 "retq",
+            ]),
+        ),
+        (
+            "bools_load",
+            InOrder(&[
+                "imulq", "imulq", "movdqu", "imulq", "imulq", "movdqu", "imulq", "imulq", "movdqu",
+                "imulq", "imulq", "movdqu", "retq",
+            ]),
+        ),
+        (
+            "bools_store",
+            InOrder(&[
+                "imulq", "imulq", "imulq", "imulq", "imulq", "imulq", "imulq", "imulq", "movq",
+                "retq",
+            ]),
+        ),
+        ("sixteen_bools_load", InOrder(&["imulq", "imulq", "movdqu", "retq"])),
+        (
+            "sixteen_bools_store",
+            Only(&[
+                "movabsq", "movq", "imulq", "shrq", "imulq", "andl", "shrq", "orl", "movw", "retq",
             ]),
         ),
     ];

@@ -2,6 +2,7 @@
 //! of integers is stored as its own bytes on every target atomix builds for, an array of `bool`s
 //! one bit each, and an array of two pointers as a double word.
 
+use super::bool_array::{bits_to_bools, bools_to_bits};
 use super::{Atom, AtomBitwise, FieldPatternsDecode};
 use crate::atomic::Reach;
 #[cfg(wide)]
@@ -168,10 +169,89 @@ const unsafe fn split_slots_unchecked<
     elements
 }
 
+/// The repr of `elements`, each a value whose repr is a `bool`, a bit each, element 0 lowest, the
+/// bits above clear: [`join_slots`] of one-bit slots, by multiplies and vectors.
+#[inline]
+const fn join_bools<T: [const] Atom<Repr = bool>, R: [const] ExactBits, const N: usize>(
+    elements: [T; N],
+) -> R {
+    let mut reprs = [false; N];
+    let mut rest = elements.as_slice();
+    let mut out = reprs.as_mut_slice();
+    while let ([element, after @ ..], [repr, others @ ..]) = (rest, out) {
+        *repr = element.to_repr();
+        rest = after;
+        out = others;
+    }
+    R::from_bits(bools_to_bits(reprs))
+}
+
+/// The elements of `repr`, each a value whose repr is a `bool`, as [`split_slots`] decodes them.
+#[inline]
+const fn split_bools<T: [const] Atom<Repr = bool>, R: [const] ExactBits, const N: usize>(
+    repr: R,
+) -> Option<[T; N]> {
+    let bits = repr.to_bits();
+    if bits & !mask(N.wrapping_cast()) != 0 {
+        return None;
+    }
+    let reprs = bits_to_bools::<N>(bits);
+    let Some(&first) = reprs.first() else {
+        return None;
+    };
+    let Some(first) = T::from_repr(first) else {
+        return None;
+    };
+    let mut elements = [first; N];
+    let mut rest = reprs.as_slice();
+    let mut out = elements.as_mut_slice();
+    while let ([repr, after @ ..], [element, others @ ..]) = (rest, out) {
+        let Some(decoded) = T::from_repr(*repr) else {
+            return None;
+        };
+        *element = decoded;
+        rest = after;
+        out = others;
+    }
+    Some(elements)
+}
+
+/// The elements of `repr`, as [`split_bools`] decodes them, without its checks.
+///
+/// # Safety
+/// `repr` decodes: `split_bools` returns `Some` for it.
+#[expect(unsafe_code, reason = "decodes each bit of a repr that decodes")]
+#[inline]
+const unsafe fn split_bools_unchecked<
+    T: [const] Atom<Repr = bool>,
+    R: [const] ExactBits,
+    const N: usize,
+>(
+    repr: R,
+) -> [T; N] {
+    let reprs = bits_to_bools::<N>(repr.to_bits());
+    let first = match reprs.first() {
+        Some(&first) => first,
+        None => false,
+    };
+    // SAFETY: the caller's repr decodes, so each bit does, as its element.
+    let mut elements = [unsafe { T::from_repr_unchecked(first) }; N];
+    let mut rest = reprs.as_slice();
+    let mut out = elements.as_mut_slice();
+    while let ([repr, after @ ..], [element, others @ ..]) = (rest, out) {
+        // SAFETY: as above.
+        *element = unsafe { T::from_repr_unchecked(*repr) };
+        rest = after;
+        out = others;
+    }
+    elements
+}
+
 /// Implements `Slots` for an element repr stored as bits, the integer its slots fill, and whether
-/// they fill it, `Full`, or leave bits above, `Padded`, for each count.
+/// they fill it, `Full`, or leave bits above, `Padded`, for each count: a `bool`'s slots by the
+/// multiplies and vectors of [`bools_to_bits`] and [`bits_to_bools`], an integer's one at a time.
 macro_rules! slots {
-    ($($element:ty => $repr:ty, $fill:ident: $($count:literal)+;)+) => {$($(
+    ($($element:ident => $repr:ty, $fill:ident: $($count:literal)+;)+) => {$($(
         // SAFETY: `join` packs each element's bits in its slot, element `i` at `i` slots up, the
         // bits above clear, within `of_slots` of the elements' range, and sets `tags` as
         // `Tags::set_in` sets them, which a value of bits takes none of; `split` refuses a bit
@@ -193,11 +273,11 @@ macro_rules! slots {
             fn join<T: [const] Atom<Repr = $element>>(
                 elements: [T; $count], tags: Tags,
             ) -> ($repr, usize) {
-                tags.set_in(join_slots(elements))
+                tags.set_in(slots!(@join $element)(elements))
             }
             #[inline]
             fn split<T: [const] Atom<Repr = $element>>(repr: $repr) -> Option<[T; $count]> {
-                split_slots(repr)
+                slots!(@split $element)(repr)
             }
             #[expect(unsafe_code, reason = "decodes each slot of a repr that decodes")]
             #[inline]
@@ -205,10 +285,16 @@ macro_rules! slots {
                 repr: $repr,
             ) -> [T; $count] {
                 // SAFETY: the caller's repr decodes.
-                unsafe { split_slots_unchecked(repr) }
+                unsafe { slots!(@split_unchecked $element)(repr) }
             }
         }
     )+)+};
+    (@join bool) => { join_bools };
+    (@join $element:ident) => { join_slots };
+    (@split bool) => { split_bools };
+    (@split $element:ident) => { split_slots };
+    (@split_unchecked bool) => { split_bools_unchecked };
+    (@split_unchecked $element:ident) => { split_slots_unchecked };
     (@validity Full $validity:ident) => { <$validity as Validity>::Elements };
     (@validity Padded $validity:ident) => { <$validity as Validity>::PaddedElements };
     (@fills Full) => { true };

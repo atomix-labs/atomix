@@ -51,5 +51,11 @@ fn main() {
         // where the bit lands in an `Option`; neither loom nor Miri runs `asm!`, and
         // ThreadSanitizer sees no access inside one.
         lock_bit_test: { all(target_arch = "x86_64", on_hardware, not(sanitize = "thread")) },
+        // An array of `bool`s decoded and encoded by NEON at run time, which Miri does not run.
+        neon_bools: { all(aarch64_code, target_feature = "neon", not(miri)) },
+        // An array of `bool`s decoded and encoded by AVX2 at run time.
+        avx2_bools: { all(target_arch = "x86_64", target_feature = "avx2") },
+        // NEON or AVX2: an array of `bool`s takes either at run time, and multiplies in a constant.
+        vector_bools: { any(neon_bools, avx2_bools) },
     }
 }

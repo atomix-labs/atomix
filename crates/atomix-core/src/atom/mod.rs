@@ -1,6 +1,7 @@
 //! A value storable in an atomic, and which read-modify-writes mean something on it.
 
 mod array;
+mod bool_array;
 mod option;
 mod packed;
 #[cfg(wide)]

@@ -422,8 +422,9 @@ pub(crate) fn lowers_as_expected(
     let mut found: Vec<&str> = assembly
         .lines()
         .filter_map(|line| line.trim().strip_prefix(".globl")?.trim().strip_prefix(symbol_prefix))
-        // COFF's `@feat.00` is a flag for the linker.
-        .filter(|symbol| !is_refusal(symbol) && !symbol.starts_with('@'))
+        // COFF's `@feat.00`, a flag for the linker, and its constant pools, `__xmm@…`, are no
+        // functions, and no Rust symbol holds an `@`.
+        .filter(|symbol| !is_refusal(symbol) && !symbol.contains('@'))
         .collect();
     found.sort_unstable();
     let mut named: Vec<&str> = expected.iter().copied().flatten().map(|(name, _)| *name).collect();

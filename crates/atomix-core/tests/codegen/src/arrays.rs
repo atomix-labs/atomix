@@ -175,3 +175,33 @@ pub fn quarter_load(atomic: &Atomic<Fill>, index: usize) -> RangedU8<0, 3> {
 pub fn quarter_place_load(atomic: &Atomic<Fill>) -> RangedU8<0, 3> {
     atomic.place::<5>().load(Acquire)
 }
+
+#[unsafe(no_mangle)]
+pub fn bools_load(atomic: &Atomic<[bool; 64]>) -> [bool; 64] {
+    atomic.load(Acquire)
+}
+
+#[unsafe(no_mangle)]
+pub fn bools_store(atomic: &Atomic<[bool; 64]>, flags: [bool; 64]) {
+    atomic.store(flags, Release);
+}
+
+#[unsafe(no_mangle)]
+pub fn eight_bools_load(atomic: &Atomic<[bool; 8]>) -> [bool; 8] {
+    atomic.load(Acquire)
+}
+
+#[unsafe(no_mangle)]
+pub fn eight_bools_store(atomic: &Atomic<[bool; 8]>, flags: [bool; 8]) {
+    atomic.store(flags, Release);
+}
+
+#[unsafe(no_mangle)]
+pub fn sixteen_bools_load(atomic: &Atomic<[bool; 16]>) -> [bool; 16] {
+    atomic.load(Acquire)
+}
+
+#[unsafe(no_mangle)]
+pub fn sixteen_bools_store(atomic: &Atomic<[bool; 16]>, flags: [bool; 16]) {
+    atomic.store(flags, Release);
+}
