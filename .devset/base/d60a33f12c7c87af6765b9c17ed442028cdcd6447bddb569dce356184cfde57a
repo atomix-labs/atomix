@@ -1,2 +1,0 @@
-["tools","cargo:mdbook-katex"]	[{"backend":"cargo:mdbook-katex","version":"0.10.0"}]
-["tools","cargo:mdbook-rustdoc-links"]	[{"backend":"cargo:mdbook-rustdoc-links","version":"3.0.2"}]

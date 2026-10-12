@@ -258,6 +258,13 @@ What a change here keeps, beyond what the checks hold it to.
   `atomix_core`.
 - Siblings are documented alike: every alias, validity and ordering has the same
   sections, and each feature's row reads the same on every page that lists it.
+- The book links an item to the facade's page, `api/atomix/…`, in a reference
+  definition at the foot of the page, never by its path: the links preprocessor
+  resolves a path to the crate that defines the item, `atomix_core`, while a
+  user imports it from `atomix`. lychee checks each link and its fragment. A
+  page includes a listing from a test under `crates/atomix/tests/book/`, a
+  refusal from a facade trybuild fixture, and a cookbook's structure from a
+  module that the loom models in `crates/atomix/tests/model.rs` take too.
 
 ### Checks Beyond `just check`
 

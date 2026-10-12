@@ -1,0 +1,28 @@
+error[E0277]: `DoubleWord<*mut u64, usize>` has no pure-read atomic load on this target
+  --> tests/compile_fail/aarch64_without_lse2/load_on_a_two_word_value.rs:18:18
+   |
+18 |     let _ = head.load(Acquire);
+   |                  ^^^^ this load would be a read-modify-write: it writes the line and faults on read-only pages
+   |
+   = help: the trait `Load` is not implemented for `DoubleWord<*mut u64, usize>`
+   = note: a 128-bit load is one instruction with FEAT_LSE2 (aarch64: `-C target-cpu` of a CPU with LSE2) or AVX (x86_64: `-C target-cpu=x86-64-v3`)
+   = note: to accept a load that writes the cache line, call `load_rmw`
+   = help: the following other types implement trait `Load`:
+             *mut T
+             bool
+             i16
+             i32
+             i64
+             i8
+             isize
+             u16
+           and $N others
+note: required by a bound in `atomix::Atomic::<T>::load`
+  --> $WORKSPACE/crates/atomix-core/src/atomic/mod.rs
+   |
+   | impl<T: Atom> Atomic<T> {
+...
+   |     pub const fn load<O: LoadOrdering<T>>(&self, order: O) -> T
+...
+   |         T::Repr: [const] Load,
+   |                  ^^^^^^^^^^^^ required by this bound in `Atomic::<T>::load`

@@ -38,10 +38,7 @@ yet; the API documentation holds the item-by-item detail.
 - **Math is TeX**, between `$` inline and `$$` for a display, rendered when the
   book builds. A literal dollar sign is `\$`.
 
-- **Diagrams need the `mdbook` profile's `mermaid` feature.** Turn it on with
-  devset, never by adding a preprocessor or a script to `book.toml` by hand:
-  `devset add <source>/mdbook --features mermaid` where the profile comes with
-  another, or the feature in its layer of `.devset/config.toml`.
+- **Diagrams are mermaid**, in a fence marked `mermaid`, drawn in the browser.
 
 - **Rust blocks are doctests**: `mdbook test` compiles and runs each. Mark one
   that must not run `no_run`, and what is not Rust `text`; never `ignore`.

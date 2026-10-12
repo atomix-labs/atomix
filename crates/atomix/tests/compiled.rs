@@ -10,12 +10,13 @@
 #[path = "../../atomix-core/tests/testing/mod.rs"]
 mod testing;
 
-// Every fixture derives.
+// The fixtures that derive need it; the rest mirror atomix-core's, so the book quotes what a crate
+// that names `atomix` sees.
 #[cfg(feature = "derive")]
 #[cfg(test)]
 mod trybuild {
-    //! What a crate that derives sees: what compiles under strict lints, with no feature gate for
-    //! a type without parameters, and each refusal with its message.
+    //! What a user crate sees: what compiles under strict lints, with no feature gate for a type
+    //! without parameters, and each refusal with its message.
 
     #[test]
     fn user_crates_compile_or_are_refused_with_the_message() {
@@ -27,6 +28,14 @@ mod trybuild {
         // A refusal whose notes `x86_64` adds to, which `aarch64`'s message alone pins.
         if cfg!(any(target_arch = "aarch64", target_arch = "arm64ec")) {
             cases.compile_fail("tests/compile_fail/aarch64/*.rs");
+        }
+        // The refusals that LSE2's 16-byte load and store lift run where this test is built without
+        // them, as atomix-core's `tests/trybuild.rs` runs its own.
+        if cfg!(all(
+            any(target_arch = "aarch64", target_arch = "arm64ec"),
+            not(target_feature = "lse2")
+        )) {
+            cases.compile_fail("tests/compile_fail/aarch64_without_lse2/*.rs");
         }
     }
 }

@@ -9,3 +9,16 @@ published, and the checks fail on it.
 
 The book's own look is in `theme/`: the page width, collapsible definitions, and
 a `$` prompt on `console` blocks.
+
+Every listing is included from code the tests build, under
+`crates/atomix/tests/` or among the examples, so it compiles against the crates
+as they are. The book's own tests, under `crates/atomix/tests/book/`, run with:
+
+```sh
+cargo test -p atomix-rs --all-features --test book
+```
+
+A page links an item of the API to the facade's page, `api/atomix/…`, in a
+reference definition at its foot, since a path would resolve to the crate that
+defines the item, `atomix_core`. The links preprocessor builds the API into the
+book, with every feature on, and lychee checks each link and its fragment.

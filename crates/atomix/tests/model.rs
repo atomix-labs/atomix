@@ -447,8 +447,12 @@ mod tests {
     }
 }
 
-// The structures the examples build, from the files the examples include, so the code they run is
-// the code loom checks.
+// The structures the cookbook and the examples build, from the files their pages and the examples
+// include, so the code the book shows is the code loom checks.
+#[cfg(all(loom, feature = "derive"))]
+#[cfg(test)]
+#[path = "cookbook/bitmap_allocator.rs"]
+mod bitmap_allocator;
 #[cfg(all(loom, feature = "derive"))]
 #[cfg(test)]
 #[path = "../examples/free-list/free_list.rs"]
@@ -461,9 +465,21 @@ mod lock_word;
 #[cfg(test)]
 #[path = "../examples/quote-book/quote_book.rs"]
 mod quote_book;
+#[cfg(all(loom, feature = "derive"))]
+#[cfg(test)]
+#[path = "cookbook/sequence_lock.rs"]
+mod sequence_lock;
+#[cfg(all(loom, feature = "derive"))]
+#[cfg(test)]
+#[path = "cookbook/slot_map.rs"]
+mod slot_map;
+#[cfg(all(loom, feature = "derive"))]
+#[cfg(test)]
+#[path = "cookbook/sorted_list.rs"]
+mod sorted_list;
 
-/// Models of the structures the examples build, two or three threads at a time, under every
-/// interleaving loom explores.
+/// Models of the structures the cookbook and the examples build, two or three threads at a time,
+/// under every interleaving loom explores.
 #[cfg(all(loom, feature = "derive"))]
 #[cfg(test)]
 mod structures {
@@ -473,9 +489,13 @@ mod structures {
     use atomix::ordering::Relaxed;
     use atomix::{AtomicU64, RangedU64};
 
+    use crate::bitmap_allocator::Bitmap;
     use crate::free_list::{FreeList, Index};
     use crate::lock_word::{LockWord, OwnerId};
     use crate::quote_book::{Book, Side};
+    use crate::sequence_lock::SequenceLock;
+    use crate::slot_map::SlotMap;
+    use crate::sorted_list::{List, Node};
 
     #[test]
     fn a_free_list_hands_its_node_from_holder_to_holder() {
@@ -546,5 +566,105 @@ mod structures {
             assert_eq!(taken[0].quantity, 5, "whole");
             assert_eq!(taken[0].side, Side::Ask, "on its side");
         });
+    }
+
+    #[test]
+    fn a_stale_key_finds_its_value_or_nothing() {
+        check(|| {
+            let map = Arc::new(SlotMap::new(1));
+            let key = map.insert(7).expect("the slot is free");
+            let reader = {
+                let map = Arc::clone(&map);
+                thread::spawn(move || map.get(key))
+            };
+            assert_eq!(map.remove(key), Some(7), "the value removed");
+            let other = map.insert(9).expect("the slot is free again");
+            let seen = reader.join().expect("the reader does not panic");
+            assert!(matches!(seen, Some(7) | None), "the stale key never finds 9: {seen:?}");
+            assert_eq!(map.get(other), Some(9), "which its own key finds");
+        });
+    }
+
+    /// Reads the lock with `read` while a writer writes it twice: two writes, so a read whose
+    /// words are older than its first load of the sequence can read one word of each.
+    fn read_beside_two_writes(read: fn(&SequenceLock) -> [u64; 2]) {
+        check(move || {
+            let lock = Arc::new(SequenceLock::new([0, 0]));
+            let writer = {
+                let lock = Arc::clone(&lock);
+                thread::spawn(move || {
+                    lock.write([1, 2]);
+                    lock.write([2, 4]);
+                })
+            };
+            let [first, second] = read(&lock);
+            writer.join().expect("the writer does not panic");
+            assert_eq!(second, first.wrapping_mul(2), "both words from one write");
+            assert_eq!(read(&lock), [2, 4], "and the last write read once it joined");
+        });
+    }
+
+    #[test]
+    fn a_sequence_lock_is_read_whole() {
+        read_beside_two_writes(SequenceLock::read);
+    }
+
+    #[test]
+    #[should_panic(expected = "both words from one write")]
+    fn a_sequence_lock_read_from_a_relaxed_first_load_is_not() {
+        read_beside_two_writes(SequenceLock::read_with_a_relaxed_first_load);
+    }
+
+    #[test]
+    #[should_panic(expected = "both words from one write")]
+    fn a_sequence_lock_read_without_its_fence_is_not() {
+        read_beside_two_writes(SequenceLock::read_without_its_fence);
+    }
+
+    #[test]
+    fn a_bitmap_hands_out_each_slot_once() {
+        check(|| {
+            let bitmap = Arc::new(Bitmap::<1>::new());
+            let other = {
+                let bitmap = Arc::clone(&bitmap);
+                thread::spawn(move || bitmap.allocate())
+            };
+            let mine = bitmap.allocate().expect("a slot is free");
+            let theirs = other.join().expect("no thread panics").expect("a slot is free");
+            assert_ne!(mine, theirs, "each slot handed out once");
+            bitmap.free(mine);
+            assert_eq!(bitmap.allocate(), Some(mine), "and the first free one again");
+        });
+    }
+
+    /// Links 25 with `insert` while 20, the node it goes after, is taken out.
+    fn insert_beside_a_removal(insert: fn(&List<'static>, &'static Node) -> bool) {
+        check(move || {
+            let arena: &'static [Node; 4] = Box::leak(Box::new([10, 20, 30, 25].map(Node::new)));
+            let list = Arc::new(List::new());
+            for node in &arena[..3] {
+                assert!(list.insert(node), "each key goes in once");
+            }
+            let inserter = {
+                let list = Arc::clone(&list);
+                thread::spawn(move || insert(&list, &arena[3]))
+            };
+            assert!(list.remove(20), "20 was in");
+            assert!(inserter.join().expect("the inserter does not panic"), "25 was not in");
+            let keys: Vec<u64> =
+                [10, 20, 25, 30].into_iter().filter(|key| list.contains(*key)).collect();
+            assert_eq!(keys, [10, 25, 30], "20 out, 25 in");
+        });
+    }
+
+    #[test]
+    fn a_node_linked_after_one_on_its_way_out_is_not_lost() {
+        insert_beside_a_removal(List::insert);
+    }
+
+    #[test]
+    #[should_panic(expected = "20 out, 25 in")]
+    fn an_insert_that_ignores_marks_loses_its_node() {
+        insert_beside_a_removal(List::insert_ignoring_marks);
     }
 }

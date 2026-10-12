@@ -12,7 +12,7 @@ tag = "v0.22.0"
 [[profiles]]
 name = "agents"
 rev = "a3d4578c7ac97d2f742e0e3b2533661df18150a5"
-digest = "b74e1afdc458f75721a4c5a79791f0d0c08f95c7aba37de33354bb0817e27756"
+digest = "cddf772553f4695aed93a6b49e86aec9030c19b707fe6c8ab38b09e4cfb396fd"
 
 [profiles.source]
 git = "https://github.com/atomix-labs/atxp"
@@ -330,7 +330,7 @@ tag = "v0.22.0"
 [[profiles]]
 name = "mdbook"
 rev = "a3d4578c7ac97d2f742e0e3b2533661df18150a5"
-digest = "808de59fc9e6a5c24aab16a854ff0095cab02c9e0094bc707a802a21b8548b5d"
+digest = "a94f6117e0fa24982d9b04adcf82274b6263191ee89ef62fbd24b8a102d9765b"
 
 [profiles.source]
 git = "https://github.com/atomix-labs/atxp"
@@ -341,6 +341,7 @@ agents = ["rust/agents"]
 api = ["default"]
 katex = ["default"]
 links = ["default"]
+mermaid = ["target"]
 pages = ["default"]
 
 [[profiles]]

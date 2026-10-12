@@ -76,7 +76,7 @@ use proc_macro::{Diagnostic, Level, Span, TokenStream};
 /// `Cell<u32>`, is refused, once, with the value to write instead. A value of your own that takes
 /// such a name derives once the field names it otherwise, by an alias or `use … as`.
 ///
-/// # Fields
+/// # Projections
 /// A packed struct's atomic projects onto its fields. Beside a struct `Quote`, the derive writes
 /// the projection `Atomic::fields` lends, and `AtomicField::fields` where a field's value is a
 /// `Quote`: `QuoteFields<'a, P>`, of `Quote`'s visibility, and `#[non_exhaustive]` and

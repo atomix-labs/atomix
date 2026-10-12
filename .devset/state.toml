@@ -276,8 +276,8 @@ exact = "7d3d1fde033f55c44977215b504ba32ca8b93becbb559d6c613df4b3a10f1fe0"
 canonical = "7d3d1fde033f55c44977215b504ba32ca8b93becbb559d6c613df4b3a10f1fe0"
 
 [files.".claude/skills/writing-the-book/SKILL.md"]
-exact = "d0e65ccf51dcc01763c7bfcdf8320470aa01e2de00195e850c587a988d737a33"
-canonical = "d0e65ccf51dcc01763c7bfcdf8320470aa01e2de00195e850c587a988d737a33"
+exact = "1332d0b0ff2bfc9f1297e8bc980efd1655ae107e09bd7e0e4f16ec8b17f116ce"
+canonical = "1332d0b0ff2bfc9f1297e8bc980efd1655ae107e09bd7e0e4f16ec8b17f116ce"
 
 [files.".claude/skills/writing-the-book/references/library-book.md"]
 exact = "5519aae11a9927ad5f91bb4f46445139f8ec6e97a1436be5735051420581604d"
@@ -368,8 +368,8 @@ exact = "26a064937ab85c6125c5dad33055c0c241abdc88e3a8da4eee5870289f9042f0"
 canonical = "26a064937ab85c6125c5dad33055c0c241abdc88e3a8da4eee5870289f9042f0"
 
 [files.".config/mise/conf.d/devset-mdbook.toml"]
-exact = "61b94cc43a09b576463e73b1083bafc4135a358321538ecd95c4a14d9eea3d87"
-canonical = "61b94cc43a09b576463e73b1083bafc4135a358321538ecd95c4a14d9eea3d87"
+exact = "c15cdbbcae6c3b72efad54ec9c3d2c3aec89978b39808d2bd6213797fdcc5da5"
+canonical = "c15cdbbcae6c3b72efad54ec9c3d2c3aec89978b39808d2bd6213797fdcc5da5"
 
 [files.".config/mise/conf.d/devset-mise.toml"]
 exact = "7627dc750a0e8c8c805a981edea22b1eeafb80914ee31add2bc0091c9fe2e725"
@@ -677,6 +677,14 @@ policy = "once"
 exact = "c2de05ad0105989ccf851720965ce244f5cc740d8bd8d7689265db3be5a2cde0"
 canonical = "c2de05ad0105989ccf851720965ce244f5cc740d8bd8d7689265db3be5a2cde0"
 
+[files."docs/mermaid-init.js"]
+exact = "6312cfe44594f0a56b70c8864fa810d58558d076842fee927da3cb746c43d3fe"
+canonical = "6312cfe44594f0a56b70c8864fa810d58558d076842fee927da3cb746c43d3fe"
+
+[files."docs/mermaid.min.js"]
+exact = "2d2fd911a347fe6cd32e7856484fa7fb9be3a98fdeeb496eab1a6d87b39dfc87"
+canonical = "e5043db3826f51a6f4fc4e6f8eb9cd4ada0711fb645aafefd9f1266399867b4e"
+
 [files."docs/src/SUMMARY.md"]
 exact = "e6bc676642e3c19676951bcc0e0d81538564ea2bba6b6779e40e6cd643b2ef28"
 canonical = "e6bc676642e3c19676951bcc0e0d81538564ea2bba6b6779e40e6cd643b2ef28"
@@ -905,8 +913,8 @@ canonical = "5da0208bdd831fb2c5b5a5a441dea3aaa06f0a4ff6cdf7c45eb913666420b491"
 
 [parts.".config/mise/mise.lock".mdbook]
 scope = "keys"
-exact = "d60a33f12c7c87af6765b9c17ed442028cdcd6447bddb569dce356184cfde57a"
-canonical = "d60a33f12c7c87af6765b9c17ed442028cdcd6447bddb569dce356184cfde57a"
+exact = "a04ec905d95264e9653397d99bb1ea20c0ccdabe0174cadee4ddef805bb44ef2"
+canonical = "a04ec905d95264e9653397d99bb1ea20c0ccdabe0174cadee4ddef805bb44ef2"
 
 [parts.".config/mise/mise.lock".mdbook-tool]
 scope = "keys"
@@ -1081,8 +1089,8 @@ canonical = "3169192e7a77ac97b22386a2ce6fd06004d62b0b5c39658a22f4b7774ef3f7e6"
 
 [parts."docs/book.toml".mdbook]
 scope = "keys"
-exact = "b3865047fa88aa2acb9722fd9d7e22758b0747088e467e8e374d7e2dc883e067"
-canonical = "b3865047fa88aa2acb9722fd9d7e22758b0747088e467e8e374d7e2dc883e067"
+exact = "9a5acd7b1e5cb05e1f2cd016178e4112a89d765b174d26e55c23923f0467581e"
+canonical = "9a5acd7b1e5cb05e1f2cd016178e4112a89d765b174d26e55c23923f0467581e"
 policy = "merge"
 
 [parts."docs/theme/head.hbs".mdbook]

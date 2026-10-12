@@ -2,5 +2,6 @@
 [tools]
 # Built with cargo: its releases carry no binaries.
 "cargo:mdbook-katex" = "0.10.0"
+"github:badboy/mdbook-mermaid" = "0.17.1"
 # Built with cargo: its Linux releases need a newer glibc than many distributions carry.
 "cargo:mdbook-rustdoc-links" = "3.0.2"
