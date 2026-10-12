@@ -20,7 +20,8 @@ mod off_loom {
     ///
     /// Off loom it has `T`'s layout.
     #[repr(transparent)]
-    #[derive(Debug, Default)]
+    #[derive(Debug)]
+    #[derive_const(Default)]
     pub struct UnsafeCell<T: ?Sized>(cell::UnsafeCell<T>);
 
     impl<T> UnsafeCell<T> {
@@ -34,7 +35,7 @@ mod off_loom {
         /// The value, consuming the cell.
         #[inline]
         #[must_use]
-        pub fn into_inner(self) -> T {
+        pub const fn into_inner(self) -> T {
             self.0.into_inner()
         }
 
@@ -81,7 +82,7 @@ mod off_loom {
         }
     }
 
-    impl<T> From<T> for UnsafeCell<T> {
+    const impl<T> From<T> for UnsafeCell<T> {
         #[inline]
         fn from(value: T) -> Self {
             Self::new(value)

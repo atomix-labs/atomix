@@ -51,9 +51,6 @@ mod tests {
         // `CARGO_TARGET_<TRIPLE>_RUSTFLAGS` adds to the floor for both.
         if cfg!(all(aarch64_code, not(wide_load_store))) {
             cases.compile_fail("tests/compile_fail/aarch64_without_lse2/*.rs");
-            if cfg!(feature = "serde") {
-                cases.compile_fail("tests/compile_fail/aarch64_without_lse2/serde/*.rs");
-            }
         }
     }
 }

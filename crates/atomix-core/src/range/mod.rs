@@ -8,6 +8,7 @@ mod pointer_word;
 
 use core::any::type_name;
 use core::fmt;
+use core::hash::{Hash, Hasher};
 use core::marker::PhantomData;
 
 pub(crate) use self::layout::FieldLayout;
@@ -217,10 +218,10 @@ impl<R: Primitive> ReprRange<R> {
     }
 }
 
-// The five impls below are written out: std's derive bounds `R` by its trait, and `Primitive`
-// implies neither `Debug` nor `PartialEq`, so generic code could not print or compare a range; no
-// derive crate that leaves `R` unbounded is a dependency.
-impl<R> Clone for ReprRange<R> {
+// The six impls below are written out: std's derive bounds `R` by its trait, and `Primitive`
+// implies neither `Debug` nor `PartialEq`, so generic code could not print, compare or hash a
+// range; no derive crate that leaves `R` unbounded is a dependency. Each that can be is `const`.
+const impl<R> Clone for ReprRange<R> {
     #[inline]
     fn clone(&self) -> Self {
         *self
@@ -229,14 +230,21 @@ impl<R> Clone for ReprRange<R> {
 
 impl<R> Copy for ReprRange<R> {}
 
-impl<R> PartialEq for ReprRange<R> {
+const impl<R> PartialEq for ReprRange<R> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.start == other.start && self.end == other.end
     }
 }
 
-impl<R> Eq for ReprRange<R> {}
+const impl<R> Eq for ReprRange<R> {}
+
+impl<R> Hash for ReprRange<R> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (self.start, self.end).hash(state);
+    }
+}
 
 impl<R> fmt::Debug for ReprRange<R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -402,10 +410,10 @@ impl Span {
         let signed = if first > last {
             self.width
         } else {
-            let (low, high) = (signed_bit_length(first), signed_bit_length(last));
+            let (low, high) = (signed_bit_width(first), signed_bit_width(last));
             if low > high { low } else { high }
         };
-        let unsigned = if self.wraps() { self.width } else { bit_length(self.end) };
+        let unsigned = if self.wraps() { self.width } else { self.end.bit_width() };
         if signed < unsigned {
             FieldLayout { width: signed, signed: true }
         } else {
@@ -543,20 +551,13 @@ pub(crate) const fn mask(width: u32) -> u128 {
     u128::MAX.unbounded_shr(u128::BITS.saturating_sub(width))
 }
 
-/// How many bits `value` needs unsigned: none for zero.
-#[inline]
-#[must_use]
-const fn bit_length(value: u128) -> u32 {
-    u128::BITS.wrapping_sub(value.leading_zeros())
-}
-
 /// How many bits `value` needs in two's complement: one for 0 and -1.
 #[inline]
 #[must_use]
-const fn signed_bit_length(value: i128) -> u32 {
+const fn signed_bit_width(value: i128) -> u32 {
     // A negative value needs what its complement, which is not negative, needs.
-    let magnitude = value ^ value.unbounded_shr(i128::BITS.wrapping_sub(1));
-    bit_length(magnitude.cast_unsigned()).wrapping_add(1)
+    let complement = value ^ value.unbounded_shr(i128::BITS.wrapping_sub(1));
+    complement.cast_unsigned().bit_width().wrapping_add(1)
 }
 
 /// The two's complement value of the low `width` bits of `bits`.

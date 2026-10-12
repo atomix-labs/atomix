@@ -8,6 +8,7 @@ note: if you're trying to build a new `RangedU64<3, u64::MAX>` consider using on
       RangedU64::<MIN, MAX>::new
       RangedU64::<MIN, MAX>::new_unchecked
       RangedU64::<MIN, MAX>::new_saturating
+      RangedU64::<MIN, MAX>::from_non_zero
  --> src/ranged/mod.rs
   |
   |             pub const fn new(integer: $int) -> Option<Self> {
@@ -18,6 +19,9 @@ note: if you're trying to build a new `RangedU64<3, u64::MAX>` consider using on
 ...
   |             pub const fn new_saturating(integer: $int) -> Self {
   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+  |             pub const fn from_non_zero(non_zero: NonZero<$int>) -> Self {
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ...
   | each_ranged_integer!(ranged);
   | ---------------------------- in this macro invocation

@@ -10,7 +10,9 @@
 //! between its load and its store, never because the value differs, so it counts as one operation,
 //! as LSE's instruction does. A ranged integer's range reaches LLVM, so a comparison outside it
 //! folds to a constant, and a conversion to or from deranged's of the same bounds, which saturates,
-//! is a move at most.
+//! is a move at most. A raw pointer's `usize` mask lowers as a `u64`'s operand does: `lock or`,
+//! `lock and` and `lock xor` on `x86_64`, and `ldset`, `ldclr` and `ldeor` on `aarch64`, or an
+//! LL/SC loop without LSE, `fetch_or`'s returning the pointer before.
 //!
 //! A field's operation is its whole word's, its operand confined to the field: one LSE instruction
 //! on `aarch64`, one `lock` instruction on `x86_64`, where a bit's test is `lock bts` and its kin
@@ -95,6 +97,10 @@ mod tests {
         ("bool_or", InOrder(&["ldsetlb"])),
         ("pointer_fetch_byte_add_discarded", InOrder(&["ldadd"])),
         ("pointer_fetch_ptr_sub", InOrder(&["neg", "ldaddal"])),
+        ("pointer_or", InOrder(&["ldsetl"])),
+        ("pointer_and", InOrder(&["mvn", "ldclrl"])),
+        ("pointer_xor", InOrder(&["ldeorl"])),
+        ("pointer_fetch_or", InOrder(&["ldsetal"])),
         ("u128_compare_exchange", InOrder(&["caspal"])),
         ("u128_load_rmw", InOrder(&["caspa"])),
         ("pair_load_rmw", Only(&["mov", "mov", "caspa", "mov", "mov", "ret"])),
@@ -328,6 +334,10 @@ mod tests {
         ("bool_or", InOrder(&["ldxrb", "orr", "stlxrb"])),
         ("pointer_fetch_byte_add_discarded", InOrder(&["ldxr", "add", "stxr"])),
         ("pointer_fetch_ptr_sub", InOrder(&["ldaxr", "sub", "stlxr"])),
+        ("pointer_or", InOrder(&["ldxr", "orr", "stlxr"])),
+        ("pointer_and", InOrder(&["ldxr", "and", "stlxr"])),
+        ("pointer_xor", InOrder(&["ldxr", "eor", "stlxr"])),
+        ("pointer_fetch_or", InOrder(&["ldaxr", "orr", "stlxr"])),
         ("u128_compare_exchange", InOrder(&["ldaxp", "cmp", "stlxp", "stlxp"])),
         ("u128_load_rmw", InOrder(&["ldaxp", "cmp", "stxp", "stxp"])),
         (
@@ -526,6 +536,9 @@ mod tests {
         ("bool_or", InOrder(&["lock orb"])),
         ("pointer_fetch_byte_add_discarded", InOrder(&["lock addq"])),
         ("pointer_fetch_ptr_sub", InOrder(&["negq", "lock xaddq"])),
+        ("pointer_or", InOrder(&["lock orq"])),
+        ("pointer_and", InOrder(&["lock andq"])),
+        ("pointer_xor", InOrder(&["lock xorq"])),
         ("char_load", Only(&["movl", "retq"])),
         ("option_load", Only(&["movq", "retq"])),
         ("ranged_load", Only(&["movq", "retq"])),
@@ -972,6 +985,9 @@ mod tests {
         for line in [
             "= help: the trait `FetchBitwise` is not implemented for `u64`",
             "= note: x86_64's `lock and`, `lock or` and `lock xor` cannot return the value before",
+            "= note: for one bit of a 16- to 64-bit word, `bit_set`, `bit_clear` and `bit_toggle` \
+             return it",
+            "= note: for a `bool`, `swap(true)` returns what `fetch_or(true)` would",
             "= help: the trait `MinMax` is not implemented for `i64`",
             "= note: x86_64 has no atomic maximum or minimum",
             "= help: the trait `BitTest` is not implemented for `u8`",

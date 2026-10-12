@@ -16,6 +16,8 @@ use core::ptr::{self, DynMetadata};
 use core::ptr::{NonNull, Pointee};
 
 use super::Atom;
+#[cfg(wide)]
+use crate::__private::assert_send_and_sync;
 use crate::primitive::{CompareExchange, Primitive};
 #[cfg(wide)]
 use crate::primitive::{DoubleWord, Word};
@@ -230,6 +232,23 @@ impl<T: ?Sized> Hash for VtablePointer<T> {
         self.pointer.hash(state);
     }
 }
+
+// SAFETY: by the field INVARIANT the pointer is null or a `DynMetadata<T>`'s vtable pointer, so it
+// reaches only that vtable, immutable data the compiler emits, which any thread may read, and
+// nothing writes through it, as core's `DynMetadata`, `Send` and `Sync` for every `T`, documents.
+#[cfg(wide)]
+#[expect(unsafe_code, reason = "a raw vtable pointer takes away the auto `Send`")]
+unsafe impl<T: ?Sized> Send for VtablePointer<T> {}
+
+// SAFETY: as `Send`: by the field INVARIANT, a shared one lends only reads of that vtable, through
+// `metadata`.
+#[cfg(wide)]
+#[expect(unsafe_code, reason = "a raw vtable pointer takes away the auto `Sync`")]
+unsafe impl<T: ?Sized> Sync for VtablePointer<T> {}
+
+// It stays so, whatever the trait object: the build fails here otherwise.
+#[cfg(wide)]
+const _: () = assert_send_and_sync::<VtablePointer<dyn fmt::Debug>>();
 
 #[cfg(wide)]
 impl<T: ?Sized> fmt::Debug for VtablePointer<T> {

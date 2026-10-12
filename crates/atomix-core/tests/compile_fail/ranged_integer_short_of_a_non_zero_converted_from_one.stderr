@@ -1,0 +1,35 @@
+error[E0080]: evaluation panicked: only a range that holds every nonzero integer converts from `NonZero` unchecked: call `try_from`
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `atomix_core::RangedU8::<1, 10>::from_non_zero::{constant#0}` failed here
+  |
+ ::: src/ranged/mod.rs
+  |
+  | each_ranged_integer!(ranged);
+  | ---------------------------- in this macro invocation
+  |
+  = note: this error originates in the macro `$crate::panic::panic_2021` which comes from the expansion of the macro `each_ranged_integer` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+note: erroneous constant encountered
+ --> src/ranged/mod.rs
+  |
+  | /                 const {
+  | |                     assert!(
+  | |                         Self::new(NonZero::<$int>::MIN.get()).is_some()
+  | |                             && Self::new(NonZero::<$int>::MAX.get()).is_some(),
+... |
+  | |                     );
+  | |                 }
+  | |_________________^
+...
+  |   each_ranged_integer!(ranged);
+  |   ---------------------------- in this macro invocation
+  |
+  = note: this note originates in the macro `ranged` which comes from the expansion of the macro `each_ranged_integer` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+note: the above error was encountered while instantiating `fn RangedU8::<1, 10>::from_non_zero`
+ --> tests/compile_fail/ranged_integer_short_of_a_non_zero_converted_from_one.rs:9:18
+  |
+9 |     let _depth = RangedU8::<1, 10>::from_non_zero(NonZero::<u8>::MIN);
+  |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

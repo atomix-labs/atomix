@@ -1,38 +1,48 @@
 //! Memory orderings as types: each operation names the orderings it accepts, so a wrong one is a
 //! compile error rather than a panic.
 //!
-//! Only the types here implement the traits.
+//! Only the types here implement the traits. Each but [`StoreStore`], which core has no name for,
+//! converts to core's [`Ordering`](CoreOrdering) through `From`, for code that hands its ordering
+//! on to core, std or a C interface; nothing converts back, so an ordering stays a type.
 
 use core::sync::atomic::Ordering as CoreOrdering;
 
 /// Orders nothing beyond the operation's own atomicity.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct Relaxed;
 /// Sees every write published by the [`Release`] it reads from.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct Acquire;
 /// Publishes every earlier write to the [`Acquire`] that reads it.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct Release;
 /// [`Acquire`] and [`Release`] at once, for a read-modify-write or a fence.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct AcqRel;
 /// [`Acquire`], [`Release`] or both, as the operation allows, in one order of every `SeqCst`
 /// operation and fence that all threads agree on.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct SeqCst;
 /// A [`fence`](fn@crate::fence) that orders earlier stores before later ones, and nothing else.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Hash)]
+#[derive_const(Clone, Default, PartialEq, Eq)]
 pub struct StoreStore;
 
 /// An ordering a read-modify-write may take: every ordering but [`StoreStore`], which
 /// only a fence takes.
+///
+/// Each converts to core's [`Ordering`](CoreOrdering), so generic code hands one on with `into`.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a read-modify-write ordering",
     label = "expected `Relaxed`, `Acquire`, `Release`, `AcqRel` or `SeqCst` from `atomix::ordering`",
     note = "`StoreStore` orders a fence, and nothing else"
 )]
-pub impl(crate) trait RmwOrdering: Copy {
+pub impl(crate) trait RmwOrdering: Copy + Into<CoreOrdering> {
     /// The ordering as `core` (and loom) spell it.
     #[doc(hidden)]
     const CORE: CoreOrdering;
@@ -82,6 +92,20 @@ macro_rules! core_orderings {
 core_orderings!(RmwOrdering::CORE: Relaxed, Acquire, Release, AcqRel, SeqCst);
 core_orderings!(FenceOrdering::CORE_FENCE: Acquire, Release, AcqRel, SeqCst);
 
+/// Implements `From` of each ordering for core's of the same name.
+macro_rules! into_core_orderings {
+    ($($ordering:ident),+) => {$(
+        const impl From<$ordering> for CoreOrdering {
+            #[inline]
+            fn from(_: $ordering) -> Self {
+                Self::$ordering
+            }
+        }
+    )+};
+}
+
+into_core_orderings!(Relaxed, Acquire, Release, AcqRel, SeqCst);
+
 impl FenceOrdering for StoreStore {
     const CORE_FENCE: CoreOrdering = CoreOrdering::Release;
     const IS_STORE_STORE: bool = true;
@@ -98,11 +122,12 @@ impl StoreOrdering for SeqCst {}
 
 #[cfg(test)]
 mod tests {
+    use core::marker::Destruct;
     use core::sync::atomic::{AtomicU8, compiler_fence, fence};
 
     use super::{
-        AcqRel, Acquire, CoreOrdering, FenceOrdering, LoadOrdering, Relaxed, Release, SeqCst,
-        StoreOrdering, StoreStore,
+        AcqRel, Acquire, CoreOrdering, FenceOrdering, LoadOrdering, Relaxed, Release, RmwOrdering,
+        SeqCst, StoreOrdering, StoreStore,
     };
 
     /// Loads with `O`, and fails a compare-exchange with it, on `core`'s atomic, which panics on an
@@ -128,6 +153,51 @@ mod tests {
     fn fence_on_core<O: FenceOrdering>() {
         fence(O::CORE_FENCE);
         compiler_fence(O::CORE_FENCE);
+    }
+
+    /// Whether `ordering` equals its clone and its type's default, each run as `const`: through a
+    /// bound, so no lint rewrites a clone or a default of a unit into the unit.
+    const fn is_its_clone_and_default<O>(ordering: &O) -> bool
+    where
+        O: [const] Clone + [const] Default + [const] PartialEq + [const] Destruct,
+    {
+        ordering.clone() == *ordering && O::default() == *ordering
+    }
+
+    // Each ordering compares, clones and defaults in a constant.
+    const _: () = {
+        assert!(
+            is_its_clone_and_default(&Relaxed),
+            "`Relaxed` equals its clone and its default, in const"
+        );
+        assert!(is_its_clone_and_default(&Acquire), "`Acquire`");
+        assert!(is_its_clone_and_default(&Release), "`Release`");
+        assert!(is_its_clone_and_default(&AcqRel), "`AcqRel`");
+        assert!(is_its_clone_and_default(&SeqCst), "`SeqCst`");
+        assert!(is_its_clone_and_default(&StoreStore), "and `StoreStore`");
+    };
+
+    // Each ordering converts to core's of its name in a constant.
+    const _: () = {
+        assert!(
+            matches!(CoreOrdering::from(Relaxed), CoreOrdering::Relaxed),
+            "`Relaxed` converts to core's of its name, in const"
+        );
+        assert!(matches!(CoreOrdering::from(Acquire), CoreOrdering::Acquire), "`Acquire`");
+        assert!(matches!(CoreOrdering::from(Release), CoreOrdering::Release), "`Release`");
+        assert!(matches!(CoreOrdering::from(AcqRel), CoreOrdering::AcqRel), "`AcqRel`");
+        assert!(matches!(CoreOrdering::from(SeqCst), CoreOrdering::SeqCst), "and `SeqCst`");
+    };
+
+    /// Core's spelling of `order`, through the bound alone.
+    fn core_spelling<O: RmwOrdering>(order: O) -> CoreOrdering {
+        order.into()
+    }
+
+    #[test]
+    fn generic_code_hands_an_ordering_on_to_core() {
+        assert_eq!(core_spelling(AcqRel), CoreOrdering::AcqRel, "a read-modify-write's");
+        assert_eq!(core_spelling(Acquire), CoreOrdering::Acquire, "and a load's");
     }
 
     #[test]

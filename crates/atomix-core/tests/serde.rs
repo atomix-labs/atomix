@@ -1,5 +1,6 @@
-//! serde on an atomic, as the value a load reads, and on each ranged integer, as its integer:
-//! refused outside the range in serde's words, at `serde_json`'s line and column.
+//! serde on an atomic, as the value a `Relaxed` read gives, a 128-bit one's on every target, and
+//! on each ranged integer, as its integer: refused outside the range in serde's words, at
+//! `serde_json`'s line and column.
 
 #![cfg(feature = "serde")]
 
@@ -105,13 +106,13 @@ mod tests {
         assert_eq!(wide.load_rmw(Relaxed), u128::MAX, "read with a compare-exchange");
     }
 
-    #[cfg(wide_load_store)]
+    #[cfg(wide)]
     #[test]
-    fn a_wide_atomic_serializes_where_it_loads() {
+    fn a_wide_atomic_serializes_on_every_target() {
         assert_eq!(
             serde_json::to_string(&AtomicU128::new(u128::MAX)).ok().as_deref(),
             Some("340282366920938463463374607431768211455"),
-            "written with a load"
+            "written with a load, or else a compare-exchange"
         );
     }
 

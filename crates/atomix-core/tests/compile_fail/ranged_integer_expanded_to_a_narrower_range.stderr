@@ -1,0 +1,35 @@
+error[E0080]: evaluation panicked: a ranged integer expands only to a range that holds its own: call `to_range`, which checks the value, or `narrow` for a range inside it
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `atomix_core::RangedU8::<1, 10>::expand::<1, 5>::{constant#0}` failed here
+  |
+ ::: src/ranged/mod.rs
+  |
+  | each_ranged_integer!(ranged);
+  | ---------------------------- in this macro invocation
+  |
+  = note: this error originates in the macro `$crate::panic::panic_2021` which comes from the expansion of the macro `each_ranged_integer` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+note: erroneous constant encountered
+ --> src/ranged/mod.rs
+  |
+  | /                 const {
+  | |                     assert!(
+  | |                         NEW_MIN <= MIN && MAX <= NEW_MAX,
+  | |                         "a ranged integer expands only to a range that holds its own: call \
+  | |                          `to_range`, which checks the value, or `narrow` for a range inside it"
+  | |                     );
+  | |                 }
+  | |_________________^
+...
+  |   each_ranged_integer!(ranged);
+  |   ---------------------------- in this macro invocation
+  |
+  = note: this note originates in the macro `ranged` which comes from the expansion of the macro `each_ranged_integer` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+note: the above error was encountered while instantiating `fn RangedU8::<1, 10>::expand::<1, 5>`
+ --> tests/compile_fail/ranged_integer_expanded_to_a_narrower_range.rs:8:36
+  |
+8 |     let _shallow: RangedU8<1, 5> = depth.expand();
+  |                                    ^^^^^^^^^^^^^^

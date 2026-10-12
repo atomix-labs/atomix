@@ -7,8 +7,8 @@ use core::any::type_name;
 use core::ptr;
 
 use super::layout::{FieldLayout, PackedLayout};
+use super::mask;
 use super::pointer_word::{PointeeAlignment, SecondWord, Tags, assert_low_bits};
-use super::{bit_length, mask};
 use crate::atom::Atom;
 use crate::message::{Message, refuse};
 use crate::primitive::{ExactBits, address, subtract_tags};
@@ -134,7 +134,7 @@ impl PointerEnumLayout {
         }
         Self {
             discriminant_offset: offset,
-            discriminant_width: bit_length(largest),
+            discriminant_width: largest.bit_width(),
             tag_field_width,
             niche: None,
         }

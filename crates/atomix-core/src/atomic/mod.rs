@@ -38,7 +38,14 @@ pub use self::ptr::AtomicPtr;
 /// operation the target lacks for the repr does not exist ([`Load`], [`Store`], [`Swap`],
 /// [`FetchBitwise`](crate::FetchBitwise), [`MinMax`](crate::MinMax)), and a capability
 /// ([`AtomAdd`](crate::AtomAdd), [`AtomOrd`](crate::AtomOrd), [`AtomBitwise`](crate::AtomBitwise))
-/// gates each read-modify-write that means something only on some values.
+/// gates each read-modify-write that means something only on some values; a raw pointer's
+/// [`and`](Self::and), [`or`](Self::or) and [`xor`](Self::xor) take a `usize` mask, as core's
+/// `AtomicPtr`'s do.
+///
+/// `Debug`, `fmt::Pointer` and, with the `serde` feature, serde's `Serialize` read the value
+/// Relaxed, as core's do: with a load where the target has one, else with the compare-exchange
+/// [`load_rmw`](Self::load_rmw) is, which writes the cache line, as core's `AtomicU128` prints on
+/// `aarch64` without LSE2.
 ///
 /// [`new`](Self::new) and [`into_inner`](Self::into_inner) need `T: const Atom`, so generic
 /// run-time code builds one with [`From`] and reads it back with [`get`](Self::get); a const caller
@@ -324,6 +331,7 @@ impl<T: Atom> Atomic<T> {
     /// assert_eq!(owner.compare_exchange(0, 7, AcqRel, Acquire), Ok(0), "session 7 claims it");
     /// assert_eq!(owner.compare_exchange(0, 9, AcqRel, Acquire), Err(7), "9 finds 7's claim");
     /// ```
+    #[doc(alias = "compare_and_swap")]
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
     #[track_caller]
@@ -445,6 +453,7 @@ impl<T: Atom> Atomic<T> {
     /// assert_eq!(seats.try_update(AcqRel, Acquire, book), Ok(1), "the last seat booked");
     /// assert_eq!(seats.try_update(AcqRel, Acquire, book), Err(0), "none left: nothing written");
     /// ```
+    #[doc(alias = "fetch_update")]
     #[expect(unsafe_code, reason = "decodes reprs read from the cell")]
     #[inline]
     #[track_caller]
@@ -674,24 +683,35 @@ impl<T: Atom + Default> Default for Atomic<T> {
     }
 }
 
-impl<T: Atom + fmt::Pointer> fmt::Pointer for Atomic<T>
-where
-    T::Repr: Load,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // ORDERING: Relaxed, as core's `AtomicPtr`'s: printing publishes nothing and pairs with no
-        // store.
-        fmt::Pointer::fmt(&self.load(Relaxed), f)
+impl<T: Atom> Atomic<T> {
+    /// The repr, read Relaxed for `Debug`, `fmt::Pointer` and serde's `Serialize`: by the
+    /// target's pure load, else by the compare-exchange [`load_rmw`](Self::load_rmw) is, which
+    /// writes the repr over itself.
+    #[inline]
+    pub(crate) fn load_or_exchange_repr(&self) -> T::Repr {
+        // ORDERING: Relaxed, as core's `Debug` and serde's `Serialize`: a snapshot publishes
+        // nothing and pairs with no store.
+        T::Repr::read_for_rmw(self.primitive_cell(), Relaxed::CORE)
+    }
+
+    /// The value, read as [`load_or_exchange_repr`](Self::load_or_exchange_repr) reads its repr.
+    #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
+    #[inline]
+    pub(crate) fn load_or_exchange(&self) -> T {
+        // SAFETY: by the field INVARIANT, the repr read from the cell decodes.
+        unsafe { T::from_repr_unchecked(self.load_or_exchange_repr()) }
     }
 }
 
-impl<T: Atom + fmt::Debug> fmt::Debug for Atomic<T>
-where
-    T::Repr: Load,
-{
+impl<T: Atom + fmt::Pointer> fmt::Pointer for Atomic<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // ORDERING: Relaxed, as core's `Debug`: printing publishes nothing and pairs with no store.
-        self.load(Relaxed).fmt(f)
+        fmt::Pointer::fmt(&self.load_or_exchange(), f)
+    }
+}
+
+impl<T: Atom + fmt::Debug> fmt::Debug for Atomic<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.load_or_exchange().fmt(f)
     }
 }
 

@@ -1,5 +1,5 @@
 //! The read-modify-writes a capability allows, on the values that have it, at run time and in a
-//! constant.
+//! constant; and a raw pointer's bitwise forms, on a `usize` mask that keeps its provenance.
 
 #![feature(const_trait_impl)]
 // Loom's cells exist only inside a model; `model.rs` holds the loom tests.
@@ -8,13 +8,18 @@
 #[cfg(test)]
 mod tests {
     use core::num::Wrapping;
+    use core::ptr;
 
-    #[cfg(aarch64_code)]
-    use atomix_core::AtomicI64;
     use atomix_core::ordering::{AcqRel, Acquire, Relaxed, Release};
     use atomix_core::{
-        Atomic, AtomicBool, AtomicI8, AtomicI16, AtomicU8, AtomicU16, AtomicU32, AtomicU64,
+        AtomBitwise, Atomic, AtomicBool, AtomicI8, AtomicI16, AtomicI64, AtomicPtr, AtomicU8,
+        AtomicU16, AtomicU32, AtomicU64,
     };
+
+    /// Turns on `bits` in `atomic`, through the capability alone.
+    fn set_bits<T: AtomBitwise>(atomic: &Atomic<T>, bits: T) {
+        atomic.or(bits, Release);
+    }
 
     #[test]
     fn add_and_sub_wrap() {
@@ -51,6 +56,79 @@ mod tests {
         assert_eq!(bits.load(Relaxed), 0b0011, "xor keeps the bits one has");
         bits.not(AcqRel);
         assert_eq!(bits.load(Relaxed), !0b0011, "every bit inverted");
+    }
+
+    #[test]
+    fn a_literal_operand_takes_the_atomics_own_type() {
+        let flags = AtomicU64::new(0);
+        flags.or(0b10, Release);
+        assert_eq!(flags.load(Acquire), 0b10, "a `u64`");
+        let byte = AtomicU8::new(0b01);
+        byte.xor(0b11, Release);
+        assert_eq!(byte.load(Acquire), 0b10, "a `u8`");
+        let signed = AtomicI64::new(-1);
+        signed.and(6, Release);
+        assert_eq!(signed.load(Acquire), 6, "an `i64`");
+        let flag = AtomicBool::new(false);
+        flag.or(true, Release);
+        assert!(flag.load(Acquire), "and a `bool`");
+    }
+
+    #[test]
+    fn generic_code_over_the_capability_calls_or_with_no_other_bound() {
+        let bits = AtomicU16::new(0b01);
+        set_bits(&bits, 0b10);
+        assert_eq!(bits.load(Acquire), 0b11, "the bits set");
+    }
+
+    #[test]
+    fn a_raw_pointer_takes_a_mask_and_keeps_its_provenance() {
+        let mut node = 7_u64;
+        let pointer = ptr::from_mut(&mut node);
+        let next = AtomicPtr::new(pointer);
+        next.or(0b1, AcqRel);
+        assert_eq!(next.load(Acquire).addr(), pointer.addr() | 1, "its low bit set");
+        next.xor(0b11, AcqRel);
+        assert_eq!(next.load(Acquire).addr(), pointer.addr() | 0b10, "flipped");
+        next.and(!0b11, AcqRel);
+        let cleared = next.load(Acquire);
+        assert_eq!(cleared, pointer, "and cleared");
+        // SAFETY: `cleared` is `pointer`, its address changed and changed back by masks that keep
+        // its provenance over `node`, which is live.
+        #[expect(unsafe_code, reason = "reads through it, so Miri checks its provenance")]
+        let read = unsafe { cleared.read() };
+        assert_eq!(read, 7, "it reads the node");
+    }
+
+    #[test]
+    fn a_const_raw_pointer_takes_a_mask_too() {
+        let node = 7_u64;
+        let pointer = ptr::from_ref(&node);
+        let next = Atomic::new(pointer);
+        next.or(0b1, AcqRel);
+        next.and(!0b1, AcqRel);
+        let cleared = next.load(Acquire);
+        // SAFETY: as above, over `node`, which is live and only read.
+        #[expect(unsafe_code, reason = "reads through it, so Miri checks its provenance")]
+        let read = unsafe { cleared.read() };
+        assert_eq!(read, 7, "marked, unmarked, and it reads the node");
+    }
+
+    #[cfg(aarch64_code)]
+    #[test]
+    fn a_raw_pointers_fetch_forms_return_the_pointer_before() {
+        let mut node = 7_u64;
+        let pointer = ptr::from_mut(&mut node);
+        let next = AtomicPtr::new(pointer);
+        assert_eq!(next.fetch_or(0b1, AcqRel), pointer, "the pointer before the or");
+        assert_eq!(next.fetch_xor(0b11, AcqRel).addr(), pointer.addr() | 1, "before the xor");
+        let marked = next.fetch_and(!0b11, AcqRel);
+        assert_eq!(marked.addr(), pointer.addr() | 0b10, "and before the and");
+        // SAFETY: `marked` is `pointer` with bit 1 set by a mask that keeps its provenance; masked
+        // off again, it reaches `node`, which is live.
+        #[expect(unsafe_code, reason = "reads through it, so Miri checks its provenance")]
+        let read = unsafe { marked.map_addr(|address| address & !0b11).read() };
+        assert_eq!(read, 7, "whose provenance the masks kept");
     }
 
     #[test]

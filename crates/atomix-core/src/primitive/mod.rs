@@ -478,7 +478,9 @@ const fn has_bit<R: [const] MaskBitwise>(value: R, mask: R::Mask) -> bool {
     target_arch = "x86_64",
     diagnostic::on_unimplemented(
         note = "x86_64's `lock and`, `lock or` and `lock xor` cannot return the value before",
-        note = "`and`, `or`, `xor` and `not` discard it, and are one instruction in an optimized build"
+        note = "`and`, `or`, `xor` and `not` discard it, and are one instruction in an optimized build",
+        note = "for one bit of a 16- to 64-bit word, `bit_set`, `bit_clear` and `bit_toggle` return it, as a `bool` field's `test_and_set`, `test_and_clear` and `test_and_toggle` do, each one `lock bts`, `btr` or `btc`",
+        note = "for a `bool`, `swap(true)` returns what `fetch_or(true)` would, and `swap(false)` what `fetch_and(false)` would"
     )
 )]
 #[diagnostic::on_unimplemented(

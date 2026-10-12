@@ -1,5 +1,6 @@
-//! The cell, as production code reaches it.
+//! The cell, as production code reaches it, and in a constant.
 
+#![cfg_attr(not(loom), feature(const_convert, const_default, const_trait_impl))]
 // Loom's cells exist only inside a model; `model.rs` holds the loom tests.
 #![cfg(not(loom))]
 
@@ -36,6 +37,12 @@ mod tests {
         assert_eq!(seen, 3, "the shared guard sees the exclusive one's write");
         assert_eq!(cell.into_inner(), 3, "and so does unwrapping the cell");
     }
+
+    // A cell is built and unwrapped in a constant.
+    const _: () = {
+        assert!(UnsafeCell::from(4_u64).into_inner() == 4, "`From` then `into_inner`");
+        assert!(UnsafeCell::<u64>::default().into_inner() == 0, "and `Default`'s zero");
+    };
 
     #[test]
     fn the_pointers_reach_the_contents() {

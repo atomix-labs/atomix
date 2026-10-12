@@ -3,7 +3,7 @@
 //! variant a repr holds: by a tag, or by [`NicheLayout`], the reprs its unit variants take beside
 //! its one variant with fields.
 
-use super::{ReprRange, Span, bit_length, mask, sign_extend};
+use super::{ReprRange, Span, mask, sign_extend};
 use crate::primitive::{ExactBits, Primitive};
 
 /// How a packed value stores a field: the low `width` bits of its repr, read back zero-extended, or
@@ -503,7 +503,7 @@ impl NicheLayout {
         let Some((span, first_unit_bits)) = field.grown_by(unit_count) else {
             return None;
         };
-        let tagged = field.field_layout().width.saturating_add(bit_length(unit_count));
+        let tagged = field.field_layout().width.saturating_add(unit_count.bit_width());
         if span.field_layout().width > tagged {
             return None;
         }

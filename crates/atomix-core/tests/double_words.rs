@@ -79,6 +79,15 @@ mod tests {
     static MARKED_NULLS: Atomic<(Link, Option<NonNull<Node>>)> =
         Atomic::new((Link { next: None, deleted: true }, None));
 
+    #[test]
+    fn a_double_word_prints_its_pointer_on_every_target() {
+        let mut bytes = [1_u8, 2, 3];
+        let slice = ptr::from_mut(&mut bytes[..]);
+        let atomic = Atomic::new(slice);
+        assert_eq!(format!("{atomic:p}"), format!("{slice:p}"), "by a load or a compare-exchange");
+        assert_eq!(format!("{atomic:?}"), format!("{slice:?}"), "and its `Debug` alike");
+    }
+
     // A double word's operations run in a constant. A constant reads no pointer's address but
     // null's, so its slices have no data.
     const _: () = {
