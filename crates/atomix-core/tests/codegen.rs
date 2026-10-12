@@ -75,6 +75,13 @@
 //! LL/SC loop that masks nothing before it; and a duration's load moves its words as they are,
 //! seconds and nanoseconds, with no shift, as a layout's does its size and alignment. A loaded
 //! `Result`'s `is_ok` is one compare of its tag, and a range loads as the array of its bounds does.
+//!
+//! Each probe whose operation core has, or whose bits code over core's atomics would mask by hand,
+//! has a twin written so, `core_` before its name, and each twin is its probe's code, instruction
+//! for instruction, but in two places, whose tables say how each differs: a bit's test on
+//! `x86_64`, which LLVM writes over core's `fetch_or` and its kin as a compare-exchange loop at the
+//! lowest bit, at the top one and wherever the test lands in an `Option`, where atomix's `asm!` is
+//! one `lock bts`; and a 128-bit update at Android's default CPU, without LSE.
 
 // Miri cannot run the compiler, and loom's atomics are not what ships.
 #![cfg(on_hardware)]
@@ -774,10 +781,9 @@ mod tests {
     /// Each function of the fixture on `x86_64` with `cmpxchg16b`: at the `x86-64-v3` floor on
     /// Linux and macOS, and at Windows' default CPU.
     ///
-    /// A field's bit test is one `lock bts`, `btr` or `btc` at every position: with the position an
-    /// immediate, but the lowest bit's and the top bit's, which go through a register, and with
-    /// LLVM's `setb`, shift and test where the bit is the upper half's lowest, at 8 of 16 bits or
-    /// 32 of 64. An atomic's bit goes through a register at every position, after an `and`.
+    /// A field's bit test is one `lock bts`, `btr` or `btc`, its position an immediate, at every
+    /// position. An atomic's bit goes through a register at every position: after an `and` where it
+    /// is chosen at run time, and a `movl` or `xorl` where it is a constant.
     const X86_64: &[(&str, Lowering)] = &[
         ("u64_load", Only(&["movq", "retq"])),
         ("pointer_load", Only(&["movq", "retq"])),
@@ -1592,64 +1598,292 @@ mod tests {
         ("alignment_load", Only(&["movzbl", "movl", "shlq", "retq"])),
     ];
 
-    /// Each probe's twin over core's atomics that is its probe's code on every target: a byte's
-    /// `and` and `not`, its bits masked by hand.
-    const TWINS: &[(&str, Lowering)] =
-        &[("core_byte_and", SameAs("byte_and")), ("core_byte_not", SameAs("byte_not"))];
+    /// Each probe's twin over core's atomics that is its probe's code on every target: core's
+    /// operation of the same name, or a field's, a tag's or a byte's bits masked by hand.
+    const TWINS: &[(&str, Lowering)] = &[
+        ("core_byte_and", SameAs("byte_and")),
+        ("core_byte_not", SameAs("byte_not")),
+        ("core_u64_load", SameAs("u64_load")),
+        ("core_u64_store", SameAs("u64_store")),
+        ("core_u64_swap", SameAs("u64_swap")),
+        ("core_u64_fetch_add", SameAs("u64_fetch_add")),
+        ("core_u64_fetch_sub", SameAs("u64_fetch_sub")),
+        ("core_u64_compare_exchange", SameAs("u64_compare_exchange")),
+        ("core_u64_fetch_add_discarded", SameAs("u64_fetch_add_discarded")),
+        ("core_u64_fetch_sub_discarded", SameAs("u64_fetch_sub_discarded")),
+        ("core_u64_or", SameAs("u64_or")),
+        ("core_u64_and", SameAs("u64_and")),
+        ("core_u64_xor", SameAs("u64_xor")),
+        ("core_u64_not", SameAs("u64_not")),
+        ("core_bool_or", SameAs("bool_or")),
+        ("core_pointer_fetch_byte_add_discarded", SameAs("pointer_fetch_byte_add_discarded")),
+        ("core_pointer_fetch_ptr_sub", SameAs("pointer_fetch_ptr_sub")),
+        ("core_pointer_or", SameAs("pointer_or")),
+        ("core_pointer_and", SameAs("pointer_and")),
+        ("core_pointer_xor", SameAs("pointer_xor")),
+        ("core_option_load", SameAs("option_load")),
+        ("core_seq_cst_compiler_fence", SameAs("seq_cst_compiler_fence")),
+        ("core_acquire_fence", SameAs("acquire_fence")),
+        ("core_release_fence", SameAs("release_fence")),
+        ("core_seq_cst_fence", SameAs("seq_cst_fence")),
+        ("core_u64_bit_set", SameAs("u64_bit_set")),
+        ("core_u64_bit_clear", SameAs("u64_bit_clear")),
+        ("core_u64_bit_toggle", SameAs("u64_bit_toggle")),
+        ("core_u32_bit_set", SameAs("u32_bit_set")),
+        ("core_u16_bit_set", SameAs("u16_bit_set")),
+        ("core_i32_bit_set", SameAs("i32_bit_set")),
+        ("core_i64_bit_set", SameAs("i64_bit_set")),
+        ("core_isize_bit_set", SameAs("isize_bit_set")),
+        ("core_field_set", SameAs("field_set")),
+        ("core_field_clear", SameAs("field_clear")),
+        ("core_field_toggle", SameAs("field_toggle")),
+        ("core_field_store", SameAs("field_store")),
+        ("core_field_test_and_set", SameAs("field_test_and_set")),
+        ("core_field_load", SameAs("field_load")),
+        ("core_flags_load", SameAs("flags_load")),
+        ("core_quantity_load", SameAs("quantity_load")),
+        ("core_flags_or", SameAs("flags_or")),
+        ("core_flags_and", SameAs("flags_and")),
+        ("core_flags_xor", SameAs("flags_xor")),
+        ("core_flags_not", SameAs("flags_not")),
+        ("core_flags_or_constant", SameAs("flags_or_constant")),
+        ("core_nested_clear", SameAs("nested_clear")),
+        ("core_nested_flags_or", SameAs("nested_flags_or")),
+        ("core_top_fetch_add_discarded", SameAs("top_fetch_add_discarded")),
+        ("core_top_fetch_add_count", SameAs("top_fetch_add_count")),
+        ("core_u61_top_fetch_add_references", SameAs("u61_top_fetch_add_references")),
+        ("core_u4_flags_or", SameAs("u4_flags_or")),
+        ("core_ends32_middle_test_and_set", SameAs("ends32_middle_test_and_set")),
+        ("core_word_load_top", SameAs("word_load_top")),
+        ("core_tag_set", SameAs("tag_set")),
+        ("core_tag_clear", SameAs("tag_clear")),
+        ("core_tag_toggle", SameAs("tag_toggle")),
+        ("core_tag_load", SameAs("tag_load")),
+        ("core_bit1_test_and_set", SameAs("bit1_test_and_set")),
+        ("core_bit1_test_and_clear", SameAs("bit1_test_and_clear")),
+        ("core_bit1_test_and_toggle", SameAs("bit1_test_and_toggle")),
+        ("core_bit2_test_and_set", SameAs("bit2_test_and_set")),
+        ("core_bit2_test_and_clear", SameAs("bit2_test_and_clear")),
+        ("core_bit2_test_and_toggle", SameAs("bit2_test_and_toggle")),
+        ("core_tag_flags_or", SameAs("tag_flags_or")),
+        ("core_tag_flags_and", SameAs("tag_flags_and")),
+        ("core_tag_flags_xor", SameAs("tag_flags_xor")),
+        ("core_tag_flags_not", SameAs("tag_flags_not")),
+        ("core_nested_tag_set", SameAs("nested_tag_set")),
+    ];
 
     /// The twins on `aarch64`, each its probe's code: of what only `aarch64` runs in one
-    /// instruction, a byte's `fetch_and` and `fetch_not`.
+    /// instruction, and of each bit's test, which `x86_64` writes otherwise.
     const AARCH64_TWINS: &[(&str, Lowering)] = &[
         ("core_byte_fetch_and", SameAs("byte_fetch_and")),
         ("core_byte_fetch_not", SameAs("byte_fetch_not")),
+        ("core_u64_fetch_and", SameAs("u64_fetch_and")),
+        ("core_u64_fetch_or", SameAs("u64_fetch_or")),
+        ("core_u64_fetch_xor", SameAs("u64_fetch_xor")),
+        ("core_u64_fetch_not", SameAs("u64_fetch_not")),
+        ("core_u64_fetch_max_discarded", SameAs("u64_fetch_max_discarded")),
+        ("core_u64_fetch_min_discarded", SameAs("u64_fetch_min_discarded")),
+        ("core_u64_fetch_max", SameAs("u64_fetch_max")),
+        ("core_i64_fetch_max_discarded", SameAs("i64_fetch_max_discarded")),
+        ("core_i64_fetch_min", SameAs("i64_fetch_min")),
+        ("core_pointer_fetch_or", SameAs("pointer_fetch_or")),
+        ("core_u8_bit_set", SameAs("u8_bit_set")),
+        ("core_ends8_low_test_and_set", SameAs("ends8_low_test_and_set")),
+        ("core_ends8_top_test_and_set", SameAs("ends8_top_test_and_set")),
+        ("core_bit0_test_and_clear", SameAs("bit0_test_and_clear")),
+        ("core_bit0_test_and_set", SameAs("bit0_test_and_set")),
+        ("core_bit0_test_and_set_in_some", SameAs("bit0_test_and_set_in_some")),
+        ("core_bit0_test_and_toggle", SameAs("bit0_test_and_toggle")),
+        ("core_ends16_low_test_and_set", SameAs("ends16_low_test_and_set")),
+        ("core_ends16_middle_test_and_set", SameAs("ends16_middle_test_and_set")),
+        ("core_ends16_top_test_and_set", SameAs("ends16_top_test_and_set")),
+        ("core_ends32_low_test_and_set", SameAs("ends32_low_test_and_set")),
+        ("core_ends32_top_test_and_set", SameAs("ends32_top_test_and_set")),
+        ("core_ends64_low_test_and_clear_in_some", SameAs("ends64_low_test_and_clear_in_some")),
+        ("core_ends64_low_test_and_set", SameAs("ends64_low_test_and_set")),
+        ("core_ends64_middle_test_and_clear", SameAs("ends64_middle_test_and_clear")),
+        ("core_ends64_middle_test_and_set", SameAs("ends64_middle_test_and_set")),
+        ("core_ends64_middle_test_and_toggle", SameAs("ends64_middle_test_and_toggle")),
+        ("core_ends64_top_test_and_clear", SameAs("ends64_top_test_and_clear")),
+        ("core_ends64_top_test_and_set", SameAs("ends64_top_test_and_set")),
+        ("core_ends64_top_test_and_toggle", SameAs("ends64_top_test_and_toggle")),
+        ("core_ends64_top_test_and_toggle_in_some", SameAs("ends64_top_test_and_toggle_in_some")),
+        ("core_field_test_and_set_in_some", SameAs("field_test_and_set_in_some")),
+        ("core_field_test_and_set_through_map", SameAs("field_test_and_set_through_map")),
+        ("core_u16_bit_set_in_some", SameAs("u16_bit_set_in_some")),
+        ("core_u32_bit_set_31", SameAs("u32_bit_set_31")),
+        ("core_u64_bit_clear_63", SameAs("u64_bit_clear_63")),
+        ("core_u64_bit_clear_in_some", SameAs("u64_bit_clear_in_some")),
+        ("core_u64_bit_set_0", SameAs("u64_bit_set_0")),
+        ("core_u64_bit_set_5", SameAs("u64_bit_set_5")),
+        ("core_u64_bit_set_63", SameAs("u64_bit_set_63")),
+        ("core_u64_bit_set_63_in_some", SameAs("u64_bit_set_63_in_some")),
+        ("core_u64_bit_set_64", SameAs("u64_bit_set_64")),
+        ("core_u64_bit_set_discarded", SameAs("u64_bit_set_discarded")),
+        ("core_u64_bit_set_in_some", SameAs("u64_bit_set_in_some")),
+        ("core_u64_bit_set_through_map", SameAs("u64_bit_set_through_map")),
+        ("core_u64_bit_toggle_in_some", SameAs("u64_bit_toggle_in_some")),
+    ];
+
+    /// The twins on `x86_64` of a bit's test, which LLVM writes over core's `fetch_or`, `fetch_and`
+    /// or `fetch_xor` as a compare-exchange loop at the lowest bit, at the top one, and wherever
+    /// the test lands in an `Option`; with a `lock bts` too, its result widened by a shift, where
+    /// the bit is the upper half's lowest, at 8 of 16 bits or 32 of 64; and as `lock xadd` to
+    /// toggle the top bit. atomix's `asm!` is one `lock bts` wherever the bit is, which costs a
+    /// `movl` more than LLVM's own for a constant bit of `bit_set`, taken there as an immediate,
+    /// and keeps its `setb` where `bit_set`'s result is discarded, which LLVM writes as `lock or`.
+    const X86_64_TWINS: &[(&str, Lowering)] = &[
+        ("core_bit0_test_and_clear", Retry(&["lock cmpxchgq"])),
+        ("core_bit0_test_and_set", Retry(&["lock cmpxchgq"])),
+        ("core_bit0_test_and_set_in_some", Retry(&["lock cmpxchgq"])),
+        ("core_bit0_test_and_toggle", Retry(&["lock cmpxchgq"])),
+        ("core_ends16_low_test_and_set", Retry(&["lock cmpxchgw"])),
+        ("core_ends16_middle_test_and_set", InOrder(&["lock btsw", "setb", "shll", "setne"])),
+        ("core_ends16_top_test_and_set", Retry(&["lock cmpxchgw"])),
+        ("core_ends32_low_test_and_set", Retry(&["lock cmpxchgl"])),
+        ("core_ends32_top_test_and_set", Retry(&["lock cmpxchgl"])),
+        ("core_ends64_low_test_and_clear_in_some", Retry(&["lock cmpxchgq"])),
+        ("core_ends64_low_test_and_set", Retry(&["lock cmpxchgq"])),
+        ("core_ends64_middle_test_and_clear", InOrder(&["lock btrq", "setb", "shlq", "setne"])),
+        ("core_ends64_middle_test_and_set", InOrder(&["lock btsq", "setb", "shlq", "setne"])),
+        ("core_ends64_middle_test_and_toggle", InOrder(&["lock btcq", "setb", "shlq", "setne"])),
+        ("core_ends64_top_test_and_clear", Retry(&["lock cmpxchgq"])),
+        ("core_ends64_top_test_and_set", Retry(&["lock cmpxchgq"])),
+        ("core_ends64_top_test_and_toggle", InOrder(&["lock xaddq", "shrq"])),
+        ("core_ends64_top_test_and_toggle_in_some", InOrder(&["lock xaddq", "shrq"])),
+        ("core_field_test_and_set_in_some", Retry(&["lock cmpxchgq"])),
+        ("core_field_test_and_set_through_map", Retry(&["lock cmpxchgq"])),
+        ("core_u16_bit_set_in_some", Retry(&["lock cmpxchgw"])),
+        ("core_u32_bit_set_31", Retry(&["lock cmpxchgl"])),
+        ("core_u64_bit_clear_63", Retry(&["lock cmpxchgq"])),
+        ("core_u64_bit_clear_in_some", Retry(&["lock cmpxchgq"])),
+        ("core_u64_bit_set_0", Retry(&["lock cmpxchgq"])),
+        ("core_u64_bit_set_5", Only(&["lock btsq", "setb", "retq"])),
+        ("core_u64_bit_set_63", Retry(&["lock cmpxchgq"])),
+        ("core_u64_bit_set_63_in_some", Retry(&["lock cmpxchgq"])),
+        ("core_u64_bit_set_64", Retry(&["lock cmpxchgq"])),
+        ("core_u64_bit_set_discarded", InOrder(&["lock orq"])),
+        ("core_u64_bit_set_in_some", Retry(&["lock cmpxchgq"])),
+        ("core_u64_bit_set_through_map", Retry(&["lock cmpxchgq"])),
+        ("core_u64_bit_toggle_in_some", Retry(&["lock cmpxchgq"])),
+    ];
+
+    /// The twins of a 128-bit exchange and read, each its probe's code, where core has a 128-bit
+    /// atomic: on `aarch64`, and on `x86_64` macOS and Windows, but not Linux.
+    const WIDE_TWINS: &[(&str, Lowering)] = &[
+        ("core_u128_compare_exchange", SameAs("u128_compare_exchange")),
+        ("core_u128_load_rmw", SameAs("u128_load_rmw")),
+    ];
+
+    /// The twin of a 128-bit update, its probe's code where the target has a 16-byte
+    /// compare-exchange instruction: LSE's `casp`, or `cmpxchg16b`.
+    const WIDE_UPDATE_TWINS: &[(&str, Lowering)] = &[("core_u128_update", SameAs("u128_update"))];
+
+    /// The twin on `aarch64` without LSE of a 128-bit update: core's first read is an LL/SC pair
+    /// that stores back what it loaded, one compare short of atomix's, which reads as `load_rmw`
+    /// does, with the LL/SC compare-exchange of zero for zero.
+    const AARCH64_WITHOUT_LSE_TWINS: &[(&str, Lowering)] =
+        &[("core_u128_update", Retry(&["ldaxp", "stxp", "ldaxp", "cmp", "stlxp", "stlxp"]))];
+
+    /// The twins of a 128-bit load and store, each its probe's code, with LSE2 or AVX.
+    const WIDE_LOAD_STORE_TWINS: &[(&str, Lowering)] = &[
+        ("core_u128_load", SameAs("u128_load")),
+        ("core_u128_load_relaxed", SameAs("u128_load_relaxed")),
+        ("core_u128_load_seq_cst", SameAs("u128_load_seq_cst")),
+        ("core_u128_store", SameAs("u128_store")),
+        ("core_u128_store_seq_cst", SameAs("u128_store_seq_cst")),
     ];
 
     #[test]
     fn aarch64_linux_lowers_each_operation_to_its_instruction() {
-        let tables =
-            [AARCH64, AARCH64_LSE, AARCH64_WITHOUT_LSE2, AARCH64_FLOOR, TWINS, AARCH64_TWINS];
+        let tables = [
+            AARCH64,
+            AARCH64_LSE,
+            AARCH64_WITHOUT_LSE2,
+            AARCH64_FLOOR,
+            TWINS,
+            AARCH64_TWINS,
+            WIDE_TWINS,
+            WIDE_UPDATE_TWINS,
+        ];
         lowers_as_expected(AARCH64_LINUX, None, &tables);
     }
 
     #[test]
     fn aarch64_linux_with_lse2_lowers_each_operation_to_its_instruction() {
-        let tables = [AARCH64, AARCH64_LSE, AARCH64_LSE2, AARCH64_LINUX_LSE2, TWINS, AARCH64_TWINS];
+        let tables = [
+            AARCH64,
+            AARCH64_LSE,
+            AARCH64_LSE2,
+            AARCH64_LINUX_LSE2,
+            TWINS,
+            AARCH64_TWINS,
+            WIDE_TWINS,
+            WIDE_UPDATE_TWINS,
+            WIDE_LOAD_STORE_TWINS,
+        ];
         lowers_as_expected(AARCH64_LINUX, Some("neoverse-v1"), &tables);
     }
 
     #[test]
     fn aarch64_macos_lowers_each_operation_to_its_instruction() {
-        let tables = [AARCH64, AARCH64_LSE, AARCH64_LSE2, AARCH64_MACOS_LSE2, TWINS, AARCH64_TWINS];
+        let tables = [
+            AARCH64,
+            AARCH64_LSE,
+            AARCH64_LSE2,
+            AARCH64_MACOS_LSE2,
+            TWINS,
+            AARCH64_TWINS,
+            WIDE_TWINS,
+            WIDE_UPDATE_TWINS,
+            WIDE_LOAD_STORE_TWINS,
+        ];
         lowers_as_expected(AARCH64_MACOS, None, &tables);
     }
 
     // `generic`, the target's default CPU, replaces the floor only if `RUSTFLAGS` names it.
     #[test]
     fn aarch64_android_at_its_default_cpu_lowers_each_operation_to_its_instruction_or_ll_sc_loop() {
-        let tables = [AARCH64, AARCH64_WITHOUT_LSE2, AARCH64_WITHOUT_LSE, TWINS, AARCH64_TWINS];
+        let tables = [
+            AARCH64,
+            AARCH64_WITHOUT_LSE2,
+            AARCH64_WITHOUT_LSE,
+            TWINS,
+            AARCH64_TWINS,
+            WIDE_TWINS,
+            AARCH64_WITHOUT_LSE_TWINS,
+        ];
         lowers_as_expected(AARCH64_ANDROID, Some("generic"), &tables);
     }
 
     #[test]
     fn x86_64_linux_lowers_each_operation_to_its_instruction() {
-        let tables = [X86_64, X86_64_AVX, X86_64_SYSTEM_V, X86_64_LINUX_PUSH, TWINS];
+        let tables = [X86_64, X86_64_AVX, X86_64_SYSTEM_V, X86_64_LINUX_PUSH, TWINS, X86_64_TWINS];
         lowers_as_expected(X86_64_LINUX, None, &tables);
     }
 
     #[test]
     fn x86_64_macos_lowers_each_operation_to_its_instruction() {
-        let tables = [X86_64, X86_64_AVX, X86_64_SYSTEM_V, X86_64_MACOS_FRAME, TWINS];
+        let tables = [
+            X86_64,
+            X86_64_AVX,
+            X86_64_SYSTEM_V,
+            X86_64_MACOS_FRAME,
+            TWINS,
+            X86_64_TWINS,
+            WIDE_TWINS,
+            WIDE_UPDATE_TWINS,
+            WIDE_LOAD_STORE_TWINS,
+        ];
         lowers_as_expected(X86_64_MACOS, None, &tables);
     }
 
     // `x86-64` is the target's default CPU, to which its spec adds `cmpxchg16b`.
     #[test]
     fn x86_64_windows_at_its_default_cpu_lowers_each_operation_to_its_instruction() {
-        lowers_as_expected(
-            X86_64_WINDOWS,
-            Some("x86-64"),
-            &[X86_64, X86_64_WINDOWS_DEFAULT, TWINS],
-        );
+        let tables =
+            [X86_64, X86_64_WINDOWS_DEFAULT, TWINS, X86_64_TWINS, WIDE_TWINS, WIDE_UPDATE_TWINS];
+        lowers_as_expected(X86_64_WINDOWS, Some("x86-64"), &tables);
     }
 
     /// Checks that `target`, an `x86_64` one, refuses each probe only `aarch64` has, each with its

@@ -22,8 +22,9 @@ pub(crate) enum Lowering {
     /// popped, `stp` and `ldp` included, then one cold block that calls one of [`REFUSALS`]: a
     /// tagged pointer's encode, or an element's index check, whose fast path saves no frame record.
     Refuses(&'static [&'static str]),
-    /// The instructions the function named lowers to, every one: an operation that is another's,
-    /// a reference's a raw pointer's, whose own lowering says what it costs.
+    /// The code of the function named, instruction for instruction, operands too, and each branch
+    /// to the same place: an operation that is another's, a reference's a raw pointer's, or core's
+    /// twin of an atomix probe; the named function's own lowering says what it costs.
     SameAs(&'static str),
 }
 
@@ -166,9 +167,9 @@ fn syntax(target: &str) -> Syntax {
 enum Line {
     /// A branch target.
     Label(String),
-    /// An instruction: its mnemonic, with a `lock` prefix or a barrier's domain kept, and where
-    /// it branches to, if it is a branch, or what it calls, if it is a call.
-    Instruction { mnemonic: String, branch: Option<String>, callee: Option<String> },
+    /// An instruction: its text as written, its mnemonic, with a `lock` prefix or a barrier's
+    /// domain kept, and where it branches to, if it is a branch, or what it calls, if it is a call.
+    Instruction { text: String, mnemonic: String, branch: Option<String>, callee: Option<String> },
 }
 
 /// The labels and instructions of the function `name` in `target`'s assembly.
@@ -213,9 +214,73 @@ fn function(target: &str, assembly: &str, name: &str) -> Vec<Line> {
         let operand = line.rsplit([' ', '\t', ',']).next().map(str::to_owned);
         let branch = operand.clone().filter(|_| is_branch(&mnemonic));
         let callee = operand.filter(|_| is_call(&mnemonic));
-        function.push(Line::Instruction { mnemonic, branch, callee });
+        let text = words.join(" ");
+        function.push(Line::Instruction { text, mnemonic, branch, callee });
     }
     function
+}
+
+/// The code of a function, each line as written but for what places it in the binary: its own
+/// labels, which become their places among its labels; and, past the fast path's first return,
+/// in the cold block alone, a call to a refusal, which becomes the refusal's name, whichever
+/// type's it is, and an anonymous constant, such as a panic's location, which becomes `anon`. So
+/// two functions' code compares wherever each sits, and their fast paths as written.
+fn code(lines: &[Line]) -> Vec<String> {
+    let labels: Vec<&str> = lines
+        .iter()
+        .filter_map(|line| match line {
+            Line::Label(label) => Some(label.as_str()),
+            Line::Instruction { .. } => None,
+        })
+        .collect();
+    let place = |label: &str| labels.iter().position(|own_label| *own_label == label);
+    let mut cold = false;
+    lines
+        .iter()
+        .map(|line| match line {
+            Line::Label(label) => {
+                format!("label {}:", place(label).expect("each label is the function's own"))
+            },
+            Line::Instruction { text, mnemonic, branch, callee } => {
+                let text = branch
+                    .as_deref()
+                    .and_then(|branch| {
+                        Some(format!("{}label {}", text.strip_suffix(branch)?, place(branch)?))
+                    })
+                    .unwrap_or_else(|| text.clone());
+                let in_cold_block = cold;
+                cold |= mnemonic.starts_with("ret");
+                if !in_cold_block {
+                    return text;
+                }
+                let refusal = callee.as_deref().and_then(|callee| {
+                    let name = REFUSALS.iter().find(|refusal| callee.contains(*refusal))?;
+                    Some((callee, name))
+                });
+                let text = refusal
+                    .map_or_else(|| text.clone(), |(callee, name)| text.replace(callee, name));
+                without_anonymous_names(&text)
+            },
+        })
+        .collect()
+}
+
+/// `text` with each anonymous constant's name, `.Lanon.…` or `l_anon.…`, replaced by `anon`.
+fn without_anonymous_names(text: &str) -> String {
+    let mut rest = text;
+    let mut kept = String::new();
+    while let Some(start) = rest.find("anon.") {
+        let (before, name) = rest.split_at(start);
+        let prefix = before.trim_end_matches(['.', 'L', 'l', '_']);
+        kept.push_str(prefix);
+        kept.push_str("anon");
+        let end = name
+            .find(|character: char| !character.is_ascii_alphanumeric() && !"._".contains(character))
+            .unwrap_or(name.len());
+        rest = name.split_at(end).1;
+    }
+    kept.push_str(rest);
+    kept
 }
 
 /// Whether `mnemonic` is a branch: a jump on `x86_64`, `b` and its kin on `aarch64`.
@@ -303,7 +368,7 @@ fn assert_no_unnamed_cost(target: &str, name: &str, lines: &[Line], lowering: &L
     for line in lines {
         match line {
             Line::Label(label) => labels.push((label.as_str(), instructions.len())),
-            Line::Instruction { mnemonic, branch, callee } => {
+            Line::Instruction { mnemonic, branch, callee, .. } => {
                 instructions.push((mnemonic.as_str(), branch.as_deref(), callee.as_deref()));
             },
         }
@@ -437,9 +502,9 @@ pub(crate) fn lowers_as_expected(
             SameAs(twin) => {
                 let twin_lines = function(target, &assembly, twin);
                 assert_eq!(
-                    instructions,
-                    mnemonics(&twin_lines),
-                    "{target}: `{name}` lowers to what `{twin}` does"
+                    code(&lines),
+                    code(&twin_lines),
+                    "{target}: `{name}` is `{twin}`'s code, instruction for instruction"
                 );
                 // The twin's own lowering checks what the instructions cost.
                 continue;
