@@ -83,6 +83,7 @@ const unsafe impl<T: [const] Atom> Atom for Option<T> {
     const TAG_WIDTH: u32 = T::TAG_WIDTH;
     const POINTEE_ALIGNMENT: PointeeAlignment = T::POINTEE_ALIGNMENT;
     #[inline]
+    #[track_caller]
     fn to_repr(self) -> T::Repr {
         match self {
             Some(value) => value.to_repr(),

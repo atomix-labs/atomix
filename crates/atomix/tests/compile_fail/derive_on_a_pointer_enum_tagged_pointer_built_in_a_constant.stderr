@@ -4,16 +4,6 @@ error[E0080]: evaluation panicked: a constant reads no pointer's address but nul
 31 | static ROOT: Atomic<Child> = Atomic::new(Child::Leaf(NonNull::from_ref(&LEAF)));
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `ROOT` failed inside this call
    |
-note: inside `atomix::Atomic::<Child>::new`
-  --> $WORKSPACE/crates/atomix-core/src/atomic/mod.rs
-   |
-   |             cell: T::Validity::wrap::<T::Repr>(value.to_repr().into_cell()),
-   |                                                ^^^^^^^^^^^^^^^
-note: inside `_::<impl Atom for Child>::to_repr`
-  --> tests/compile_fail/derive_on_a_pointer_enum_tagged_pointer_built_in_a_constant.rs:15:23
-   |
-15 | #[derive(Clone, Copy, Atom)]
-   |                       ^^^^
 note: inside `atomix::__private::to_tagged_repr::<Child>`
   --> $WORKSPACE/crates/atomix-core/src/__private.rs
    |

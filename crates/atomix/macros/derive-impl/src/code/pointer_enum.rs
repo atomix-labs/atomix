@@ -482,6 +482,7 @@ impl<'a> EnumCode<'a> {
         // promise that they may.
         quote! {
             #[inline]
+            #[track_caller]
             fn to_repr(self) -> *mut () {
                 let (#repr, #misaligned) = #to_tagged_self(self, #private::Tags::EMPTY);
                 #private::assert_aligned::<Self>(#misaligned);

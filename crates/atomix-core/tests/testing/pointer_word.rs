@@ -97,6 +97,7 @@ macro_rules! pointer_word {
                 const POINTEE_ALIGNMENT: PointeeAlignment =
                     PointeeAlignment::least(&[<$pointer_type as Atom>::POINTEE_ALIGNMENT]);
                 #[inline]
+                #[track_caller]
                 fn to_repr(self) -> Repr {
                     let (repr, misaligned) = to_tagged_repr::<Self>(self, Tags::EMPTY);
                     assert_aligned::<Self>(misaligned);

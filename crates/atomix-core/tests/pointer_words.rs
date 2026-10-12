@@ -189,6 +189,7 @@ mod tests {
         const REPRS: ReprRange<*mut ()> = SLOT_ZERO.range();
         const TAG_WIDTH: u32 = SLOT.tag_width();
         const POINTEE_ALIGNMENT: PointeeAlignment = SLOT_ALIGNMENT;
+        #[track_caller]
         fn to_repr(self) -> *mut () {
             let (repr, misaligned) = to_tagged_repr::<Self>(self, Tags::EMPTY);
             assert_aligned::<Self>(misaligned);

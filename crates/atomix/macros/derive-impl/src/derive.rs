@@ -170,6 +170,7 @@ mod tests {
                 const POINTEE_ALIGNMENT: ::atomix::__private::PointeeAlignment =
                     <u64 as ::atomix::Atom>::POINTEE_ALIGNMENT;
                 #[inline]
+                #[track_caller]
                 fn to_repr(self) -> <u64 as ::atomix::Atom>::Repr {
                     ::atomix::__private::to_repr::<u64>(self.0)
                 }
@@ -215,6 +216,7 @@ mod tests {
                 const POINTEE_ALIGNMENT: ::atomix::__private::PointeeAlignment =
                     <T as ::atomix::Atom>::POINTEE_ALIGNMENT;
                 #[inline]
+                #[track_caller]
                 fn to_repr(self) -> <T as ::atomix::Atom>::Repr {
                     <T as ::atomix::Atom>::to_repr(self.0)
                 }
@@ -1141,6 +1143,7 @@ mod tests {
                     const TAG_WIDTH: ::core::primitive::u32 = layout.tag_width();
                     const POINTEE_ALIGNMENT: ::atomix::__private::PointeeAlignment = alignment;
                     #[inline]
+                    #[track_caller]
                     fn to_repr(self) -> Repr {
                         let (repr, misaligned) = ::atomix::__private::to_tagged_repr::<Self>(
                             self,
@@ -1247,6 +1250,7 @@ mod tests {
                     const TAG_WIDTH: ::core::primitive::u32 = layout.tag_width();
                     const POINTEE_ALIGNMENT: ::atomix::__private::PointeeAlignment = alignment;
                     #[inline]
+                    #[track_caller]
                     fn to_repr(self) -> *mut () {
                         let (repr, misaligned) = ::atomix::__private::to_tagged_repr::<Self>(
                             self,

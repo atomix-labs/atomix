@@ -25,6 +25,7 @@ use crate::validity::{Partial, Total, TotalZeroNiche, Validity, ZeroNiche, ZeroV
 /// `value`'s repr: [`Atom::to_repr`].
 #[inline]
 #[must_use]
+#[track_caller]
 pub const fn to_repr<T: const Atom>(value: T) -> T::Repr {
     value.to_repr()
 }

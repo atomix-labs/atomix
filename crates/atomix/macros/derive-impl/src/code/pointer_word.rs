@@ -400,6 +400,7 @@ impl<'a> WordCode<'a> {
         // whose own impls promise that they may.
         quote! {
             #[inline]
+            #[track_caller]
             fn to_repr(self) -> #repr {
                 let (#repr_value, #misaligned) = #to_tagged_self(self, #private::Tags::EMPTY);
                 #private::assert_aligned::<Self>(#misaligned);
