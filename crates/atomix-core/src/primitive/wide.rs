@@ -67,7 +67,8 @@ wide_bits!(u128, i128);
 pub struct Wide {
     // INVARIANT: while shared, every access is a 16-byte atomic: core's `AtomicU128` on `aarch64`;
     // `cmpxchg16b`, or AVX's load and store, on `x86_64`; or a caller's through `as_ptr` or
-    // `from_ptr`, whose contracts (`Atomic`'s) allow no non-atomic or different-width access.
+    // `from_ptr`, whose contracts (`Atomic`'s) allow no non-atomic or different-width access. In
+    // a constant, which runs on one thread, `x86_64`'s compare-exchange is a plain read and write.
     /// The bits.
     bits: UnsafeCell<u128>,
 }
@@ -115,7 +116,7 @@ impl Wide {
     }
 }
 
-/// Implements the cell traits and `RawAccess` for a 128-bit integer over `Wide`.
+/// Implements the cell traits and `RawAccess` for a 128-bit integer over `Wide`, each `const`.
 ///
 /// `$to` converts the integer to its `u128`, `$from` converts back, and `$place` lends its place.
 #[cfg(not(loom))]
@@ -158,7 +159,7 @@ macro_rules! cells {
                 cell.as_ptr().cast()
             }
         }
-        impl CompareExchange for $int {
+        const impl CompareExchange for $int {
             #[inline]
             fn read_for_rmw(cell: &Wide, order: CoreOrdering) -> Self {
                 $from(cell.read_for_rmw(order))
@@ -167,28 +168,30 @@ macro_rules! cells {
             fn compare_exchange(
                 cell: &Wide, current: Self, new: Self, success: CoreOrdering, failure: CoreOrdering,
             ) -> Result<Self, Self> {
-                cell.compare_exchange($to(current), $to(new), success, failure)
-                    .map($from)
-                    .map_err($from)
+                match cell.compare_exchange($to(current), $to(new), success, failure) {
+                    Ok(bits) => Ok($from(bits)),
+                    Err(bits) => Err($from(bits)),
+                }
             }
             #[inline]
             fn compare_exchange_weak(
                 cell: &Wide, current: Self, new: Self, success: CoreOrdering, failure: CoreOrdering,
             ) -> Result<Self, Self> {
-                cell.compare_exchange_weak($to(current), $to(new), success, failure)
-                    .map($from)
-                    .map_err($from)
+                match cell.compare_exchange_weak($to(current), $to(new), success, failure) {
+                    Ok(bits) => Ok($from(bits)),
+                    Err(bits) => Err($from(bits)),
+                }
             }
         }
         #[cfg(wide_load_store)]
-        impl Load for $int {
+        const impl Load for $int {
             #[inline]
             fn load(cell: &Wide, order: CoreOrdering) -> Self {
                 $from(cell.load(order))
             }
         }
         #[cfg(wide_load_store)]
-        impl Store for $int {
+        const impl Store for $int {
             #[inline]
             fn store(cell: &Wide, value: Self, order: CoreOrdering) {
                 cell.store($to(value), order);
@@ -236,7 +239,7 @@ mod aarch64 {
 
         /// A compare-exchange on the bits.
         #[inline]
-        pub(super) fn compare_exchange(
+        pub(super) const fn compare_exchange(
             &self, current: u128, new: u128, success: CoreOrdering, failure: CoreOrdering,
         ) -> Result<u128, u128> {
             self.atomic().compare_exchange(current, new, success, failure)
@@ -244,7 +247,7 @@ mod aarch64 {
 
         /// As `compare_exchange`, but may fail while the cell holds `current`.
         #[inline]
-        pub(super) fn compare_exchange_weak(
+        pub(super) const fn compare_exchange_weak(
             &self, current: u128, new: u128, success: CoreOrdering, failure: CoreOrdering,
         ) -> Result<u128, u128> {
             self.atomic().compare_exchange_weak(current, new, success, failure)
@@ -252,7 +255,7 @@ mod aarch64 {
 
         /// An update loop's first read: the LSE2 load, else a compare-exchange of zero for zero.
         #[inline]
-        pub(super) fn read_for_rmw(&self, order: CoreOrdering) -> u128 {
+        pub(super) const fn read_for_rmw(&self, order: CoreOrdering) -> u128 {
             #[cfg(target_feature = "lse2")]
             return self.load(order);
             #[cfg(not(target_feature = "lse2"))]
@@ -264,14 +267,14 @@ mod aarch64 {
         /// The LSE2 16-byte load.
         #[cfg(target_feature = "lse2")]
         #[inline]
-        pub(super) fn load(&self, order: CoreOrdering) -> u128 {
+        pub(super) const fn load(&self, order: CoreOrdering) -> u128 {
             self.atomic().load(order)
         }
 
         /// The LSE2 16-byte store.
         #[cfg(target_feature = "lse2")]
         #[inline]
-        pub(super) fn store(&self, value: u128, order: CoreOrdering) {
+        pub(super) const fn store(&self, value: u128, order: CoreOrdering) {
             self.atomic().store(value, order);
         }
     }
@@ -284,6 +287,7 @@ mod x86_64 {
     //! Intel and AMD guarantee that load and store single-copy atomic when 16-byte aligned.
 
     use core::arch::x86_64::cmpxchg16b;
+    use core::intrinsics::const_eval_select;
     #[cfg(target_feature = "avx")]
     use core::intrinsics::{AtomicOrdering, atomic_load, atomic_store};
     use core::sync::atomic::Ordering as CoreOrdering;
@@ -291,10 +295,43 @@ mod x86_64 {
     use super::Wide;
 
     impl Wide {
-        /// The bits a compare-exchange found, whether or not it wrote `new`.
+        /// The bits a compare-exchange found, whether or not it wrote `new`: `cmpxchg16b`, which
+        /// is no `const fn`, at run time, and a read and a write in a constant.
+        #[inline]
+        const fn exchange(
+            &self, current: u128, new: u128, success: CoreOrdering, failure: CoreOrdering,
+        ) -> u128 {
+            /// The bits a compare-exchange found, in a constant: a read, and a write of `new`
+            /// where it found `current`. Only the `const_eval_select` below calls it, in a
+            /// constant alone.
+            #[expect(unsafe_code, reason = "reads and writes the cell's own bits in a constant")]
+            const fn exchange_in_constant(
+                cell: &Wide, current: u128, new: u128, _: CoreOrdering, _: CoreOrdering,
+            ) -> u128 {
+                let bits = cell.bits.get();
+                // SAFETY: `bits` is valid and aligned to 16 for the cell's life, and its one
+                // caller runs it in a constant alone, on one thread, where nothing else reaches
+                // the cell.
+                let found = unsafe { bits.read() };
+                if found == current {
+                    // SAFETY: as the read.
+                    unsafe {
+                        bits.write(new);
+                    }
+                }
+                found
+            }
+            const_eval_select(
+                (self, current, new, success, failure),
+                exchange_in_constant,
+                Self::exchange_at_run_time,
+            )
+        }
+
+        /// The bits a compare-exchange found, at run time: `cmpxchg16b`.
         #[expect(unsafe_code, reason = "`cmpxchg16b` on the cell's own 16-byte-aligned bits")]
         #[inline]
-        fn exchange(
+        fn exchange_at_run_time(
             &self, current: u128, new: u128, success: CoreOrdering, failure: CoreOrdering,
         ) -> u128 {
             // SAFETY: `bits` is valid and aligned to 16 for the cell's life, every shared access
@@ -305,7 +342,7 @@ mod x86_64 {
 
         /// A compare-exchange on the bits.
         #[inline]
-        pub(super) fn compare_exchange(
+        pub(super) const fn compare_exchange(
             &self, current: u128, new: u128, success: CoreOrdering, failure: CoreOrdering,
         ) -> Result<u128, u128> {
             let previous = self.exchange(current, new, success, failure);
@@ -314,7 +351,7 @@ mod x86_64 {
 
         /// As `compare_exchange`, which never fails spuriously.
         #[inline]
-        pub(super) fn compare_exchange_weak(
+        pub(super) const fn compare_exchange_weak(
             &self, current: u128, new: u128, success: CoreOrdering, failure: CoreOrdering,
         ) -> Result<u128, u128> {
             self.compare_exchange(current, new, success, failure)
@@ -323,7 +360,7 @@ mod x86_64 {
         /// An update loop's first read: the AVX load, else a compare-exchange of zero for zero,
         /// whose found bits it returns as they are, so no `Result` asks for a `cmov` to join them.
         #[inline]
-        pub(super) fn read_for_rmw(&self, order: CoreOrdering) -> u128 {
+        pub(super) const fn read_for_rmw(&self, order: CoreOrdering) -> u128 {
             #[cfg(target_feature = "avx")]
             return self.load(order);
             #[cfg(not(target_feature = "avx"))]
@@ -332,19 +369,19 @@ mod x86_64 {
 
         /// The AVX 16-byte load.
         ///
-        /// A comparison chain, not a `match`: `Ordering` is non-exhaustive, and its
+        /// A chain of `matches!`, not a `match`: `Ordering` is non-exhaustive, and its
         /// callers, `Atomic::load` and `read_for_rmw`, pass only a `LoadOrdering`'s, so the
-        /// last branch is `SeqCst`'s.
+        /// last branch is `SeqCst`'s; and `Ordering`'s `PartialEq` is not `const`.
         #[cfg(target_feature = "avx")]
         #[expect(unsafe_code, reason = "the 16-byte atomic load of the cell's own bits")]
         #[inline]
-        pub(super) fn load(&self, order: CoreOrdering) -> u128 {
+        pub(super) const fn load(&self, order: CoreOrdering) -> u128 {
             let bits = self.bits.get().cast_const();
-            if order == CoreOrdering::Relaxed {
+            if matches!(order, CoreOrdering::Relaxed) {
                 // SAFETY: `bits` is valid and aligned to 16, and every shared access is atomic (the
                 // field INVARIANT).
                 unsafe { atomic_load::<u128, { AtomicOrdering::Relaxed }, false>(bits) }
-            } else if order == CoreOrdering::Acquire {
+            } else if matches!(order, CoreOrdering::Acquire) {
                 // SAFETY: as the Relaxed load.
                 unsafe { atomic_load::<u128, { AtomicOrdering::Acquire }, false>(bits) }
             } else {
@@ -355,20 +392,20 @@ mod x86_64 {
 
         /// The AVX 16-byte store.
         ///
-        /// A comparison chain, as the load is: its caller, `Atomic::store`, passes only a
+        /// A chain of `matches!`, as the load is: its caller, `Atomic::store`, passes only a
         /// `StoreOrdering`'s, so the last branch is `SeqCst`'s.
         #[cfg(target_feature = "avx")]
         #[expect(unsafe_code, reason = "the 16-byte atomic store to the cell's own bits")]
         #[inline]
-        pub(super) fn store(&self, value: u128, order: CoreOrdering) {
+        pub(super) const fn store(&self, value: u128, order: CoreOrdering) {
             let bits = self.bits.get();
-            if order == CoreOrdering::Relaxed {
+            if matches!(order, CoreOrdering::Relaxed) {
                 // SAFETY: `bits` is valid and aligned to 16, and every shared access is atomic (the
                 // field INVARIANT).
                 unsafe {
                     atomic_store::<u128, { AtomicOrdering::Relaxed }, false>(bits, value);
                 }
-            } else if order == CoreOrdering::Release {
+            } else if matches!(order, CoreOrdering::Release) {
                 // SAFETY: as the Relaxed store.
                 unsafe {
                     atomic_store::<u128, { AtomicOrdering::Release }, false>(bits, value);

@@ -1,5 +1,6 @@
-//! `Atomic<T>`'s operations, over the built-in values.
+//! `Atomic<T>`'s operations, over the built-in values, at run time and in a constant.
 
+#![feature(const_trait_impl)]
 // Loom's cells exist only inside a model; `model.rs` holds the loom tests.
 #![cfg(not(loom))]
 
@@ -12,7 +13,7 @@ mod tests {
     use std::panic;
 
     use atomix_core::ordering::{AcqRel, Acquire, Relaxed, Release, SeqCst};
-    use atomix_core::{Atom, Atomic, AtomicBool, AtomicI64, AtomicU8, AtomicU64};
+    use atomix_core::{Atom, Atomic, AtomicBool, AtomicI64, AtomicU8, AtomicU32, AtomicU64};
 
     static COUNT: AtomicU64 = AtomicU64::new(5);
 
@@ -89,6 +90,58 @@ mod tests {
         assert_eq!(value.load(Relaxed), 9, "as a plain load sees it");
     }
 
+    // Load, store and swap run in a constant.
+    const _: () = {
+        let value = AtomicU64::new(1);
+        value.store(2, Release);
+        assert!(value.swap(3, AcqRel) == 2, "swap reads what store wrote, in const");
+        assert!(value.load(Acquire) == 3, "and load what swap wrote");
+    };
+
+    // Both compare-exchanges run in a constant.
+    const _: () = {
+        let owner = AtomicU64::new(0);
+        let claimed = owner.compare_exchange(0, 7, AcqRel, Acquire);
+        assert!(matches!(claimed, Ok(0)), "session 7 claims the book, in const");
+        let refused = owner.compare_exchange_weak(0, 9, AcqRel, Acquire);
+        assert!(matches!(refused, Err(7)), "and 9 finds 7's claim");
+    };
+
+    // `update` and `try_update` run in a constant, with a `const` function.
+    const _: () = {
+        /// A retry delay, doubled.
+        const fn double(micros: u32) -> u32 {
+            micros * 2
+        }
+        /// A delay less 900 microseconds, or `None` below them.
+        const fn shorten(micros: u32) -> Option<u32> {
+            micros.checked_sub(900)
+        }
+        let delay = AtomicU32::new(400);
+        assert!(delay.update(AcqRel, Acquire, double) == 400, "the delay before, in const");
+        assert!(matches!(delay.try_update(AcqRel, Acquire, shorten), Err(800)), "declined");
+        assert!(delay.load(Acquire) == 800, "so the doubled delay stays");
+    };
+
+    // The read-modify-write load and store run in a constant.
+    const _: () = {
+        let value = AtomicU64::new(5);
+        value.store_rmw(6, Release);
+        assert!(value.load_rmw(Acquire) == 6, "load_rmw reads what store_rmw wrote, in const");
+    };
+
+    // A pointer loads, stores and swaps in a constant, and is read through.
+    const _: () = {
+        let (mut first, mut second) = (1_u64, 2_u64);
+        let pointer = Atomic::new(ptr::null_mut());
+        pointer.store(&raw mut first, Release);
+        assert!(!pointer.swap(&raw mut second, AcqRel).is_null(), "swap reads the first");
+        // SAFETY: the pointer is `second`'s, which lives to the block's end.
+        #[expect(unsafe_code, reason = "reads through the pointer loaded, in const")]
+        let read = unsafe { *pointer.load(Acquire) };
+        assert!(read == 2, "and load the second, with its provenance");
+    };
+
     #[test]
     fn an_atomic_round_trips_through_its_pointer() {
         let value = AtomicU8::new(3);
@@ -107,14 +160,12 @@ mod tests {
         assert_eq!(AtomicU64::default().into_inner(), 0, "Default is the value's");
     }
 
-    #[test]
-    fn new_get_mut_and_into_inner_are_const() {
-        const {
-            let mut value = AtomicU64::new(3);
-            *value.get_mut() += 1;
-            assert!(value.into_inner() == 4, "into_inner reads what get_mut wrote, in const");
-        }
-    }
+    // `new`, `get_mut` and `into_inner` run in a constant.
+    const _: () = {
+        let mut value = AtomicU64::new(3);
+        *value.get_mut() += 1;
+        assert!(value.into_inner() == 4, "into_inner reads what get_mut wrote, in const");
+    };
 
     #[test]
     fn debug_prints_the_value() {

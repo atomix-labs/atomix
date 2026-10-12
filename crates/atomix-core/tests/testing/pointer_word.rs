@@ -137,7 +137,7 @@ macro_rules! pointer_word {
             // SAFETY: the pointer's own tags lie in the low bits of the word's repr, below the
             // word's tags, as `pointer_placement` says, and `field` returns the pointer.
             #[expect(unsafe_code, reason = "the impl the derive writes, by hand")]
-            unsafe impl HasPackedField<0, $pointer_type> for $name {
+            const unsafe impl HasPackedField<0, $pointer_type> for $name {
                 const PLACEMENT: PackedField = WORD_LAYOUT.pointer_placement();
                 const LAYOUT: PackedLayout = WORD_LAYOUT.packed_layout();
                 type Reach = Reach<false>;
@@ -154,7 +154,7 @@ macro_rules! pointer_word {
                 // tag reaches the repr's top bit, which is the pointer's; and `field` returns the
                 // tag.
                 #[expect(unsafe_code, reason = "the impl the derive writes, by hand")]
-                unsafe impl HasPackedField<$index, $ty> for $name {
+                const unsafe impl HasPackedField<$index, $ty> for $name {
                     const PLACEMENT: PackedField = PLACEMENTS[$index - 1];
                     const LAYOUT: PackedLayout = WORD_LAYOUT.packed_layout();
                     type Reach = Reach<false>;

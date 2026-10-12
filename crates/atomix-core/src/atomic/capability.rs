@@ -15,9 +15,10 @@ impl<T: Atom> Atomic<T> {
     /// Adds `delta` to the repr, wrapping, and returns the value before.
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub fn fetch_add<O: RmwOrdering>(&self, delta: T::Repr, order: O) -> T
+    pub const fn fetch_add<O: RmwOrdering>(&self, delta: T::Repr, order: O) -> T
     where
-        T: AtomAdd,
+        T: AtomAdd + [const] Atom,
+        T::Repr: [const] FetchAdd,
     {
         let _ = order;
         let before = T::Repr::fetch_add(self.primitive_cell(), delta, O::CORE);
@@ -28,9 +29,10 @@ impl<T: Atom> Atomic<T> {
     /// Subtracts `delta` from the repr, wrapping, and returns the value before.
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub fn fetch_sub<O: RmwOrdering>(&self, delta: T::Repr, order: O) -> T
+    pub const fn fetch_sub<O: RmwOrdering>(&self, delta: T::Repr, order: O) -> T
     where
-        T: AtomAdd,
+        T: AtomAdd + [const] Atom,
+        T::Repr: [const] FetchAdd,
     {
         let _ = order;
         let before = T::Repr::fetch_sub(self.primitive_cell(), delta, O::CORE);
@@ -42,10 +44,10 @@ impl<T: Atom> Atomic<T> {
     #[doc(cfg(any(target_arch = "aarch64", target_arch = "arm64ec")))]
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub fn fetch_max<O: RmwOrdering>(&self, value: T, order: O) -> T
+    pub const fn fetch_max<O: RmwOrdering>(&self, value: T, order: O) -> T
     where
-        T: AtomOrd,
-        T::Repr: MinMax,
+        T: AtomOrd + [const] Atom,
+        T::Repr: [const] MinMax,
     {
         let _ = order;
         let before = T::Repr::fetch_max(self.primitive_cell(), value.to_repr(), O::CORE);
@@ -57,10 +59,10 @@ impl<T: Atom> Atomic<T> {
     #[doc(cfg(any(target_arch = "aarch64", target_arch = "arm64ec")))]
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub fn fetch_min<O: RmwOrdering>(&self, value: T, order: O) -> T
+    pub const fn fetch_min<O: RmwOrdering>(&self, value: T, order: O) -> T
     where
-        T: AtomOrd,
-        T::Repr: MinMax,
+        T: AtomOrd + [const] Atom,
+        T::Repr: [const] MinMax,
     {
         let _ = order;
         let before = T::Repr::fetch_min(self.primitive_cell(), value.to_repr(), O::CORE);
@@ -80,9 +82,10 @@ impl<T: Atom> Atomic<T> {
     ///
     /// [portable-atomic]: https://docs.rs/portable-atomic
     #[inline]
-    pub fn and<O: RmwOrdering>(&self, value: T, order: O)
+    pub const fn and<O: RmwOrdering>(&self, value: T, order: O)
     where
-        T: AtomBitwise,
+        T: AtomBitwise + [const] Atom,
+        T::Repr: [const] Bitwise,
     {
         let _ = order;
         T::Repr::fetch_and(self.primitive_cell(), value.to_repr(), O::CORE);
@@ -91,9 +94,10 @@ impl<T: Atom> Atomic<T> {
     /// Applies `| value`: [`fetch_or`](Self::fetch_or) with the value before discarded, at
     /// [`and`](Self::and)'s cost.
     #[inline]
-    pub fn or<O: RmwOrdering>(&self, value: T, order: O)
+    pub const fn or<O: RmwOrdering>(&self, value: T, order: O)
     where
-        T: AtomBitwise,
+        T: AtomBitwise + [const] Atom,
+        T::Repr: [const] Bitwise,
     {
         let _ = order;
         T::Repr::fetch_or(self.primitive_cell(), value.to_repr(), O::CORE);
@@ -102,9 +106,10 @@ impl<T: Atom> Atomic<T> {
     /// Applies `^ value`: [`fetch_xor`](Self::fetch_xor) with the value before discarded, at
     /// [`and`](Self::and)'s cost.
     #[inline]
-    pub fn xor<O: RmwOrdering>(&self, value: T, order: O)
+    pub const fn xor<O: RmwOrdering>(&self, value: T, order: O)
     where
-        T: AtomBitwise,
+        T: AtomBitwise + [const] Atom,
+        T::Repr: [const] Bitwise,
     {
         let _ = order;
         T::Repr::fetch_xor(self.primitive_cell(), value.to_repr(), O::CORE);
@@ -113,9 +118,10 @@ impl<T: Atom> Atomic<T> {
     /// Inverts every bit: [`fetch_not`](Self::fetch_not) with the value before discarded, at
     /// [`and`](Self::and)'s cost.
     #[inline]
-    pub fn not<O: RmwOrdering>(&self, order: O)
+    pub const fn not<O: RmwOrdering>(&self, order: O)
     where
-        T: AtomBitwise,
+        T: AtomBitwise + [const] Atom,
+        T::Repr: [const] Bitwise,
     {
         let _ = order;
         T::Repr::fetch_not(self.primitive_cell(), O::CORE);
@@ -126,10 +132,10 @@ impl<T: Atom> Atomic<T> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[must_use = "to discard the value before, call `and`, which every target has"]
     #[inline]
-    pub fn fetch_and<O: RmwOrdering>(&self, value: T, order: O) -> T
+    pub const fn fetch_and<O: RmwOrdering>(&self, value: T, order: O) -> T
     where
-        T: AtomBitwise,
-        T::Repr: FetchBitwise,
+        T: AtomBitwise + [const] Atom,
+        T::Repr: [const] Bitwise + FetchBitwise,
     {
         let _ = order;
         let before = T::Repr::fetch_and(self.primitive_cell(), value.to_repr(), O::CORE);
@@ -142,10 +148,10 @@ impl<T: Atom> Atomic<T> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[must_use = "to discard the value before, call `or`, which every target has"]
     #[inline]
-    pub fn fetch_or<O: RmwOrdering>(&self, value: T, order: O) -> T
+    pub const fn fetch_or<O: RmwOrdering>(&self, value: T, order: O) -> T
     where
-        T: AtomBitwise,
-        T::Repr: FetchBitwise,
+        T: AtomBitwise + [const] Atom,
+        T::Repr: [const] Bitwise + FetchBitwise,
     {
         let _ = order;
         let before = T::Repr::fetch_or(self.primitive_cell(), value.to_repr(), O::CORE);
@@ -158,10 +164,10 @@ impl<T: Atom> Atomic<T> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[must_use = "to discard the value before, call `xor`, which every target has"]
     #[inline]
-    pub fn fetch_xor<O: RmwOrdering>(&self, value: T, order: O) -> T
+    pub const fn fetch_xor<O: RmwOrdering>(&self, value: T, order: O) -> T
     where
-        T: AtomBitwise,
-        T::Repr: FetchBitwise,
+        T: AtomBitwise + [const] Atom,
+        T::Repr: [const] Bitwise + FetchBitwise,
     {
         let _ = order;
         let before = T::Repr::fetch_xor(self.primitive_cell(), value.to_repr(), O::CORE);
@@ -174,10 +180,10 @@ impl<T: Atom> Atomic<T> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[must_use = "to discard the value before, call `not`, which every target has"]
     #[inline]
-    pub fn fetch_not<O: RmwOrdering>(&self, order: O) -> T
+    pub const fn fetch_not<O: RmwOrdering>(&self, order: O) -> T
     where
-        T: AtomBitwise,
-        T::Repr: FetchBitwise,
+        T: AtomBitwise + [const] Atom,
+        T::Repr: [const] Bitwise + FetchBitwise,
     {
         let _ = order;
         let before = T::Repr::fetch_not(self.primitive_cell(), O::CORE);
@@ -216,10 +222,10 @@ impl<T: Atom> Atomic<T> {
     /// [portable-atomic]: https://docs.rs/portable-atomic
     #[must_use = "to discard the bit before, call `or`, which every target has"]
     #[inline]
-    pub fn bit_set<O: RmwOrdering>(&self, bit: u32, order: O) -> bool
+    pub const fn bit_set<O: RmwOrdering>(&self, bit: u32, order: O) -> bool
     where
         T: AtomBitwise,
-        T::Repr: BitTest,
+        T::Repr: [const] BitTest,
     {
         let _ = order;
         T::Repr::test_and_set_bit(self.primitive_cell(), bit, O::CORE)
@@ -245,10 +251,10 @@ impl<T: Atom> Atomic<T> {
     /// ```
     #[must_use = "to discard the bit before, call `and`, which every target has"]
     #[inline]
-    pub fn bit_clear<O: RmwOrdering>(&self, bit: u32, order: O) -> bool
+    pub const fn bit_clear<O: RmwOrdering>(&self, bit: u32, order: O) -> bool
     where
         T: AtomBitwise,
-        T::Repr: BitTest,
+        T::Repr: [const] BitTest,
     {
         let _ = order;
         T::Repr::test_and_clear_bit(self.primitive_cell(), bit, O::CORE)
@@ -275,10 +281,10 @@ impl<T: Atom> Atomic<T> {
     /// ```
     #[must_use = "to discard the bit before, call `xor`, which every target has"]
     #[inline]
-    pub fn bit_toggle<O: RmwOrdering>(&self, bit: u32, order: O) -> bool
+    pub const fn bit_toggle<O: RmwOrdering>(&self, bit: u32, order: O) -> bool
     where
         T: AtomBitwise,
-        T::Repr: BitTest,
+        T::Repr: [const] BitTest,
     {
         let _ = order;
         T::Repr::test_and_toggle_bit(self.primitive_cell(), bit, O::CORE)

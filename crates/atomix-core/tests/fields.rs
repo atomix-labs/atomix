@@ -1,7 +1,8 @@
 //! Each field operation changes its field alone, and leaves the container's repr one that decodes:
 //! on a `bool` at either end and the middle of 8 to 64 bits, on a bitwise field beside one whose
 //! zero does not decode, on the add of the field at the repr's top bit, on a field of a field, on a
-//! signed last field, whose sign fills the bits above it, and through generic code.
+//! signed last field, whose sign fills the bits above it, and through generic code; and each is
+//! `const`.
 
 #![feature(const_trait_impl)]
 // Loom's cells exist only inside a model, and `as_ptr` and a `const` `new` not at all.
@@ -445,6 +446,59 @@ mod tests {
         assert_eq!(quantity.try_update(AcqRel, Acquire, |_| None), Err(halved), "declined");
         assert_eq!(canonical(&quote), halved, "with nothing written");
     }
+
+    // A field's operations run in a constant.
+    const _: () = {
+        /// One more of a quantity.
+        const fn increment(quantity: u32) -> u32 {
+            quantity + 1
+        }
+        /// Declines every quantity.
+        const fn decline(_: u32) -> Option<u32> {
+            None
+        }
+        let quote = Atomic::new(Quote { quantity: 9, owner: OWNER, live: false, flags: 0b01 });
+        let fields = quote.fields();
+        fields.live.set(Release);
+        assert!(fields.live.test_and_toggle(AcqRel), "set before the toggle, in const");
+        fields.live.store(true, Release);
+        assert!(fields.live.test_and_clear(AcqRel), "stored before the clear");
+        assert!(!fields.live.test_and_set(AcqRel), "and clear before the set");
+        fields.live.toggle(Release);
+        fields.live.clear(Release);
+        fields.flags.or(0b10, Release);
+        fields.flags.and(0b10, Release);
+        fields.flags.xor(0b11, Release);
+        fields.flags.not(Release);
+        assert!(fields.flags.load(Acquire) == !0b01, "each bitwise operation, in turn");
+        let before = fields.quantity.update(AcqRel, Acquire, increment);
+        assert!(before.quantity == 9 && !before.live, "update returns the container before");
+        let declined = fields.quantity.try_update(AcqRel, Acquire, decline);
+        assert!(matches!(declined, Err(seen) if seen.quantity == 10), "and a decline the one seen");
+        assert!(fields.owner.load_rmw(Acquire).get() == 7, "the owner kept");
+    };
+
+    // The add of a field at the top bit runs in a constant.
+    const _: () = {
+        let spare = RangedU32::MAX;
+        let counted = Atomic::new(Counted { flags: 0, ready: true, spare, count: u32::MAX });
+        let count = counted.fields().count;
+        assert!(count.fetch_add(1, AcqRel).count == u32::MAX, "the count before, in const");
+        assert!(count.fetch_sub(1, AcqRel).count == 0, "wrapped");
+        assert!(counted.fields().ready.load(Acquire), "and its carry left the word");
+    };
+
+    // A field's `fetch_` forms run in a constant, on `aarch64` and `arm64ec`.
+    #[cfg(aarch64_code)]
+    const _: () = {
+        let quote = Atomic::new(Quote { quantity: 3, owner: OWNER, live: false, flags: 0b10 });
+        let fields = quote.fields();
+        assert!(!fields.live.fetch_or(true, AcqRel).live, "the container before, in const");
+        assert!(fields.flags.fetch_and(0b11, AcqRel).flags == 0b10, "before the and");
+        assert!(fields.flags.fetch_xor(0b11, AcqRel).flags == 0b10, "before the xor");
+        assert!(fields.flags.fetch_not(AcqRel).flags == 0b01, "before the not");
+        assert!(fields.flags.load(Acquire) == !0b01, "and after it");
+    };
 
     #[test]
     fn load_rmw_reads_the_field_and_leaves_the_word() {

@@ -1,7 +1,7 @@
 //! The typed atomic, and the operations every value has.
 
 use core::fmt;
-use core::marker::PhantomData;
+use core::marker::{Destruct, PhantomData};
 use core::panic::{RefUnwindSafe, UnwindSafe};
 
 // Written out, not as an alias: an alias would hide the feature's badge on the derived impls.
@@ -44,6 +44,13 @@ pub use self::ptr::AtomicPtr;
 /// run-time code builds one with [`From`] and reads it back with [`get`](Self::get); a const caller
 /// of `get` or [`set`](Self::set) needs `const_trait_impl`, of `From`, `const_convert` too, and of
 /// `Default`, `const_default`.
+///
+/// Each operation is `const` where core's is, so an atomic built in a constant is read and written
+/// there too, by a caller with `const_trait_impl`; [`update`](Self::update) and
+/// [`try_update`](Self::try_update) then take a `const fn`, or a `const` closure with
+/// `const_closures`. A pointer's compare-exchange, offsets and masks are not, as core's
+/// [`AtomicPtr`](core::sync::atomic::AtomicPtr)'s are not, so neither is an `update` of a value
+/// stored as a pointer; and under loom none is, as loom's atomics are not.
 ///
 /// With the `zerocopy-08` feature, and not under loom, it derives zerocopy's traits through its
 /// cell, so it has each its cell has: [`KnownLayout`] always; [`IntoBytes`] but for a pointer, and
@@ -173,7 +180,7 @@ impl<T: Atom> Unpin for Atomic<T> {}
 /// Where either's pointer has a bit set where its tags go.
 #[inline]
 #[track_caller]
-fn exchanged_reprs<T: Atom>(current: T, new: T) -> (T::Repr, T::Repr) {
+const fn exchanged_reprs<T: [const] Atom>(current: T, new: T) -> (T::Repr, T::Repr) {
     let (current, current_misaligned) = current.to_tagged_repr(Tags::EMPTY);
     let (new, new_misaligned) = new.to_tagged_repr(Tags::EMPTY);
     assert_aligned::<T>(current_misaligned | new_misaligned);
@@ -248,9 +255,10 @@ impl<T: Atom> Atomic<T> {
     /// Reads the value.
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub fn load<O: LoadOrdering>(&self, order: O) -> T
+    pub const fn load<O: LoadOrdering>(&self, order: O) -> T
     where
-        T::Repr: Load,
+        T: [const] Atom,
+        T::Repr: [const] Load,
     {
         let _ = order;
         let repr = T::Repr::load(self.primitive_cell(), O::CORE);
@@ -264,9 +272,10 @@ impl<T: Atom> Atomic<T> {
     /// Where `T` is a tagged pointer, a derived pointer word or pointer enum, and `value`'s pointer
     /// has a bit set where its tags go.
     #[inline]
-    pub fn store<O: StoreOrdering>(&self, value: T, order: O)
+    pub const fn store<O: StoreOrdering>(&self, value: T, order: O)
     where
-        T::Repr: Store,
+        T: [const] Atom,
+        T::Repr: [const] Store,
     {
         let _ = order;
         T::Repr::store(self.primitive_cell(), value.to_repr(), O::CORE);
@@ -278,9 +287,10 @@ impl<T: Atom> Atomic<T> {
     /// As [`store`](Self::store).
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub fn swap<O: RmwOrdering>(&self, value: T, order: O) -> T
+    pub const fn swap<O: RmwOrdering>(&self, value: T, order: O) -> T
     where
-        T::Repr: Swap,
+        T: [const] Atom,
+        T::Repr: [const] Swap,
     {
         let _ = order;
         let before = T::Repr::swap(self.primitive_cell(), value.to_repr(), O::CORE);
@@ -313,9 +323,13 @@ impl<T: Atom> Atomic<T> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
     #[track_caller]
-    pub fn compare_exchange<S: RmwOrdering, F: LoadOrdering>(
+    pub const fn compare_exchange<S: RmwOrdering, F: LoadOrdering>(
         &self, current: T, new: T, success: S, failure: F,
-    ) -> Result<T, T> {
+    ) -> Result<T, T>
+    where
+        T: [const] Atom,
+        T::Repr: [const] CompareExchange,
+    {
         let _ = (success, failure);
         let (current, new) = exchanged_reprs(current, new);
         match T::Repr::compare_exchange(self.primitive_cell(), current, new, S::CORE, F::CORE) {
@@ -338,9 +352,13 @@ impl<T: Atom> Atomic<T> {
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
     #[track_caller]
-    pub fn compare_exchange_weak<S: RmwOrdering, F: LoadOrdering>(
+    pub const fn compare_exchange_weak<S: RmwOrdering, F: LoadOrdering>(
         &self, current: T, new: T, success: S, failure: F,
-    ) -> Result<T, T> {
+    ) -> Result<T, T>
+    where
+        T: [const] Atom,
+        T::Repr: [const] CompareExchange,
+    {
         let _ = (success, failure);
         let (current, new) = exchanged_reprs(current, new);
         match T::Repr::compare_exchange_weak(self.primitive_cell(), current, new, S::CORE, F::CORE)
@@ -378,10 +396,18 @@ impl<T: Atom> Atomic<T> {
     /// ```
     #[expect(unsafe_code, reason = "decodes reprs read from the cell")]
     #[inline]
-    pub fn update<S: RmwOrdering, F: LoadOrdering, U: FnMut(T) -> T>(
+    pub const fn update<
+        S: RmwOrdering,
+        F: LoadOrdering,
+        U: [const] FnMut(T) -> T + [const] Destruct,
+    >(
         &self, set_order: S, fetch_order: F, mut f: U,
-    ) -> T {
-        let replace = |seen| {
+    ) -> T
+    where
+        T: [const] Atom,
+        T::Repr: [const] CompareExchange,
+    {
+        let replace = const |seen| {
             // SAFETY: by the field INVARIANT, the repr read from the cell decodes.
             Some(f(unsafe { T::from_repr_unchecked(seen) }).to_repr())
         };
@@ -415,10 +441,18 @@ impl<T: Atom> Atomic<T> {
     /// ```
     #[expect(unsafe_code, reason = "decodes reprs read from the cell")]
     #[inline]
-    pub fn try_update<S: RmwOrdering, F: LoadOrdering, U: FnMut(T) -> Option<T>>(
+    pub const fn try_update<
+        S: RmwOrdering,
+        F: LoadOrdering,
+        U: [const] FnMut(T) -> Option<T> + [const] Destruct,
+    >(
         &self, set_order: S, fetch_order: F, mut f: U,
-    ) -> Result<T, T> {
-        let replace = |seen| {
+    ) -> Result<T, T>
+    where
+        T: [const] Atom,
+        T::Repr: [const] CompareExchange,
+    {
+        let replace = const |seen| {
             // SAFETY: by the field INVARIANT, the repr read from the cell decodes.
             f(unsafe { T::from_repr_unchecked(seen) }).map(Atom::to_repr)
         };
@@ -442,18 +476,23 @@ impl<T: Atom> Atomic<T> {
     /// Each repr `f` returns decodes, as the field INVARIANT asks of each repr the cell holds.
     #[expect(unsafe_code, reason = "writes each repr its closure returns to the cell")]
     #[inline]
-    unsafe fn try_update_repr<
+    const unsafe fn try_update_repr<
         S: RmwOrdering,
         F: LoadOrdering,
-        U: FnMut(T::Repr) -> Option<T::Repr>,
+        U: [const] FnMut(T::Repr) -> Option<T::Repr> + [const] Destruct,
     >(
         &self, set_order: S, fetch_order: F, mut f: U,
-    ) -> Result<T::Repr, T::Repr> {
+    ) -> Result<T::Repr, T::Repr>
+    where
+        T::Repr: [const] CompareExchange,
+    {
         let _ = (set_order, fetch_order);
         let cell = self.primitive_cell();
         let mut seen = T::Repr::read_for_rmw(cell, F::CORE);
         loop {
-            let next = f(seen).ok_or(seen)?;
+            let Some(next) = f(seen) else {
+                return Err(seen);
+            };
             match T::Repr::compare_exchange_weak(cell, seen, next, S::CORE, F::CORE) {
                 Ok(before) => return Ok(before),
                 Err(found) => seen = found,
@@ -469,9 +508,10 @@ impl<T: Atom> Atomic<T> {
     /// address alone, so one of null for null could strip a null's provenance.
     #[expect(unsafe_code, reason = "decodes a repr read from the cell")]
     #[inline]
-    pub fn load_rmw<O: LoadOrdering>(&self, order: O) -> T
+    pub const fn load_rmw<O: LoadOrdering>(&self, order: O) -> T
     where
-        T::Repr: ReadByExchange,
+        T: [const] Atom,
+        T::Repr: [const] ReadByExchange,
     {
         let repr = self.load_rmw_repr(order);
         // SAFETY: by the field INVARIANT, the repr read from the cell decodes.
@@ -481,9 +521,9 @@ impl<T: Atom> Atomic<T> {
     /// Reads the repr with a compare-exchange, which leaves it as it was: the read of
     /// [`load_rmw`](Self::load_rmw), and of each field's.
     #[inline]
-    fn load_rmw_repr<O: LoadOrdering>(&self, order: O) -> T::Repr
+    const fn load_rmw_repr<O: LoadOrdering>(&self, order: O) -> T::Repr
     where
-        T::Repr: ReadByExchange,
+        T::Repr: [const] ReadByExchange,
     {
         let _ = order;
         let zero = T::Repr::from_bits(0);
@@ -502,10 +542,14 @@ impl<T: Atom> Atomic<T> {
     /// # Panics
     /// As [`store`](Self::store).
     #[inline]
-    pub fn store_rmw<O: StoreOrdering>(&self, value: T, order: O) {
+    pub const fn store_rmw<O: StoreOrdering>(&self, value: T, order: O)
+    where
+        T: [const] Atom,
+        T::Repr: [const] CompareExchange,
+    {
         // ORDERING: `order` on the exchange that lands, pairing as the caller's store would;
         // Relaxed on the reads before it, which only feed the comparison and pair with nothing.
-        let _ = self.update(order, Relaxed, |_| value);
+        let _ = self.update(order, Relaxed, const |_| value);
     }
 
     /// The repr's address, for interop.

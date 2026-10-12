@@ -19,5 +19,5 @@ note: required by a bound in `atomix_core::Atomic::<T>::swap`
   |
   | impl<T: Atom> Atomic<T> {
 ...
-  |     pub fn swap<O: RmwOrdering>(&self, value: T, order: O) -> T
-  |                    ^^^^^^^^^^^ required by this bound in `Atomic::<T>::swap`
+  |     pub const fn swap<O: RmwOrdering>(&self, value: T, order: O) -> T
+  |                          ^^^^^^^^^^^ required by this bound in `Atomic::<T>::swap`

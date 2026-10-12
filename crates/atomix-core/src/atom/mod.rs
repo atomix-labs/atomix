@@ -223,7 +223,7 @@ pub trait AtomBitwise: Atom<Validity = Total, Repr: Bitwise> {}
     note = "to change the field in a compare-exchange loop, call `update`"
 )]
 #[expect(unsafe_code, reason = "a field's bitwise operations write any pattern of its bits")]
-pub unsafe trait FieldBitwise: Atom<Repr: ExactBits> {}
+pub unsafe trait FieldBitwise: Atom<Repr: const ExactBits> {}
 
 // `do_not_recommend`, so a value without `AtomBitwise` reports this trait's message, which speaks
 // of fields, not `AtomBitwise`'s.
@@ -232,7 +232,7 @@ pub unsafe trait FieldBitwise: Atom<Repr: ExactBits> {}
 // read back however, does.
 #[diagnostic::do_not_recommend]
 #[expect(unsafe_code, reason = "`Total` keeps the promise")]
-unsafe impl<T: AtomBitwise<Repr: ExactBits>> FieldBitwise for T {}
+unsafe impl<T: AtomBitwise<Repr: const ExactBits>> FieldBitwise for T {}
 
 /// Wrapping add and subtract on the bits a packed value stores it in are add and subtract on the
 /// value, and every pattern of those bits decodes.
@@ -257,7 +257,7 @@ unsafe impl<T: AtomBitwise<Repr: ExactBits>> FieldBitwise for T {}
     note = "to change the field in a compare-exchange loop, call `update`"
 )]
 #[expect(unsafe_code, reason = "a field's add writes any pattern of its bits")]
-pub unsafe trait FieldAdd: Atom<Repr: ExactBits> {}
+pub unsafe trait FieldAdd: Atom<Repr: const ExactBits> {}
 
 // `do_not_recommend`, as `FieldBitwise`'s.
 //
@@ -265,4 +265,4 @@ pub unsafe trait FieldAdd: Atom<Repr: ExactBits> {}
 // back however, does.
 #[diagnostic::do_not_recommend]
 #[expect(unsafe_code, reason = "`Total` keeps the promise")]
-unsafe impl<T: AtomAdd<Repr: ExactBits>> FieldAdd for T {}
+unsafe impl<T: AtomAdd<Repr: const ExactBits>> FieldAdd for T {}

@@ -21,6 +21,8 @@ use super::{
 #[cfg(aarch64_code)]
 use super::{FetchBitwise, MinMax};
 #[cfg(lock_bit_test)]
+use super::{test_and_clear_by_mask, test_and_set_by_mask, test_and_toggle_by_mask};
+#[cfg(lock_bit_test)]
 use crate::atomic::FieldPath;
 use crate::message::{Message, refuse};
 
@@ -45,11 +47,16 @@ macro_rules! loom_exclusive {
 }
 
 /// Implements `CellAccess`, `RawAccess`, `CompareExchange`, `Load`, `Store` and `Swap` for a
-/// primitive.
+/// primitive, each `const` off loom, as core's operations are, but a pointer's `CompareExchange`,
+/// which an empty `[$exchange_constness]` leaves plain: core's `AtomicPtr::compare_exchange` is not
+/// `const`.
 ///
 /// Its loom cell has the same name as its core one; `relaxed` marks a loom cell without `with_mut`.
 macro_rules! cells {
-    (@ [$($param:ident)?] $kind:ty => $cell:ty $(, $relaxed:ident)?) => {
+    (
+        @ [$($param:ident)?] [$($exchange_constness:ident)?] $kind:ty => $cell:ty
+        $(, $relaxed:ident)?
+    ) => {
         #[cfg(not(loom))]
         const impl$(<$param>)? CellAccess for $kind {
             type Cell = $cell;
@@ -112,97 +119,116 @@ macro_rules! cells {
                 loom_exclusive!(set cell value $($relaxed)?);
             }
         }
+        #[cfg(not(loom))]
+        $($exchange_constness)? impl$(<$param>)? CompareExchange for $kind {
+            cells!(@exchange);
+        }
+        #[cfg(loom)]
         impl$(<$param>)? CompareExchange for $kind {
-            #[inline]
-            fn read_for_rmw(cell: &Self::Cell, order: CoreOrdering) -> Self {
-                cell.load(order)
-            }
-            #[inline]
-            fn compare_exchange(
-                cell: &Self::Cell, current: Self, new: Self, success: CoreOrdering,
-                failure: CoreOrdering,
-            ) -> Result<Self, Self> {
-                cell.compare_exchange(current, new, success, failure)
-            }
-            #[inline]
-            fn compare_exchange_weak(
-                cell: &Self::Cell, current: Self, new: Self, success: CoreOrdering,
-                failure: CoreOrdering,
-            ) -> Result<Self, Self> {
-                cell.compare_exchange_weak(current, new, success, failure)
+            cells!(@exchange);
+        }
+        const_off_loom! {
+            impl$(<$param>)? Load for $kind {
+                #[inline]
+                fn load(cell: &Self::Cell, order: CoreOrdering) -> Self {
+                    cell.load(order)
+                }
             }
         }
-        impl$(<$param>)? Load for $kind {
-            #[inline]
-            fn load(cell: &Self::Cell, order: CoreOrdering) -> Self {
-                cell.load(order)
+        const_off_loom! {
+            impl$(<$param>)? Store for $kind {
+                #[inline]
+                fn store(cell: &Self::Cell, value: Self, order: CoreOrdering) {
+                    cell.store(value, order);
+                }
             }
         }
-        impl$(<$param>)? Store for $kind {
-            #[inline]
-            fn store(cell: &Self::Cell, value: Self, order: CoreOrdering) {
-                cell.store(value, order);
+        const_off_loom! {
+            impl$(<$param>)? Swap for $kind {
+                #[inline]
+                fn swap(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self {
+                    cell.swap(value, order)
+                }
             }
         }
-        impl$(<$param>)? Swap for $kind {
-            #[inline]
-            fn swap(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self {
-                cell.swap(value, order)
-            }
+    };
+    // `CompareExchange`'s methods, the cell's own.
+    (@exchange) => {
+        #[inline]
+        fn read_for_rmw(cell: &Self::Cell, order: CoreOrdering) -> Self {
+            cell.load(order)
+        }
+        #[inline]
+        fn compare_exchange(
+            cell: &Self::Cell, current: Self, new: Self, success: CoreOrdering,
+            failure: CoreOrdering,
+        ) -> Result<Self, Self> {
+            cell.compare_exchange(current, new, success, failure)
+        }
+        #[inline]
+        fn compare_exchange_weak(
+            cell: &Self::Cell, current: Self, new: Self, success: CoreOrdering,
+            failure: CoreOrdering,
+        ) -> Result<Self, Self> {
+            cell.compare_exchange_weak(current, new, success, failure)
         }
     };
     (<$param:ident> $kind:ty => $cell:ty) => {
-        cells!(@ [$param] $kind => $cell);
+        cells!(@ [$param] [] $kind => $cell);
     };
     ($kind:ty => $cell:ty, relaxed) => {
-        cells!(@ [] $kind => $cell, relaxed);
+        cells!(@ [] [const] $kind => $cell, relaxed);
     };
     ($kind:ty => $cell:ty) => {
-        cells!(@ [] $kind => $cell);
+        cells!(@ [] [const] $kind => $cell);
     };
 }
 
 /// Implements `Bitwise` and `MaskBitwise` for a primitive whose every bit set is `$ones`, and whose
-/// bit at a position is `$bit` of it.
+/// bit at `$position` is `$bit`, each `const` off loom.
 ///
 /// Also `FetchBitwise` on `aarch64`, whose `ldclr`, `ldset` and `ldeor` return the value before.
 macro_rules! bitwise {
-    ($($kind:ty: $ones:expr, $bit:expr);+ $(;)?) => {$(
-        impl MaskBitwise for $kind {
-            type Mask = Self;
-            #[inline]
-            fn bit(position: u32) -> Self {
-                $bit(position)
-            }
-            #[inline]
-            fn fetch_or_mask(cell: &Self::Cell, mask: Self, order: CoreOrdering) -> Self {
-                cell.fetch_or(mask, order)
-            }
-            #[inline]
-            fn fetch_and_mask(cell: &Self::Cell, mask: Self, order: CoreOrdering) -> Self {
-                cell.fetch_and(mask, order)
-            }
-            #[inline]
-            fn fetch_xor_mask(cell: &Self::Cell, mask: Self, order: CoreOrdering) -> Self {
-                cell.fetch_xor(mask, order)
+    ($($kind:ty: $ones:expr, |$position:ident| $bit:expr);+ $(;)?) => {$(
+        const_off_loom! {
+            impl MaskBitwise for $kind {
+                type Mask = Self;
+                #[inline]
+                fn bit($position: u32) -> Self {
+                    $bit
+                }
+                #[inline]
+                fn fetch_or_mask(cell: &Self::Cell, mask: Self, order: CoreOrdering) -> Self {
+                    cell.fetch_or(mask, order)
+                }
+                #[inline]
+                fn fetch_and_mask(cell: &Self::Cell, mask: Self, order: CoreOrdering) -> Self {
+                    cell.fetch_and(mask, order)
+                }
+                #[inline]
+                fn fetch_xor_mask(cell: &Self::Cell, mask: Self, order: CoreOrdering) -> Self {
+                    cell.fetch_xor(mask, order)
+                }
             }
         }
-        impl Bitwise for $kind {
-            #[inline]
-            fn fetch_and(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self {
-                cell.fetch_and(value, order)
-            }
-            #[inline]
-            fn fetch_or(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self {
-                cell.fetch_or(value, order)
-            }
-            #[inline]
-            fn fetch_xor(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self {
-                cell.fetch_xor(value, order)
-            }
-            #[inline]
-            fn fetch_not(cell: &Self::Cell, order: CoreOrdering) -> Self {
-                cell.fetch_xor($ones, order)
+        const_off_loom! {
+            impl Bitwise for $kind {
+                #[inline]
+                fn fetch_and(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self {
+                    cell.fetch_and(value, order)
+                }
+                #[inline]
+                fn fetch_or(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self {
+                    cell.fetch_or(value, order)
+                }
+                #[inline]
+                fn fetch_xor(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self {
+                    cell.fetch_xor(value, order)
+                }
+                #[inline]
+                fn fetch_not(cell: &Self::Cell, order: CoreOrdering) -> Self {
+                    cell.fetch_xor($ones, order)
+                }
             }
         }
         // `atomic/capability.rs` and `atomic/field/mod.rs` write this alias's condition out in the
@@ -253,7 +279,8 @@ macro_rules! lock_bit_test {
 }
 
 /// The methods of `BitTest`, each `lock bts`, `btr` or `btc` on a `$size` of `$bits` bits: a
-/// run-time position in the register `$modifier` names, and a field's as an immediate.
+/// run-time position in the register `$modifier` names, and a field's as an immediate. An integer
+/// takes them as `LockBitTest`'s, and a pointer as its `BitTest`.
 #[cfg(lock_bit_test)]
 macro_rules! lock_bit_test_methods {
     ($size:tt $modifier:tt, $bits:expr) => {
@@ -284,12 +311,63 @@ macro_rules! lock_bit_test_methods {
     };
 }
 
-/// Implements `BitTest` for each primitive whose bit test-and-set is one instruction: on `x86_64`,
-/// `lock bts`, `btr` and `btc` on the `$size` it is, in an `asm!`, for the reason `BitTest` gives.
+/// An integer's `lock bts`, `btr` and `btc`, which its `BitTest` runs at run time: a constant runs
+/// no `asm!`, so there it runs its mask's `fetch_or` and its kin, which `const_eval_select`
+/// chooses.
+#[cfg(lock_bit_test)]
+trait LockBitTest: CellAccess {
+    /// `lock bts` on the bit at `position`, modulo the width, and the bit before.
+    fn test_and_set_bit(cell: &Self::Cell, position: u32, order: CoreOrdering) -> bool;
+    /// `lock btr` on the bit at `position`, modulo the width, and the bit before.
+    fn test_and_clear_bit(cell: &Self::Cell, position: u32, order: CoreOrdering) -> bool;
+    /// `lock btc` on the bit at `position`, modulo the width, and the bit before.
+    fn test_and_toggle_bit(cell: &Self::Cell, position: u32, order: CoreOrdering) -> bool;
+    /// `lock bts` on the bit of `P`, an immediate, and the bit before.
+    fn test_and_set_field<P: FieldPath>(cell: &Self::Cell, order: CoreOrdering) -> bool;
+    /// `lock btr` on the bit of `P`, an immediate, and the bit before.
+    fn test_and_clear_field<P: FieldPath>(cell: &Self::Cell, order: CoreOrdering) -> bool;
+    /// `lock btc` on the bit of `P`, an immediate, and the bit before.
+    fn test_and_toggle_field<P: FieldPath>(cell: &Self::Cell, order: CoreOrdering) -> bool;
+}
+
+/// `BitTest`'s methods for an integer, each `LockBitTest`'s at run time and, in a constant, its
+/// mask's operation: `$method` at a position, then `$field_method` at a field's.
+#[cfg(lock_bit_test)]
+macro_rules! select_bit_test {
+    ($kind:ty, $($method:ident, $field_method:ident: $by_mask:ident;)+) => {$(
+        #[inline]
+        fn $method(cell: &Self::Cell, position: u32, order: CoreOrdering) -> bool {
+            const_eval_select(
+                (cell, position, order),
+                $by_mask::<$kind>,
+                <$kind as LockBitTest>::$method,
+            )
+        }
+        #[inline]
+        fn $field_method<P: FieldPath>(cell: &Self::Cell, order: CoreOrdering) -> bool {
+            /// The mask's operation at `P`'s offset, in a constant.
+            const fn in_constant<P: FieldPath>(
+                cell: &<$kind as CellAccess>::Cell, order: CoreOrdering,
+            ) -> bool {
+                $by_mask::<$kind>(cell, P::OFFSET, order)
+            }
+            const_eval_select(
+                (cell, order),
+                in_constant::<P>,
+                <$kind as LockBitTest>::$field_method::<P>,
+            )
+        }
+    )+};
+}
+
+/// Implements `BitTest` for each integer whose bit test-and-set is one instruction, `const` off
+/// loom: on `x86_64`, `lock bts`, `btr` and `btc` on the `$size` it is, in an `asm!`, for the
+/// reason `BitTest` gives, at run time; `BitTest`'s own mask operations elsewhere and in a
+/// constant.
 macro_rules! bit_test {
     ($($kind:ty: $size:tt $modifier:tt),+ $(,)?) => {$(
         #[cfg(not(lock_bit_test))]
-        impl BitTest for $kind {}
+        const_off_loom! { impl BitTest for $kind {} }
         #[cfg(lock_bit_test)]
         #[expect(
             unsafe_code,
@@ -299,8 +377,17 @@ macro_rules! bit_test {
             clippy::transmute_int_to_bool,
             reason = "the carry `setc` writes is 0 or 1 already, a `bool`'s bytes"
         )]
-        impl BitTest for $kind {
+        impl LockBitTest for $kind {
             lock_bit_test_methods!($size $modifier, <$kind>::BITS);
+        }
+        #[cfg(lock_bit_test)]
+        const impl BitTest for $kind {
+            select_bit_test! {
+                $kind,
+                test_and_set_bit, test_and_set_field: test_and_set_by_mask;
+                test_and_clear_bit, test_and_clear_field: test_and_clear_by_mask;
+                test_and_toggle_bit, test_and_toggle_field: test_and_toggle_by_mask;
+            }
         }
     )+};
 }
@@ -312,11 +399,11 @@ bit_test!(
 );
 // `aarch64`'s `ldset`, `ldclr` and `ldeor` take 8 bits too.
 #[cfg(aarch64_code)]
-impl BitTest for u8 {}
+const_off_loom! { impl BitTest for u8 {} }
 #[cfg(aarch64_code)]
-impl BitTest for i8 {}
+const_off_loom! { impl BitTest for i8 {} }
 #[cfg(aarch64_code)]
-impl BitTest for bool {}
+const_off_loom! { impl BitTest for bool {} }
 
 /// The unsigned bits of an integer: itself, or its two's complement.
 macro_rules! unsigned_bits {
@@ -333,7 +420,7 @@ macro_rules! integers {
     ($($int:ident => $cell:ident $(, $signed:ident)?);+ $(;)?) => {$(
         cells!($int => atomic::$cell);
         // Wrapping: `bit_set` counts its bit modulo the width.
-        bitwise!($int: !0, |position: u32| <$int>::wrapping_shl(1, position));
+        bitwise!($int: !0, |position| <$int>::wrapping_shl(1, position));
         const impl Primitive for $int {
             const BITS: u32 = <$int>::BITS;
             #[inline]
@@ -359,28 +446,32 @@ macro_rules! integers {
                 unsigned_bits!(self $(, $signed)?).wrapping_cast()
             }
         }
-        impl FetchAdd for $int {
-            #[inline]
-            fn fetch_add(cell: &Self::Cell, delta: Self, order: CoreOrdering) -> Self {
-                cell.fetch_add(delta, order)
-            }
-            #[inline]
-            fn fetch_sub(cell: &Self::Cell, delta: Self, order: CoreOrdering) -> Self {
-                cell.fetch_sub(delta, order)
+        const_off_loom! {
+            impl FetchAdd for $int {
+                #[inline]
+                fn fetch_add(cell: &Self::Cell, delta: Self, order: CoreOrdering) -> Self {
+                    cell.fetch_add(delta, order)
+                }
+                #[inline]
+                fn fetch_sub(cell: &Self::Cell, delta: Self, order: CoreOrdering) -> Self {
+                    cell.fetch_sub(delta, order)
+                }
             }
         }
         // `ldsmax`, `ldumin` and the rest (an LL/SC pair without LSE); `x86_64` has neither.
         // `atomic/capability.rs` writes this alias's condition out in the `doc(cfg(...))` of
         // `fetch_max` and `fetch_min`: change them with it.
         #[cfg(aarch64_code)]
-        impl MinMax for $int {
-            #[inline]
-            fn fetch_max(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self {
-                cell.fetch_max(value, order)
-            }
-            #[inline]
-            fn fetch_min(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self {
-                cell.fetch_min(value, order)
+        const_off_loom! {
+            impl MinMax for $int {
+                #[inline]
+                fn fetch_max(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self {
+                    cell.fetch_max(value, order)
+                }
+                #[inline]
+                fn fetch_min(cell: &Self::Cell, value: Self, order: CoreOrdering) -> Self {
+                    cell.fetch_min(value, order)
+                }
             }
         }
     )+};
@@ -403,7 +494,7 @@ integers! {
 cells!(bool => atomic::AtomicBool, relaxed);
 cells!(<T> *mut T => atomic::AtomicPtr<T>);
 
-bitwise!(bool: true, |_: u32| true);
+bitwise!(bool: true, |_position| true);
 
 const impl Primitive for bool {
     const BITS: u32 = 1;
@@ -461,9 +552,9 @@ const impl<T> Primitive for *mut T {
 /// A pointer's address, which a constant reads of null alone.
 ///
 /// No constant reads the address of a pointer with provenance, so one that reads any but null's
-/// fails to build. It is one of atomix's four branches on whether it runs at compile time: `addr`
-/// is not `const`, and core's `is_null` branches so too. [`clear_tags`], [`subtract_tags`] and a
-/// double word's `exposed_address` are the others.
+/// fails to build. It is one of atomix's four reads of an address that branch on whether they run
+/// at compile time: `addr` is not `const`, and core's `is_null` branches so too. [`clear_tags`],
+/// [`subtract_tags`] and a double word's `exposed_address` are the others.
 #[inline]
 #[must_use]
 pub(crate) const fn address<T>(pointer: *mut T) -> usize {

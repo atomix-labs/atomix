@@ -22,7 +22,7 @@ note: required by a bound in `AtomicField::<P>::load`
    |
    | impl<P: FieldPath> AtomicField<P> {
 ...
-   |     pub fn load<O: LoadOrdering>(&self, order: O) -> P::Value
-   |     where
-   |         ContainerRepr<P>: Load,
-   |                           ^^^^ required by this bound in `AtomicField::<P>::load`
+   |     pub const fn load<O: LoadOrdering>(&self, order: O) -> P::Value
+...
+   |         ContainerRepr<P>: [const] Load,
+   |                           ^^^^^^^^^^^^ required by this bound in `AtomicField::<P>::load`

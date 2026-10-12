@@ -114,8 +114,9 @@ primitive_word!([] usize, integer => integer.wrapping_cast(), bits => bits.wrapp
 /// integer alone.
 ///
 /// No constant exposes a provenance, so a `static` holds a double word whose pointers have none:
-/// null, or a null with tags set. It is one of atomix's four branches on whether it runs at compile
-/// time, beside a pointer word's [`address`](super::address), which keeps its provenance.
+/// null, or a null with tags set. It is one of atomix's four reads of an address that branch on
+/// whether they run at compile time, beside a pointer word's [`address`](super::address), which
+/// keeps its provenance.
 #[inline]
 #[must_use]
 pub(crate) const fn exposed_address<T>(pointer: *mut T) -> usize {
@@ -304,8 +305,9 @@ mod exposed {
         if result.is_ok() { Ok(words) } else { Err(words) }
     }
 
-    /// Implements `CellAccess` over `u128`'s cell, `const` where `u128`'s is: off loom.
-    macro_rules! cell_access {
+    /// Implements `CellAccess`, `CompareExchange`, `Load` and `Store` over `u128`'s, `const` where
+    /// `u128`'s are: off loom.
+    macro_rules! cells {
         ($($constness:ident)?) => {
             $($constness)? impl<A: $([$constness])? Word, B: $([$constness])? Word> CellAccess
                 for DoubleWord<A, B>
@@ -328,61 +330,68 @@ mod exposed {
                     u128::set(&mut cell.bits, exposed_bits(value));
                 }
             }
+
+            $($constness)? impl<A: $([$constness])? Word, B: $([$constness])? Word> CompareExchange
+                for DoubleWord<A, B>
+            {
+                #[inline]
+                fn read_for_rmw(cell: &DoubleCell<A, B>, order: CoreOrdering) -> Self {
+                    from_exposed_bits(u128::read_for_rmw(&cell.bits, order))
+                }
+                #[inline]
+                fn compare_exchange(
+                    cell: &DoubleCell<A, B>, current: Self, new: Self, success: CoreOrdering,
+                    failure: CoreOrdering,
+                ) -> Result<Self, Self> {
+                    let (current, new) = (exposed_bits(current), exposed_bits(new));
+                    // The bits found are decoded once, whichever the result: decoded in each arm,
+                    // LLVM writes `current` for them in the `Ok` arm, and joins the two decodes
+                    // with a branch or a `cmov` that `u128`'s exchange has no need of. A strong
+                    // exchange writes exactly where it finds `current`, so the comparison of the
+                    // bits says which arm.
+                    let (Ok(bits) | Err(bits)) =
+                        u128::compare_exchange(&cell.bits, current, new, success, failure);
+                    let words = from_exposed_bits(bits);
+                    if bits == current { Ok(words) } else { Err(words) }
+                }
+                #[inline]
+                fn compare_exchange_weak(
+                    cell: &DoubleCell<A, B>, current: Self, new: Self, success: CoreOrdering,
+                    failure: CoreOrdering,
+                ) -> Result<Self, Self> {
+                    let (current, new) = (exposed_bits(current), exposed_bits(new));
+                    from_exposed_result(u128::compare_exchange_weak(
+                        &cell.bits, current, new, success, failure,
+                    ))
+                }
+            }
+
+            #[cfg(wide_load_store)]
+            $($constness)? impl<A: $([$constness])? Word, B: $([$constness])? Word> Load
+                for DoubleWord<A, B>
+            {
+                #[inline]
+                fn load(cell: &DoubleCell<A, B>, order: CoreOrdering) -> Self {
+                    from_exposed_bits(u128::load(&cell.bits, order))
+                }
+            }
+
+            #[cfg(wide_load_store)]
+            $($constness)? impl<A: $([$constness])? Word, B: $([$constness])? Word> Store
+                for DoubleWord<A, B>
+            {
+                #[inline]
+                fn store(cell: &DoubleCell<A, B>, value: Self, order: CoreOrdering) {
+                    u128::store(&cell.bits, exposed_bits(value), order);
+                }
+            }
         };
     }
 
     #[cfg(not(loom))]
-    cell_access!(const);
+    cells!(const);
     #[cfg(loom)]
-    cell_access!();
-
-    impl<A: Word, B: Word> CompareExchange for DoubleWord<A, B> {
-        #[inline]
-        fn read_for_rmw(cell: &DoubleCell<A, B>, order: CoreOrdering) -> Self {
-            from_exposed_bits(u128::read_for_rmw(&cell.bits, order))
-        }
-        #[inline]
-        fn compare_exchange(
-            cell: &DoubleCell<A, B>, current: Self, new: Self, success: CoreOrdering,
-            failure: CoreOrdering,
-        ) -> Result<Self, Self> {
-            let (current, new) = (exposed_bits(current), exposed_bits(new));
-            // The bits found are decoded once, whichever the result: decoded in each arm, LLVM
-            // writes `current` for them in the `Ok` arm, and joins the two decodes with a branch or
-            // a `cmov` that `u128`'s exchange has no need of. A strong exchange writes exactly
-            // where it finds `current`, so the comparison of the bits says which arm.
-            let (Ok(bits) | Err(bits)) =
-                u128::compare_exchange(&cell.bits, current, new, success, failure);
-            let words = from_exposed_bits(bits);
-            if bits == current { Ok(words) } else { Err(words) }
-        }
-        #[inline]
-        fn compare_exchange_weak(
-            cell: &DoubleCell<A, B>, current: Self, new: Self, success: CoreOrdering,
-            failure: CoreOrdering,
-        ) -> Result<Self, Self> {
-            let (current, new) = (exposed_bits(current), exposed_bits(new));
-            from_exposed_result(u128::compare_exchange_weak(
-                &cell.bits, current, new, success, failure,
-            ))
-        }
-    }
-
-    #[cfg(wide_load_store)]
-    impl<A: Word, B: Word> Load for DoubleWord<A, B> {
-        #[inline]
-        fn load(cell: &DoubleCell<A, B>, order: CoreOrdering) -> Self {
-            from_exposed_bits(u128::load(&cell.bits, order))
-        }
-    }
-
-    #[cfg(wide_load_store)]
-    impl<A: Word, B: Word> Store for DoubleWord<A, B> {
-        #[inline]
-        fn store(cell: &DoubleCell<A, B>, value: Self, order: CoreOrdering) {
-            u128::store(&cell.bits, exposed_bits(value), order);
-        }
-    }
+    cells!();
 }
 
 #[cfg(double_word_lock)]
@@ -392,9 +401,12 @@ mod lock {
     //!
     //! The lock is taken with Acquire and given back with Release, so every operation on a double
     //! word synchronizes with the one before it, whatever its ordering: Miri checks each pointer's
-    //! provenance and what it reaches, and loom's model the orderings.
+    //! provenance and what it reaches, and loom's model the orderings. A constant, which runs on
+    //! one thread and reads no `static` with interior mutability, takes no lock.
 
     use core::cell::UnsafeCell;
+    use core::intrinsics::const_eval_select;
+    use core::marker::Destruct;
     use core::panic::RefUnwindSafe;
     use core::sync::atomic::{AtomicBool, Ordering as CoreOrdering};
     use core::{fmt, hint};
@@ -409,7 +421,9 @@ mod lock {
     pub struct DoubleCell<A, B> {
         // INVARIANT: while shared, every access is a critical section of `with_lock`'s, whose
         // callers are this module's `CompareExchange`, `Load` and `Store`: a double word lends no
-        // place, having no `RawAccess`, so no `as_ptr`, `from_ptr` or `get_mut` reaches it.
+        // place, having no `RawAccess`, so no `as_ptr`, `from_ptr` or `get_mut` reaches it. A
+        // constant shares it with no other thread, and reads no `static` with interior mutability,
+        // the lock among them, so takes no lock.
         /// The words.
         words: UnsafeCell<DoubleWord<A, B>>,
     }
@@ -438,11 +452,31 @@ mod lock {
     /// The lock, held while an operation reads or writes a double word's cell.
     static LOCK: AtomicBool = AtomicBool::new(false);
 
-    /// Runs `operation` on `cell`'s words while holding the lock.
+    /// Runs `operation` on `cell`'s words while holding the lock, which a constant, on one thread
+    /// and unable to read a `static` with interior mutability, takes none of.
     #[expect(unsafe_code, reason = "reads and writes a cell's words under the lock")]
-    fn with_lock<A, B, R>(
-        cell: &DoubleCell<A, B>, operation: impl FnOnce(&mut DoubleWord<A, B>) -> R,
+    const fn with_lock<
+        A,
+        B,
+        R,
+        F: [const] FnOnce(&mut DoubleWord<A, B>) -> R + [const] Destruct,
+    >(
+        cell: &DoubleCell<A, B>, operation: F,
     ) -> R {
+        const_eval_select((), hold_no_lock, take_lock);
+        // SAFETY: the lock, or a constant's one thread, excludes every other shared access, by the
+        // field INVARIANT, for as long as the reference lives, which ends before the lock is given
+        // back.
+        let result = operation(unsafe { &mut *cell.words.get() });
+        const_eval_select((), hold_no_lock, give_lock_back);
+        result
+    }
+
+    /// Holds no lock: a constant's, which shares no cell with another thread.
+    const fn hold_no_lock() {}
+
+    /// Takes the lock, once no other operation holds it.
+    fn take_lock() {
         // ORDERING: Acquire, pairing with the Release that gives the lock back, so each critical
         // section sees the words the one before it left.
         while LOCK
@@ -451,12 +485,12 @@ mod lock {
         {
             hint::spin_loop();
         }
-        // SAFETY: the lock excludes every other shared access, by the field INVARIANT, for as long
-        // as the reference lives, which ends before the lock is given back.
-        let result = operation(unsafe { &mut *cell.words.get() });
+    }
+
+    /// Gives the lock back.
+    fn give_lock_back() {
         // ORDERING: Release, pairing with the Acquire that takes the lock next.
         LOCK.store(false, CoreOrdering::Release);
-        result
     }
 
     const impl<A: [const] Word, B: [const] Word> CellAccess for DoubleWord<A, B> {
@@ -482,14 +516,14 @@ mod lock {
     }
 
     // A pointer's address alone is compared, as the hardware's exchange compares it.
-    impl<A: Word, B: Word> CompareExchange for DoubleWord<A, B> {
+    const impl<A: [const] Word, B: [const] Word> CompareExchange for DoubleWord<A, B> {
         fn read_for_rmw(cell: &DoubleCell<A, B>, _: CoreOrdering) -> Self {
-            with_lock(cell, |words| *words)
+            with_lock(cell, const |words| *words)
         }
         fn compare_exchange(
             cell: &DoubleCell<A, B>, current: Self, new: Self, _: CoreOrdering, _: CoreOrdering,
         ) -> Result<Self, Self> {
-            with_lock(cell, |words| {
+            with_lock(cell, const |words| {
                 let seen = *words;
                 if seen.packed_bits() != current.packed_bits() {
                     return Err(seen);
@@ -507,16 +541,16 @@ mod lock {
     }
 
     #[cfg(wide_load_store)]
-    impl<A: Word, B: Word> Load for DoubleWord<A, B> {
+    const impl<A: [const] Word, B: [const] Word> Load for DoubleWord<A, B> {
         fn load(cell: &DoubleCell<A, B>, _: CoreOrdering) -> Self {
-            with_lock(cell, |words| *words)
+            with_lock(cell, const |words| *words)
         }
     }
 
     #[cfg(wide_load_store)]
-    impl<A: Word, B: Word> Store for DoubleWord<A, B> {
+    const impl<A: [const] Word, B: [const] Word> Store for DoubleWord<A, B> {
         fn store(cell: &DoubleCell<A, B>, value: Self, _: CoreOrdering) {
-            with_lock(cell, |words| *words = value);
+            with_lock(cell, const |words| *words = value);
         }
     }
 }

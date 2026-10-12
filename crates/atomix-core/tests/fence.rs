@@ -1,4 +1,4 @@
-//! The fences, as production code reaches them.
+//! The fences, as production code reaches them, and in a constant.
 
 // Loom's cells exist only inside a model; `model.rs` holds the loom tests.
 #![cfg(not(loom))]
@@ -7,11 +7,22 @@
 mod tests {
     use std::thread;
 
-    use atomix_core::ordering::{Acquire, Relaxed, Release, SeqCst, StoreStore};
-    use atomix_core::{AtomicBool, AtomicU64, fence, hint};
+    use atomix_core::ordering::{AcqRel, Acquire, Relaxed, Release, SeqCst, StoreStore};
+    use atomix_core::{AtomicBool, AtomicU64, compiler_fence, fence, hint};
 
     /// Rounds per test: one round under Miri catches a missing fence about half the time.
     const ROUNDS: usize = 32;
+
+    // Every fence runs in a constant.
+    const _: () = {
+        fence(Acquire);
+        fence(Release);
+        fence(AcqRel);
+        fence(SeqCst);
+        fence(StoreStore);
+        compiler_fence(SeqCst);
+        compiler_fence(StoreStore);
+    };
 
     #[test]
     fn release_and_acquire_fences_publish_a_relaxed_store() {

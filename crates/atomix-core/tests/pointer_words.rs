@@ -402,6 +402,19 @@ mod tests {
         assert_eq!(null, Some((None, 0, false)), "with no tag set");
     }
 
+    // A null word loads, stores and swaps in a constant. A constant reads no pointer's address but
+    // null's, so a word it decodes has no tag set.
+    const _: () = {
+        let empty = Head { top: None, version: RangedU8::MIN, marked: false };
+        let head = Atomic::new(empty);
+        head.store(empty, Release);
+        assert!(head.swap(empty, AcqRel).top.is_none(), "swap reads the store, in const");
+        assert!(!head.load(Acquire).marked, "and load the swap");
+        let HeadFields { top, version, marked } = head.fields();
+        assert!(top.load(Acquire).is_none(), "the pointer, read through the word");
+        assert!(version.load(Acquire).get() == 0 && !marked.load(Acquire), "and each tag");
+    };
+
     #[test]
     fn the_projection_lends_each_tag_at_its_own_path_and_the_pointer_read_through_the_word() {
         let first = node(9);

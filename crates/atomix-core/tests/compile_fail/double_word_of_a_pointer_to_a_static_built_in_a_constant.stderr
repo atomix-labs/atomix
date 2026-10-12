@@ -17,8 +17,8 @@ note: inside `atomix_core::primitive::double::exposed::<impl atomix_core::primit
    |                     DoubleCell { bits: exposed_bits(self).into_cell(), marker: PhantomData }
    |                                        ^^^^^^^^^^^^^^^^^^
 ...
-   |     cell_access!(const);
-   |     ------------------- in this macro invocation
+   |     cells!(const);
+   |     ------------- in this macro invocation
 note: inside `atomix_core::primitive::double::exposed::exposed_bits::<*mut u64, *mut u64>`
   --> src/primitive/double.rs
    |
@@ -38,4 +38,4 @@ note: inside `atomix_core::primitive::double::exposed_address::<u64>`
    | |         exposed_address_at_run_time::<T>,
    | |     )
    | |_____^ the failure occurred here
-   = note: this error originates in the macro `cell_access` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `cells` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -79,6 +79,31 @@ mod tests {
     static MARKED_NULLS: Atomic<(Link, Option<NonNull<Node>>)> =
         Atomic::new((Link { next: None, deleted: true }, None));
 
+    // A double word's operations run in a constant. A constant reads no pointer's address but
+    // null's, so its slices have no data.
+    const _: () = {
+        /// A slice of `length` elements whose data pointer is null.
+        const fn null_slice(length: usize) -> *mut [u8] {
+            ptr::slice_from_raw_parts_mut(ptr::null_mut(), length)
+        }
+        /// The null slice one element longer.
+        const fn lengthen(slice: *mut [u8]) -> *mut [u8] {
+            null_slice(slice.len() + 1)
+        }
+        let slice = Atomic::new(null_slice(3));
+        let found = slice.compare_exchange(null_slice(3), null_slice(5), AcqRel, Acquire);
+        assert!(found.is_ok(), "the exchange lands, in const");
+        assert!(slice.load_rmw(Acquire).len() == 5, "and load_rmw reads it");
+        slice.store_rmw(null_slice(7), Release);
+        let before = slice.update(AcqRel, Acquire, lengthen);
+        assert!(before.len() == 7, "update reads what store_rmw wrote");
+        let weak = slice.compare_exchange_weak(null_slice(7), null_slice(9), AcqRel, Acquire);
+        assert!(
+            matches!(weak, Err(found) if found.len() == 8),
+            "and the weak exchange finds update's"
+        );
+    };
+
     #[test]
     fn a_static_holds_a_marked_null_and_takes_pointers_at_run_time() {
         let (link, partner) = MARKED_NULLS.load_rmw(Acquire);
