@@ -31,3 +31,4 @@
 
 - [Performance](performance.md)
 - [Platforms and Features](platforms-and-features.md)
+- [How atomix Compares](how-atomix-compares.md)

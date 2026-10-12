@@ -61,6 +61,8 @@ these atomics are yet to come, in `atomix-lock`.
   `aarch64` and `x86_64`, 64-bit and little-endian, on any OS, and for
   `arm64ec`.
 
+[How atomix Compares](how-atomix-compares.md) names the crates that do these.
+
 ## How to Read This Book
 
 The guide teaches the pieces in the order a program meets them, from a first
