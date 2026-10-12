@@ -22,12 +22,12 @@
 atomix gives each value that fits one atomic an atomic of its own type:
 integers, plain or held to a range, `NonZero`s, `char`s, floats, pointers,
 shared references, function pointers, arrays, tuples, core's IP addresses,
-durations and `Ordering`s, `Option`s that spend a spare bit pattern on `None`,
-and the structs and enums `#[derive(Atom)]` packs into one word or two. Its
-orderings are types, checked as it compiles, and each operation is the
-instruction its name promises: where a target has none, the operation does not
-exist, and a compare-exchange loop is `update`, by name. The locks built on
-these atomics are yet to come, in `atomix-lock`.
+durations, `Ordering`s, `Result`s and ranges, `Option`s that spend a spare bit
+pattern on `None`, and the structs and enums `#[derive(Atom)]` packs into one
+word or two. Its orderings are types, checked as it compiles, and each operation
+is the instruction its name promises: where a target has none, the operation
+does not exist, and a compare-exchange loop is `update`, by name. The locks
+built on these atomics are yet to come, in `atomix-lock`.
 
 | Crate           | What it holds                                                                    |
 | --------------- | -------------------------------------------------------------------------------- |

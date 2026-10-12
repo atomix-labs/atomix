@@ -1,6 +1,7 @@
-//! `Option` of an atom, spending one spare repr on `None`.
+//! `Option` of an atom, spending one spare repr on `None`, and `Poll`, on `Pending`.
 
 use core::any::type_name;
+use core::task::Poll;
 
 use super::Atom;
 use crate::message::{Message, refuse};
@@ -115,5 +116,56 @@ const unsafe impl<T: [const] Atom> Atom for Option<T> {
         }
         // SAFETY: the caller's repr decodes, and it is not `None`'s, so it decodes as `T`.
         Some(unsafe { T::from_repr_unchecked(repr) })
+    }
+}
+
+// SAFETY: `Poll<T>` is `Option<T>` by another name, `Pending` its `None`: the repr, its range, its
+// tags, the validity and the threads rule are the `Option`'s, which `from_repr` decodes, unchecked
+// as checked, and renames.
+#[expect(unsafe_code, reason = "an `Atom` impl promises what loads rely on")]
+const unsafe impl<T: [const] Atom> Atom for Poll<T> {
+    type Repr = T::Repr;
+    type Validity = <Option<T> as Atom>::Validity;
+    const REPRS: ReprRange<T::Repr> = <Option<T> as Atom>::REPRS;
+    const TAG_WIDTH: u32 = <Option<T> as Atom>::TAG_WIDTH;
+    const POINTEE_ALIGNMENT: PointeeAlignment = <Option<T> as Atom>::POINTEE_ALIGNMENT;
+    #[inline]
+    #[track_caller]
+    fn to_repr(self) -> T::Repr {
+        poll_to_option(self).to_repr()
+    }
+    #[inline]
+    fn to_tagged_repr(self, tags: Tags) -> (T::Repr, usize) {
+        poll_to_option(self).to_tagged_repr(tags)
+    }
+    #[inline]
+    fn from_repr(repr: T::Repr) -> Option<Self> {
+        match <Option<T> as Atom>::from_repr(repr) {
+            Some(value) => Some(option_to_poll(value)),
+            None => None,
+        }
+    }
+    #[inline]
+    unsafe fn from_repr_unchecked(repr: T::Repr) -> Self {
+        // SAFETY: the caller's repr decodes as the `Poll`, so as the `Option` it renames.
+        option_to_poll(unsafe { <Option<T> as Atom>::from_repr_unchecked(repr) })
+    }
+}
+
+/// The `Option` a `Poll` is: `Ready`'s value, or `None` for `Pending`.
+#[inline]
+const fn poll_to_option<T>(poll: Poll<T>) -> Option<T> {
+    match poll {
+        Poll::Ready(value) => Some(value),
+        Poll::Pending => None,
+    }
+}
+
+/// The `Poll` an `Option` is: `Pending` for `None`.
+#[inline]
+const fn option_to_poll<T>(option: Option<T>) -> Poll<T> {
+    match option {
+        Some(value) => Poll::Ready(value),
+        None => Poll::Pending,
     }
 }

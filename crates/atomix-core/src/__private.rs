@@ -11,9 +11,9 @@ use core::ptr;
 
 use crate::atom::{Atom, AtomAdd, AtomBitwise, AtomOrd, PointerAtom};
 pub use crate::atom::{
-    FieldPatternsDecode, Fill, Fold, Integer, IntegerWord, Integers, IntegersBeside, LastField,
-    LastReach, Padding, Pointer, PointerReprAtom, Pointers, Push, ReachOf, Shape, Slots, Tagged,
-    TupleFieldRepr, TwoPointers,
+    EnumShape, FieldPatternsDecode, Fill, Fold, Integer, IntegerWord, Integers, IntegersBeside,
+    LastField, LastReach, Padding, Pointer, PointerReprAtom, Pointers, Push, ReachOf, Shape, Slots,
+    Tagged, TupleFieldRepr, TwoPointers, Wider,
 };
 pub use crate::atomic::{Array, HasPackedField, PlaceTail, RawValue, Reach, project_field};
 use crate::message::{Message, refuse};

@@ -4,8 +4,8 @@
 //! instruction reads and writes, and decodes it on the way out. The integer, `bool` and pointer
 //! atomics are its aliases (`AtomicU64 = Atomic<u64>`), and any value implementing [`Atom`] is one
 //! more: a `NonZero`, a `char`, a float, a ranged integer, a shared reference, a function pointer,
-//! an array, a tuple, an IP address, a `Duration`, an `Ordering`, an `Option` that spends a spare
-//! repr on `None`, and a struct or an enum that derives it.
+//! an array, a tuple, an IP address, a `Duration`, an `Ordering`, a `Result`, a range, an `Option`
+//! that spends a spare repr on `None`, and a struct or an enum that derives it.
 //!
 //! A crate depends on `atomix-rs`, since crates.io's `atomix` is an unrelated 2017 placeholder:
 //!

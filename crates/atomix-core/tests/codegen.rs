@@ -69,7 +69,9 @@
 //! in order with no byte swap, and so is a nonzero `char`'s; an `Ipv6Addr`'s is a `u128`'s, stored
 //! to the return slot an array of bytes takes, and a socket address's a `u64`'s; a netmask's `and`
 //! is one `lock and` or `ldclral`; an ordering's maximum is one `ldsmaxalb`; and a duration's load
-//! moves its words as they are, seconds and nanoseconds, with no shift.
+//! moves its words as they are, seconds and nanoseconds, with no shift, as a layout's does its size
+//! and alignment. A loaded `Result`'s `is_ok` is one compare of its tag, and a range loads as the
+//! array of its bounds does.
 
 // Miri cannot run the compiler, and loom's atomics are not what ships.
 #![cfg(on_hardware)]
@@ -134,6 +136,8 @@ mod tests {
         ("ipv4_load", SameAs("u32_load")),
         ("nonzero_char_load", SameAs("u32_load")),
         ("socket_address_load", SameAs("u64_load")),
+        ("result_load", InOrder(&["cmp", "csinc", "ret"])),
+        ("bound_load", InOrder(&["lsr", "cmp", "ret"])),
     ];
 
     /// Each read-modify-write on `aarch64` with LSE, the same at the floor, with LSE2 and on macOS:
@@ -344,6 +348,9 @@ mod tests {
         ("sixteen_bools_load", InOrder(&["ldarh", "tbl", "ushl", "and", "str", "ret"])),
         ("sixteen_bools_store", InOrder(&["ushl", "add", "add", "addp", "stlrh", "ret"])),
         ("cmp_ordering_load", Only(&["ldarb", "ret"])),
+        ("result_is_ok", Only(&["ldar", "cmp", "cset", "ret"])),
+        ("range_load", Only(&["ldar", "lsr", "ret"])),
+        ("alignment_load", Only(&["ldarb", "mov", "lsl", "ret"])),
     ];
 
     /// Each update on `aarch64` at the `+lse` floor, which has no LSE2: with no 128-bit load,
@@ -409,6 +416,10 @@ mod tests {
         ("cmp_ordering_load", Only(&["ldaprb", "ret"])),
         ("duration_load", Only(&["ldp", "dmb ishld", "ret"])),
         ("ipv6_load", Only(&["ldp", "dmb ishld", "stp", "ret"])),
+        ("result_is_ok", Only(&["ldapr", "cmp", "cset", "ret"])),
+        ("range_load", Only(&["ldapr", "lsr", "ret"])),
+        ("alignment_load", Only(&["ldaprb", "mov", "lsl", "ret"])),
+        ("layout_load", Only(&["ldp", "dmb ishld", "ret"])),
     ];
 
     /// The rest on `aarch64` Linux with LSE2, `neoverse-v1`, which puts a word's instructions
@@ -965,6 +976,10 @@ mod tests {
         ("cmp_ordering_load", Only(&["movzbl", "retq"])),
         ("ipv4_and", Only(&["lock andl", "retq"])),
         ("duration_load_rmw", InOrder(&["lock cmpxchg16b", "movq", "movq", "movl", "retq"])),
+        ("result_load", InOrder(&["movq", "shrq", "testq", "cmoveq", "retq"])),
+        ("result_is_ok", Only(&["movq", "shrq", "sete", "retq"])),
+        ("bound_load", InOrder(&["movl", "shrl", "cmpl", "retq"])),
+        ("range_load", Only(&["movq", "movq", "shrq", "retq"])),
     ];
 
     /// The rest on `x86_64` with AVX, at the `x86-64-v3` floor: a 128-bit load or store is
@@ -1019,6 +1034,7 @@ mod tests {
         ("sixteen_bools_store", Only(&["vmovdqu", "vpsllw", "vpmovmskb", "movw", "retq"])),
         ("duration_load", Only(&["vmovdqa", "vpextrq", "vmovd", "retq"])),
         ("ipv6_load", Only(&["movq", "vmovaps", "vmovups", "retq"])),
+        ("layout_load", Only(&["vmovdqa", "vpextrq", "vmovq", "retq"])),
     ];
 
     /// The rest on `x86_64` Linux and macOS: the System V calling convention passes the arguments
@@ -1101,6 +1117,7 @@ mod tests {
         ("flag_clear", Refuses(&["cmpq", "jae", "movq", "rolq", "lock andq", "retq"])),
         ("flag_test_and_set", Refuses(&["cmpq", "jae", "lock btsq", "setb", "retq"])),
         ("quarter_load", Refuses(&["cmpq", "jae", "addl", "movl", "shrxq", "andb", "retq"])),
+        ("alignment_load", Only(&["movzbl", "movl", "shlxq", "retq"])),
     ];
 
     /// The rest on `x86_64` Linux, where a function that calls aligns the stack with a push.
@@ -1546,6 +1563,7 @@ mod tests {
                 "ud2",
             ]),
         ),
+        ("alignment_load", Only(&["movzbl", "movl", "shlq", "retq"])),
     ];
 
     #[test]

@@ -1,7 +1,12 @@
 //! A value storable in an atomic, and which read-modify-writes mean something on it.
 
+// A layout takes 128 bits.
+#[cfg(wide)]
+mod alloc;
 mod array;
 mod bool_array;
+mod core_range;
+mod enum_with_fields;
 mod net;
 mod option;
 mod packed;
@@ -15,6 +20,7 @@ mod time;
 mod tuple;
 
 pub use self::array::Slots;
+pub use self::enum_with_fields::{EnumShape, Wider};
 pub use self::packed::Packed;
 #[cfg(wide)]
 pub use self::ptr::VtablePointer;

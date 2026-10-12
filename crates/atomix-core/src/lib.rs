@@ -35,7 +35,10 @@
 //! `Ipv4Addr` is its octets in core's order, so `PEER.load(Acquire)` is a `u32`'s load with no byte
 //! swap, and `PEER.and(netmask, AcqRel)` one `lock and`; a `SocketAddrV4` keeps its port above
 //! them; a `Duration` its seconds in a word above its nanoseconds; and an `Ordering` its
-//! discriminant, whose maximum is one `ldsmaxalb`.
+//! discriminant, whose maximum is one `ldsmaxalb`. A `Result`, a `ControlFlow` or a `Bound` of
+//! payloads stored as bits keeps its variant's tag above the wider payload's slot: a loaded
+//! `Result<u32, u8>`'s `is_ok` is one compare. A range is the array of its bounds, `Poll` an
+//! `Option`, and an `Alignment`, a `Layout` and an `ascii::Char` their numbers.
 //!
 //! Two pointers, or one beside a counter or a slice's length, share a 16-byte atomic, a
 //! [`DoubleWord`], which exposes each pointer's provenance, as no Rust operation keeps one through
@@ -88,6 +91,7 @@
 )]
 #![no_std]
 #![feature(
+    ascii_char,
     associated_type_defaults,
     closure_track_caller,
     const_atomic,
@@ -113,6 +117,7 @@
     integer_casts,
     pattern_type_macro,
     pattern_types,
+    ptr_alignment_type,
     ptr_mask,
     ptr_metadata,
     step_trait,

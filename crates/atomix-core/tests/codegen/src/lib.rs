@@ -19,7 +19,7 @@
 //! not list it, and the test builds it alone.
 
 #![no_std]
-#![feature(const_trait_impl)]
+#![feature(const_trait_impl, ptr_alignment_type)]
 
 pub mod arrays;
 pub mod bits;

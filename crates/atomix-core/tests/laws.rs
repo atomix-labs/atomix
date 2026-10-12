@@ -5,14 +5,15 @@
 //! no bits make a reference or a function pointer, but null; an array's repr decodes where each
 //! slot's does, and a `Packed` one's where each field's does and the bits above extend the last;
 //! a tuple's of bits where each field's does in its slot; and core's small values': an ordering,
-//! the IP addresses, a socket address, a duration, a nonzero `char` and a reversed value.
+//! the IP addresses, a socket address, a duration, a nonzero `char`, a reversed value, its enums of
+//! payloads, its ranges, `Poll`, and its alignments, layouts, ASCII characters and `FpCategory`s.
 //!
 //! Each law runs on every repr of a byte, on the edges of each width and range, and on random bits;
 //! a 16-bit ranged integer's, on every repr of 16 bits too.
 
 // Loom's cells exist only inside a model; `model.rs` holds the loom tests.
 #![cfg(not(loom))]
-#![feature(f16, integer_casts)]
+#![feature(ascii_char, f16, integer_casts, ptr_alignment_type)]
 #![cfg_attr(wide, feature(f128))]
 
 #[cfg(test)]
@@ -20,14 +21,24 @@ mod testing;
 
 #[cfg(test)]
 mod tests {
+    #[cfg(wide)]
+    use core::alloc::Layout;
+    use core::ascii::Char as AsciiChar;
     use core::cmp::{Ordering, Reverse};
-    use core::fmt::Debug;
-    use core::marker::PhantomData;
+    use core::convert::Infallible;
+    use core::fmt::{Alignment as FormatAlignment, Debug, Error as FormatError};
+    use core::marker::{PhantomData, PhantomPinned};
+    use core::mem::{Alignment, ManuallyDrop};
     #[cfg(wide)]
     use core::net::Ipv6Addr;
     use core::net::{Ipv4Addr, SocketAddrV4};
-    use core::num::{NonZero, Saturating, Wrapping};
+    use core::num::{FpCategory, NonZero, Saturating, Wrapping};
+    use core::ops::{
+        Bound, ControlFlow, RangeFull, RangeTo, RangeToInclusive as LegacyRangeToInclusive,
+    };
     use core::ptr::{self, NonNull};
+    use core::range::{Range, RangeFrom, RangeInclusive, RangeToInclusive};
+    use core::task::Poll;
     #[cfg(wide)]
     use core::time::Duration;
 
@@ -56,10 +67,19 @@ mod tests {
     /// The last scalar value, and the first and last surrogates.
     const CHAR_EDGES: [u128; 3] = [0x10_FFFF, 0xD800, 0xDFFF];
 
-    /// The bits past a socket address's port, a duration's last nanosecond and first second, and
-    /// the longest duration's, where its range ends.
-    const CORE_VALUE_EDGES: [u128; 5] =
-        [1 << 48, 999_999_999, 1 << 64, (1 << 64) + 999_999_999, (u128::MAX << 64) + 999_999_999];
+    /// The bits past a socket address's port, a duration's last nanosecond and first second, the
+    /// longest duration's, where its range ends, and the tags above 16-, 32- and 64-bit payloads.
+    const CORE_VALUE_EDGES: [u128; 9] = [
+        1 << 48,
+        999_999_999,
+        1 << 64,
+        (1 << 64) + 999_999_999,
+        (u128::MAX << 64) + 999_999_999,
+        1 << 16 | 0xFFFF,
+        2 << 16,
+        1 << 32,
+        1 << 33,
+    ];
 
     /// The range and round-trip laws for `value`, whose repr is a pointer.
     fn pointer_round_trips<T: Atom<Repr = *mut P> + PartialEq + Debug, P>(
@@ -239,70 +259,6 @@ mod tests {
         Ok(())
     }
 
-    /// Every law on the low bits of `bits` as each of core's small values of 64 bits or fewer, and
-    /// of their `Option`s.
-    ///
-    /// The order laws compare each value `bits` makes with the one `other` makes, if any.
-    fn core_value_laws(bits: u128, other: u128) -> Result<(), TestCaseError> {
-        let (sign, repr) = (i8::from_bits(bits), u32::from_bits(bits));
-        decodes_as_promised::<ZeroValid, Ordering>(sign)?;
-        decodes_as_promised::<ZeroValid, Option<Ordering>>(sign)?;
-        decodes_as_promised::<Total, Ipv4Addr>(repr)?;
-        decodes_as_promised::<ZeroValid, SocketAddrV4>(u64::from_bits(bits))?;
-        decodes_as_promised::<ZeroValid, Option<SocketAddrV4>>(u64::from_bits(bits))?;
-        decodes_as_promised::<ZeroNiche, NonZero<char>>(repr)?;
-        decodes_as_promised::<ZeroValid, Option<NonZero<char>>>(repr)?;
-        decodes_as_promised::<Total, Reverse<u8>>(u8::from_bits(bits))?;
-        decodes_as_promised::<ZeroValid, Reverse<char>>(repr)?;
-        round_trips(Ipv4Addr::from_bits(repr))?;
-        round_trips(Reverse(u8::from_bits(bits)))?;
-        if let Some(socket) = SocketAddrV4::from_repr(u64::from_bits(bits)) {
-            round_trips(socket)?;
-            round_trips(Some(socket))?;
-        }
-        if let (Some(a), Some(b)) =
-            (Ordering::from_repr(sign), Ordering::from_repr(i8::from_bits(other)))
-        {
-            round_trips(a)?;
-            reprs_order_as_ord(a, b)?;
-            #[cfg(aarch64_code)]
-            atomics_order_as_ord(a, b)?;
-        }
-        if let (Some(a), Some(b)) =
-            (NonZero::<char>::from_repr(repr), NonZero::<char>::from_repr(u32::from_bits(other)))
-        {
-            round_trips(a)?;
-            round_trips(Some(a))?;
-            reprs_order_as_ord(a, b)?;
-            #[cfg(aarch64_code)]
-            atomics_order_as_ord(a, b)?;
-        }
-        Ok(())
-    }
-
-    /// A duration's repr: any seconds, and nanoseconds below a billion, which random bits alone
-    /// make once in 1.8e10 draws.
-    #[cfg(wide)]
-    fn duration_reprs() -> impl Strategy<Value = u128> {
-        (any::<u64>(), 0..1_000_000_000_u128)
-            .prop_map(|(seconds, nanoseconds)| u128::from(seconds) << 64 | nanoseconds)
-    }
-
-    /// Every law on `bits` and `other` as each of core's 128-bit values, and of their `Option`s.
-    #[cfg(wide)]
-    fn wide_core_value_laws(bits: u128, other: u128) -> Result<(), TestCaseError> {
-        decodes_as_promised::<Total, Ipv6Addr>(bits)?;
-        decodes_as_promised::<ZeroValid, Duration>(bits)?;
-        decodes_as_promised::<ZeroValid, Option<Duration>>(bits)?;
-        round_trips(Ipv6Addr::from_bits(bits))?;
-        if let (Some(a), Some(b)) = (Duration::from_repr(bits), Duration::from_repr(other)) {
-            round_trips(a)?;
-            round_trips(Some(a))?;
-            reprs_order_as_ord(a, b)?;
-        }
-        Ok(())
-    }
-
     /// Every law on the low bits of `bits` as each float's.
     fn float_laws(bits: u128) -> Result<(), TestCaseError> {
         keeps_every_bit(bits, f16::from_bits)?;
@@ -370,21 +326,109 @@ mod tests {
         canonical::<Hook>(hook.to_repr())
     }
 
-    /// Checks what each array's validity promises of the low bits of `bits` as its repr, the repr
-    /// laws, and the round trip of the array they decode as.
-    macro_rules! array_laws {
-        ($bits:ident; $($validity:ty => $array:ty),+ $(,)?) => {$({
-            let repr = <<$array as Atom>::Repr as Primitive>::from_bits($bits);
-            decodes_as_promised::<$validity, $array>(repr)?;
-            if let Some(array) = <$array as Atom>::from_repr(repr) {
-                round_trips(array)?;
+    /// Checks what each type's validity promises of the low bits of `bits` as its repr, the repr
+    /// laws, and the round trip of the value they decode as.
+    macro_rules! repr_laws {
+        ($bits:ident; $($validity:ty => $value_type:ty),+ $(,)?) => {$({
+            let repr = <<$value_type as Atom>::Repr as Primitive>::from_bits($bits);
+            decodes_as_promised::<$validity, $value_type>(repr)?;
+            if let Some(value) = <$value_type as Atom>::from_repr(repr) {
+                round_trips(value)?;
             }
         })+};
     }
 
+    /// Every law on the low bits of `bits` as each of core's small values of 64 bits or fewer, and
+    /// of their `Option`s.
+    ///
+    /// The order laws compare each value `bits` makes with the one `other` makes, if any.
+    fn core_value_laws(bits: u128, other: u128) -> Result<(), TestCaseError> {
+        repr_laws!(bits;
+            ZeroValid => Result<u32, u8>, ZeroValid => Option<Result<u32, u8>>,
+            Partial => Result<NonZero<u8>, bool>, ZeroValid => Result<i8, i16>,
+            ZeroValid => ControlFlow<u8, u16>, ZeroValid => Bound<i16>, ZeroValid => Bound<bool>,
+            Total => Range<u32>, Total => RangeInclusive<u8>, Total => RangeFrom<u64>,
+            Total => RangeTo<u8>, Total => RangeToInclusive<u8>,
+            Total => LegacyRangeToInclusive<u8>, ZeroValid => Poll<char>,
+            Total => Poll<NonZero<u8>>, ZeroValid => Alignment, ZeroValid => AsciiChar,
+            ZeroValid => FpCategory, ZeroValid => FormatAlignment, ZeroValid => PhantomPinned,
+            ZeroValid => RangeFull, ZeroValid => FormatError, Total => ManuallyDrop<u16>,
+        );
+        let (byte, other_byte) = (u8::from_bits(bits), u8::from_bits(other));
+        // No value is an `Infallible`, so no repr decodes, nor round-trips.
+        decodes_as_promised::<Partial, Infallible>(byte)?;
+        if let (Some(a), Some(b)) = (Alignment::from_repr(byte), Alignment::from_repr(other_byte)) {
+            reprs_order_as_ord(a, b)?;
+        }
+        if let (Some(a), Some(b)) = (AsciiChar::from_repr(byte), AsciiChar::from_repr(other_byte)) {
+            reprs_order_as_ord(a, b)?;
+        }
+        let (sign, repr) = (i8::from_bits(bits), u32::from_bits(bits));
+        decodes_as_promised::<ZeroValid, Ordering>(sign)?;
+        decodes_as_promised::<ZeroValid, Option<Ordering>>(sign)?;
+        decodes_as_promised::<Total, Ipv4Addr>(repr)?;
+        decodes_as_promised::<ZeroValid, SocketAddrV4>(u64::from_bits(bits))?;
+        decodes_as_promised::<ZeroValid, Option<SocketAddrV4>>(u64::from_bits(bits))?;
+        decodes_as_promised::<ZeroNiche, NonZero<char>>(repr)?;
+        decodes_as_promised::<ZeroValid, Option<NonZero<char>>>(repr)?;
+        decodes_as_promised::<Total, Reverse<u8>>(u8::from_bits(bits))?;
+        decodes_as_promised::<ZeroValid, Reverse<char>>(repr)?;
+        round_trips(Ipv4Addr::from_bits(repr))?;
+        round_trips(Reverse(u8::from_bits(bits)))?;
+        if let Some(socket) = SocketAddrV4::from_repr(u64::from_bits(bits)) {
+            round_trips(socket)?;
+            round_trips(Some(socket))?;
+        }
+        if let (Some(a), Some(b)) =
+            (Ordering::from_repr(sign), Ordering::from_repr(i8::from_bits(other)))
+        {
+            round_trips(a)?;
+            reprs_order_as_ord(a, b)?;
+            #[cfg(aarch64_code)]
+            atomics_order_as_ord(a, b)?;
+        }
+        if let (Some(a), Some(b)) =
+            (NonZero::<char>::from_repr(repr), NonZero::<char>::from_repr(u32::from_bits(other)))
+        {
+            round_trips(a)?;
+            round_trips(Some(a))?;
+            reprs_order_as_ord(a, b)?;
+            #[cfg(aarch64_code)]
+            atomics_order_as_ord(a, b)?;
+        }
+        Ok(())
+    }
+
+    /// A duration's repr: any seconds, and nanoseconds below a billion, which random bits alone
+    /// make once in 1.8e10 draws.
+    #[cfg(wide)]
+    fn duration_reprs() -> impl Strategy<Value = u128> {
+        (any::<u64>(), 0..1_000_000_000_u128)
+            .prop_map(|(seconds, nanoseconds)| u128::from(seconds) << 64 | nanoseconds)
+    }
+
+    /// Every law on `bits` and `other` as each of core's 128-bit values, and of their `Option`s.
+    #[cfg(wide)]
+    fn wide_core_value_laws(bits: u128, other: u128) -> Result<(), TestCaseError> {
+        repr_laws!(bits;
+            ZeroValid => Result<u64, u8>, ZeroValid => Bound<u64>, Total => Range<u64>,
+            ZeroNiche => Layout, ZeroValid => Option<Layout>,
+        );
+        decodes_as_promised::<Total, Ipv6Addr>(bits)?;
+        decodes_as_promised::<ZeroValid, Duration>(bits)?;
+        decodes_as_promised::<ZeroValid, Option<Duration>>(bits)?;
+        round_trips(Ipv6Addr::from_bits(bits))?;
+        if let (Some(a), Some(b)) = (Duration::from_repr(bits), Duration::from_repr(other)) {
+            round_trips(a)?;
+            round_trips(Some(a))?;
+            reprs_order_as_ord(a, b)?;
+        }
+        Ok(())
+    }
+
     /// Every law on the low bits of `bits` as the repr of arrays of each width and validity.
     fn array_laws(bits: u128) -> Result<(), TestCaseError> {
-        array_laws!(bits;
+        repr_laws!(bits;
             Total => [u8; 1], Total => [u8; 2], ZeroValid => [u8; 3], Total => [u8; 4],
             Total => [i8; 8], ZeroValid => [u16; 3], Total => [i32; 2],
             Total => [bool; 8], ZeroValid => [bool; 13], Total => [bool; 32],
@@ -397,7 +441,7 @@ mod tests {
             ZeroValid => Packed<[u8; 3], u32>,
         );
         #[cfg(wide)]
-        array_laws!(bits;
+        repr_laws!(bits;
             Total => [u8; 16], ZeroValid => [u32; 3], ZeroValid => [bool; 100],
             Total => [u64; 2], ZeroValid => [char; 4],
         );
@@ -407,7 +451,7 @@ mod tests {
     /// Every law on the low bits of `bits` as the repr of tuples of each shape of bits and
     /// validity, and on the tuples they decode as.
     fn tuple_laws(bits: u128) -> Result<(), TestCaseError> {
-        array_laws!(bits;
+        repr_laws!(bits;
             Total => (u8,), Total => (u8, u8), ZeroValid => (u8, u8, u8), Total => (i16, u16),
             ZeroValid => (bool, u8), ZeroValid => (u32, bool), Total => (u32, i32),
             ZeroNiche => (NonZero<u8>, u16), Partial => (RangedU8<1, 10>, u8),
@@ -415,7 +459,7 @@ mod tests {
             ZeroValid => Option<(u8, u8, u8)>,
         );
         #[cfg(wide)]
-        array_laws!(bits; Total => (u64, u64), ZeroValid => (u64, u32, u8));
+        repr_laws!(bits; Total => (u64, u64), ZeroValid => (u64, u32, u8));
         Ok(())
     }
 
@@ -482,8 +526,11 @@ mod tests {
         none_laws!(RangedI16<-300, 300>, RangedU32<7, 7>, RangedI32<{ i32::MIN }, -1>);
         none_laws!(RangedU64<3>, RangedI64<{ i64::MIN }, 5>, RangedUsize<1>, RangedIsize<-1, 1>);
         none_laws!(Ordering, SocketAddrV4, NonZero<char>, Reverse<NonZero<u8>>);
+        none_laws!(Result<u32, u8>, ControlFlow<(), u8>, Bound<u16>, Alignment, AsciiChar, FpCategory);
+        none_laws!(FormatAlignment);
+        none_laws!(Poll<char>, Infallible);
         #[cfg(wide)]
-        none_laws!(Duration);
+        none_laws!(Duration, Layout, Result<u64, u64>);
         #[cfg(wide)]
         none_laws!(NonZero<u128>, NonZero<i128>);
         #[cfg(wide)]

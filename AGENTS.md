@@ -145,7 +145,11 @@ What a change here keeps, beyond what the checks hold it to.
   every load; a value of several fields, a socket address or a `Duration`, each
   field in bits of its own, and `AtomOrd` only where the field compared first
   lies highest, as a `Duration`'s seconds do. A wrapper, `Reverse` as
-  `Wrapping`, is its value's repr, tags and all.
+  `Wrapping`, is its value's repr, tags and all. An enum of core's of payloads
+  stored as bits, `Result`, `ControlFlow` or `Bound`, keeps its variant's index
+  as a tag above the wider payload's slot, by the hidden table on the payloads'
+  kinds in `crates/atomix-core/src/atom/enum_with_fields.rs`; a payload stored
+  as a pointer has no entry: a derived enum of the same variants lays it out.
 - A pointer word, a struct of pointers beside tags, and a pointer enum, an enum
   some of whose variants hold a pointer, keep their tags in the low bits a
   pointee's alignment leaves clear, or, a pointer word of two words, in an
@@ -203,12 +207,13 @@ What a change here keeps, beyond what the checks hold it to.
   lets one `Atom` impl of a pointer choose its repr by its pointee's metadata,
   and `fn_static`'s `FnPtr` lets one impl hold every function pointer beside the
   one for references, as `with_negative_coherence` proves no reference is a
-  function pointer, never to reach core's internals beyond four: the 128-bit
-  intrinsics; a ranged integer's pattern-type field, which `transmute_neo` alone
-  converts and a plain integer replaces should a nightly break it;
-  `DynMetadata`'s layout, its vtable pointer, which `transmute` reads, as core's
-  own `vtable_ptr` does, and writes back, since the compiler hard-codes it:
-  `transmute` refuses a change of its size, and
+  function pointer, and `ptr_alignment_type` and `ascii_char` let core's
+  `Alignment` and `ascii::Char` be atomic values, never to reach core's
+  internals beyond four: the 128-bit intrinsics; a ranged integer's pattern-type
+  field, which `transmute_neo` alone converts and a plain integer replaces
+  should a nightly break it; `DynMetadata`'s layout, its vtable pointer, which
+  `transmute` reads, as core's own `vtable_ptr` does, and writes back, since the
+  compiler hard-codes it: `transmute` refuses a change of its size, and
   `crates/atomix-core/tests/double_words.rs` calls through a trait object's
   pointer read back; and `const_eval_select`, whose callers do at run time what
   no constant can. Four read in a constant no address of a pointer with
