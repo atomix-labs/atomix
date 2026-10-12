@@ -98,6 +98,9 @@ What a change here keeps, beyond what the checks hold it to.
   `toggle`; the forms that return it are `#[must_use]`, naming the short one,
   and no other is, as core's are not. So there is no `add`, `sub`, `max` or
   `min`: a dropped `fetch_add` is `lock add` already.
+- A claim that one form is faster cites the run under
+  `crates/atomix/benches/results/` that shows it: `tests/codegen.rs` pins what a
+  form lowers to, and a committed run what it costs.
 - Every packed struct the derive takes gets a projection, `QuoteFields<'a, P>`
   beside `Quote`, of its visibility: one `&'a AtomicField` per field, of the
   field's visibility and with its docs and `#[deprecated]`, and a tuple struct's

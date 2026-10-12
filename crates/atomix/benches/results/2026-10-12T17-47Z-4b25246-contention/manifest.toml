@@ -1,0 +1,75 @@
+run-id  = "2026-10-12T17-47Z-4b25246-contention"
+purpose = "what an operation costs while 1, 2, 4 and 8 cores contend for its cache line: a shared count, counts side by side or each in a line of its own, 16-byte reads by load and by compare-exchange, and a claim of one bit"
+
+[hardware]
+cpu        = "AWS Graviton4 (Arm Neoverse V2, CPU part 0xd4f), c8g.8xlarge"
+cores      = 32
+cache-line = 64
+
+[environment]
+kernel        = "Linux 6.12.53-69.119.amzn2023.aarch64"
+clocksource   = "arch_sys_counter"
+isolated-cpus = "6-31"
+placement     = "taskset -c 20-27, thread i pinned by core_affinity to core 20 + i"
+
+[toolchain]
+rustc   = "1.101.0-nightly (d080e7dff 2026-09-27)"
+profile = "bench: release's settings, fat LTO, one codegen unit, built to unwind"
+flags   = { floor = "the workspace's floor, +crc,+lse", lse2 = "RUSTFLAGS='-C target-cpu=neoverse-v2', which replaces the floor and has LSE2" }
+
+[parameters]
+command = "taskset -c 20-27 <bench binary> --bench, the binary cargo bench -p atomix-rs --features derive --bench contention --no-run built, with --target-dir target/lse2 for lse2"
+library = "atomix at 4b25246, origin/main; the bench is the commit that adds it"
+threads = "1, 2, 4 and 8, each on a core of its own"
+rounds  = "500 untimed, a barrier, then 5,000 timed of 1,000 operations each, a thread done early contending on, untimed, until every thread is done"
+figures = "each pair the fastest and the slowest thread's median round, in ns an operation; each transcript has the highest p99 and maximum of any thread too"
+floor   = "floor-empty is a round of calls to an empty operation through the pointer every case is called through: 0.74 ns"
+
+[notes]
+one-line   = "each compared pair, by hand and atomix, shares one run and one cache line: a contended line's time moves by up to a fifth from one run to the next (shared-count at 2 threads: 22.5 ns in floor-1, 19.1 in floor-2), and a pair's two rows move together"
+same-code  = "shared-count is ldaddal in both; the claim's set is ldsetal in both, and its clear ldclrl"
+padding    = "own-count: eight counts side by side in one line cost 14 to 17 ns an add at 2 threads and 59 to 92 at 8; each in its own CachePadded line, 5.2 ns at every count"
+wide-reads = "wide-read: load, ldp and dmb ishld with LSE2, holds 4.1 ns at every count, since readers share the line; load_rmw, caspa, takes the line from every other reader, 15 to 16 ns at 2 threads and 61 to 80 at 8"
+one-thread = "at one thread this harness reads load at 4.1 ns and load_rmw at 5.3, where operations reads 6.1 and 5.0: each harness wraps the read in its own loop, and only contention separates the two"
+
+[results.median-ns.floor-1]
+floor-empty          = { t1 = [0.74, 0.74], t2 = [0.74, 0.77], t4 = [0.74, 0.77], t8 = [0.74, 0.77] }
+shared-count-by-hand = { t1 = [6.82, 6.82], t2 = [22.52, 22.53], t4 = [37.95, 49.41], t8 = [79.89, 104.32] }
+shared-count-atomix  = { t1 = [6.82, 6.82], t2 = [22.55, 22.56], t4 = [38.09, 48.46], t8 = [79.92, 103.94] }
+own-count-adjacent   = { t1 = [5.20, 5.20], t2 = [15.25, 15.25], t4 = [30.64, 32.71], t8 = [59.54, 70.71] }
+own-count-padded     = { t1 = [5.21, 5.21], t2 = [5.21, 5.21], t4 = [5.21, 5.21], t8 = [5.21, 5.21] }
+wide-read-load-rmw   = { t1 = [5.30, 5.30], t2 = [16.38, 16.38], t4 = [34.55, 34.67], t8 = [61.42, 77.44] }
+claim-by-hand        = { t1 = [11.91, 11.91], t2 = [30.00, 30.15], t4 = [52.99, 61.58], t8 = [93.83, 107.89] }
+claim-atomix         = { t1 = [11.91, 11.91], t2 = [30.04, 30.53], t4 = [53.32, 61.39], t8 = [91.92, 109.54] }
+
+[results.median-ns.floor-2]
+floor-empty          = { t1 = [0.74, 0.74], t2 = [0.74, 0.77], t4 = [0.74, 0.77], t8 = [0.74, 0.77] }
+shared-count-by-hand = { t1 = [6.82, 6.82], t2 = [19.09, 19.09], t4 = [39.68, 39.72], t8 = [76.08, 101.54] }
+shared-count-atomix  = { t1 = [6.82, 6.82], t2 = [19.07, 19.08], t4 = [39.64, 39.66], t8 = [76.29, 101.84] }
+own-count-adjacent   = { t1 = [5.21, 5.21], t2 = [14.47, 14.47], t4 = [30.14, 30.16], t8 = [58.87, 69.96] }
+own-count-padded     = { t1 = [5.21, 5.21], t2 = [5.21, 5.21], t4 = [5.21, 5.21], t8 = [5.21, 5.21] }
+wide-read-load-rmw   = { t1 = [5.30, 5.30], t2 = [15.24, 15.26], t4 = [31.78, 31.99], t8 = [64.73, 79.97] }
+claim-by-hand        = { t1 = [11.91, 11.91], t2 = [29.96, 30.54], t4 = [47.21, 56.38], t8 = [95.31, 113.74] }
+claim-atomix         = { t1 = [11.91, 11.91], t2 = [30.36, 30.48], t4 = [47.26, 56.60], t8 = [95.11, 112.16] }
+
+[results.median-ns.lse2-1]
+floor-empty          = { t1 = [0.74, 0.74], t2 = [0.74, 0.74], t4 = [0.74, 0.77], t8 = [0.74, 0.77] }
+shared-count-by-hand = { t1 = [6.82, 6.82], t2 = [19.66, 19.66], t4 = [37.85, 49.70], t8 = [72.43, 96.78] }
+shared-count-atomix  = { t1 = [6.82, 6.82], t2 = [19.66, 19.66], t4 = [37.91, 49.72], t8 = [72.67, 97.06] }
+own-count-adjacent   = { t1 = [5.20, 5.20], t2 = [17.02, 17.04], t4 = [34.34, 34.93], t8 = [67.99, 92.00] }
+own-count-padded     = { t1 = [5.20, 5.20], t2 = [5.20, 5.20], t4 = [5.20, 5.20], t8 = [5.20, 5.20] }
+wide-read-load       = { t1 = [4.10, 4.10], t2 = [4.10, 4.10], t4 = [4.10, 4.10], t8 = [4.10, 4.10] }
+wide-read-load-rmw   = { t1 = [5.30, 5.30], t2 = [16.31, 16.31], t4 = [34.36, 34.38], t8 = [70.48, 70.86] }
+claim-by-hand        = { t1 = [11.92, 11.92], t2 = [30.11, 30.11], t4 = [41.30, 63.40], t8 = [89.32, 120.03] }
+claim-atomix         = { t1 = [11.93, 11.93], t2 = [30.12, 30.14], t4 = [41.22, 62.51], t8 = [93.62, 128.07] }
+
+[results.median-ns.lse2-2]
+floor-empty          = { t1 = [0.74, 0.74], t2 = [0.74, 0.77], t4 = [0.74, 0.74], t8 = [0.74, 0.74] }
+shared-count-by-hand = { t1 = [6.82, 6.82], t2 = [21.50, 21.53], t4 = [42.39, 49.09], t8 = [88.95, 105.42] }
+shared-count-atomix  = { t1 = [6.82, 6.82], t2 = [21.50, 21.53], t4 = [42.40, 49.12], t8 = [88.94, 105.33] }
+own-count-adjacent   = { t1 = [5.20, 5.20], t2 = [17.03, 17.03], t4 = [30.52, 37.52], t8 = [61.20, 81.61] }
+own-count-padded     = { t1 = [5.20, 5.20], t2 = [5.20, 5.20], t4 = [5.20, 5.20], t8 = [5.20, 5.20] }
+wide-read-load       = { t1 = [4.10, 4.10], t2 = [4.10, 4.10], t4 = [4.10, 4.10], t8 = [4.10, 4.10] }
+wide-read-load-rmw   = { t1 = [5.27, 5.27], t2 = [16.31, 16.31], t4 = [34.38, 34.49], t8 = [61.23, 77.22] }
+claim-by-hand        = { t1 = [11.93, 11.93], t2 = [27.93, 27.93], t4 = [50.35, 50.41], t8 = [84.78, 97.94] }
+claim-atomix         = { t1 = [11.93, 11.93], t2 = [27.94, 27.95], t4 = [50.31, 50.35], t8 = [84.95, 96.31] }
