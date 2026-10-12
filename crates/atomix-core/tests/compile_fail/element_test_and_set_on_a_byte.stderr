@@ -1,0 +1,15 @@
+error[E0271]: type mismatch resolving `<Indexed<[u8; 4], u8> as FieldPath>::Value == bool`
+ --> tests/compile_fail/element_test_and_set_on_a_byte.rs:8:31
+  |
+8 |     let _ = levels.element(0).test_and_set(AcqRel);
+  |                               ^^^^^^^^^^^^ expected `bool`, found `u8`
+  |
+note: required by a bound in `AtomicField::<P>::test_and_set`
+ --> src/atomic/field/mod.rs
+  |
+  | impl<P: FieldPath> AtomicField<P> {
+...
+  |     pub const fn test_and_set<O: RmwOrdering<P::Value>>(&self, order: O) -> bool
+  |     where
+  |         P: FieldPath<Value = bool>,
+  |                      ^^^^^^^^^^^^ required by this bound in `AtomicField::<P>::test_and_set`

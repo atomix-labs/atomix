@@ -47,6 +47,16 @@ pub impl(crate) const trait Validity {
     /// a generic derived value's validity nests it over its fields.
     #[doc(hidden)]
     type ZeroValidityWith<V: Validity>: const Validity;
+    /// The validity of an array of values of this validity, several, whose slots fill its repr:
+    /// every repr decodes where each slot's does, and zero where zero does, or does not where it
+    /// does not.
+    #[doc(hidden)]
+    type Elements: const Validity;
+    /// The validity of an array of values of this validity whose slots leave bits of its repr
+    /// above them, always clear: as [`Elements`](Self::Elements)', but a repr with one of those
+    /// bits set does not decode.
+    #[doc(hidden)]
+    type PaddedElements: const Validity;
     /// Wraps a primitive's cell.
     #[doc(hidden)]
     fn wrap<R: CellAccess>(cell: R::Cell) -> Self::Cell<R>;
@@ -108,6 +118,8 @@ const impl Validity for Total {
     const PROMISES_ZERO_DECODES: bool = true;
     type ZeroValidity = ZeroValid;
     type ZeroValidityWith<V: Validity> = V::ZeroValidity;
+    type Elements = Total;
+    type PaddedElements = ZeroValid;
     #[inline]
     fn wrap<R: CellAccess>(cell: R::Cell) -> R::Cell {
         cell
@@ -130,7 +142,7 @@ const impl Validity for Total {
 macro_rules! opaque {
     ($(
         $kind:ident => $optional:ident, $none_takes_zero:literal, $zero_decodes:literal,
-        $zero_validity:ident, $zero_validity_with:ty
+        $zero_validity:ident, $zero_validity_with:ty, $elements:ident
     );+ $(;)?) => {$(
         const impl Validity for $kind {
             type Cell<R: CellAccess> = Opaque<R::Cell>;
@@ -140,6 +152,8 @@ macro_rules! opaque {
             const PROMISES_ZERO_DECODES: bool = $zero_decodes;
             type ZeroValidity = $zero_validity;
             type ZeroValidityWith<V: Validity> = $zero_validity_with;
+            type Elements = $elements;
+            type PaddedElements = $elements;
             #[inline]
             fn wrap<R: CellAccess>(cell: R::Cell) -> Opaque<R::Cell> {
                 Opaque(cell)
@@ -161,12 +175,14 @@ macro_rules! opaque {
 }
 
 // Each kind: its `Option`'s validity, whether `None` takes zero, whether zero decodes, its
-// `ZeroValidity`, and its `ZeroValidityWith<V>`.
+// `ZeroValidity`, its `ZeroValidityWith<V>`, and an array's of it, padded or not: an array of
+// values whose zero does not decode has no zero either, though other reprs, a slot's zero among
+// them, may not decode.
 opaque! {
-    TotalZeroNiche => Total, true, false, Partial, Partial;
-    ZeroValid => ZeroValid, false, true, ZeroValid, V::ZeroValidity;
-    ZeroNiche => ZeroValid, true, false, Partial, Partial;
-    Partial => Partial, false, false, Partial, Partial;
+    TotalZeroNiche => Total, true, false, Partial, Partial, ZeroNiche;
+    ZeroValid => ZeroValid, false, true, ZeroValid, V::ZeroValidity, ZeroValid;
+    ZeroNiche => ZeroValid, true, false, Partial, Partial, ZeroNiche;
+    Partial => Partial, false, false, Partial, Partial, Partial;
 }
 
 #[cfg(test)]
@@ -228,6 +244,24 @@ mod tests {
             Partial => Partial, Partial, Partial, Partial, Partial;
         }
     }
+
+    /// Compiles only where an array of several `V` values has validity `F` where its slots fill
+    /// its repr, and `P` where they leave bits above.
+    const fn elements_are<
+        V: Validity<Elements = F, PaddedElements = P>,
+        F: Validity,
+        P: Validity,
+    >() {
+    }
+
+    // An array promises what each element does, but a padded one's bits above.
+    const _: () = {
+        elements_are::<Total, Total, ZeroValid>();
+        elements_are::<TotalZeroNiche, ZeroNiche, ZeroNiche>();
+        elements_are::<ZeroValid, ZeroValid, ZeroValid>();
+        elements_are::<ZeroNiche, ZeroNiche, ZeroNiche>();
+        elements_are::<Partial, Partial, Partial>();
+    };
 
     #[test]
     fn every_repr_decodes_for_total_alone_and_zero_for_total_and_zero_valid() {

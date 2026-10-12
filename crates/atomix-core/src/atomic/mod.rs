@@ -25,9 +25,12 @@ mod ptr;
 
 #[doc(hidden)]
 pub use self::exclusive::RawValue;
-pub use self::field::{AtomicField, Field, FieldPath, Join, ProjectFields, Then, TopField, Whole};
 #[doc(hidden)]
-pub use self::field::{HasPackedField, Reach, project_field};
+pub use self::field::{Array, HasPackedField, PlaceTail, Reach, project_field};
+pub use self::field::{
+    AtomicField, Element, Field, FieldPath, Indexed, Join, Last, ProjectFields, Then, TopField,
+    Whole,
+};
 pub use self::ptr::AtomicPtr;
 
 /// A value of `T` shared between threads through one atomic primitive, its repr.
@@ -117,15 +120,17 @@ pub struct Atomic<T: Atom> {
     // `try_update`), to any pattern of a field whose every pattern decodes (the bitwise
     // operations, on `FieldBitwise`, `bool` among them), or by an add whose carry leaves the word
     // (the field's add, on `FieldAdd`, at a `TopField`), each through the place of a field, never
-    // of `Whole`, as `ProjectFields` promises; or any repr written through `get_mut`,
-    // `get_mut_slice`, or the place `from_mut` or `from_mut_slice` took, whose `Total` bound makes
-    // every one decode; or any repr zerocopy's derives read from bytes or zeros, which they do
-    // only where the cell is the primitive's own, so `Total`'s; or the zero repr bytemuck's
-    // `Zeroable` writes, only where `ZeroValid` says it decodes. Its writers are this module
-    // and its submodules, the zerocopy and bytemuck impls, and whoever writes through
-    // `get_mut`'s place, `get_mut_slice`'s, the place `from_mut` or `from_mut_slice` took,
-    // `as_ptr` or `from_ptr`, whose bounds and contracts keep it, each bounded by `RawAccess`,
-    // which no double word has.
+    // of `Whole`, as `ProjectFields` promises, or at an index known at run time, an `Indexed`
+    // path's, whose tail holds an element's bits, at its slot, as `Element`'s path places it, or
+    // a field's of one, as its tail INVARIANT says; or any repr written through
+    // `get_mut`, `get_mut_slice`, or the place `from_mut` or `from_mut_slice` took, whose
+    // `Total` bound makes every one decode; or any repr zerocopy's derives read from bytes or
+    // zeros, which they do only where the cell is the primitive's own, so `Total`'s; or the
+    // zero repr bytemuck's `Zeroable` writes, only where `ZeroValid` says it decodes. Its
+    // writers are this module and its submodules, the zerocopy and bytemuck impls, and whoever
+    // writes through `get_mut`'s place, `get_mut_slice`'s, the place `from_mut` or
+    // `from_mut_slice` took, `as_ptr` or `from_ptr`, whose bounds and contracts keep it, each
+    // bounded by `RawAccess`, which no double word has.
     /// The cell holding `T`'s repr: the validity's wrapper around the primitive's cell.
     cell: <T::Validity as Validity>::Cell<T::Repr>,
     /// The type of the value the repr encodes.

@@ -107,6 +107,20 @@ What a change here keeps, beyond what the checks hold it to.
   private field may carry an invariant its module's unsafe code relies on: a
   path is a type alone, and the hidden `project_field` that builds each place is
   `unsafe`.
+- An array `[T; N]` is stored in slots of its element's repr's width, element 0
+  lowest, by the hidden `Slots` table, one impl per element repr and length,
+  since a repr chosen by a width needs `generic_const_exprs`; two pointers take
+  a `DoubleWord`. An element is as visible as its array, so an atomic array, a
+  field of one, and an element that is one lend each element's place, an
+  `AtomicField`: `place::<I>()` and `last()` at an `Element` or `Last` path, and
+  `element(i)`, `element_checked` and `element_unchecked` at an `Indexed` one,
+  whose place holds where its bits lie in its tail, a slice of units, which
+  takes no bytes, its length their offset and span: `AtomicField` is `repr(C)`,
+  the atomic its first field, so a reference to the atomic is one to each place.
+  A place at a run-time index lends its fields' and elements' places, at
+  `Indexed` too, and `elements()` is the array of them. Only a whole array's
+  `last()` adds. Only an element stored as bits has a place: a pointer's
+  provenance is no bits.
 - A pointer word, a struct of pointers beside tags, and a pointer enum, an enum
   some of whose variants hold a pointer, keep their tags in the low bits a
   pointee's alignment leaves clear, or, a pointer word of two words, in an

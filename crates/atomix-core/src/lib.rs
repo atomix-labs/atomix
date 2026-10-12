@@ -19,6 +19,12 @@
 //! `Acquire` read and a `Release` write, so the thread that loads one sees the writes that made
 //! what it points to.
 //!
+//! An array holds each element in a slot as wide as its repr, element 0 lowest: four bytes are a
+//! `u32`, their own bytes, and 64 `bool`s a `u64`, a bit each. Each element is a place of its own,
+//! an [`AtomicField`] of an [`Indexed`] path at an index known at run time:
+//! `BUSY.element(worker).test_and_set(AcqRel)` claims a worker's bit with `lock bts`, or `ldsetal`,
+//! after the index's check, and `SLOTS.element(slot).fields().written` a field of an element.
+//!
 //! Two pointers, or one beside a counter or a slice's length, share a 16-byte atomic, a
 //! [`DoubleWord`], which exposes each pointer's provenance, as no Rust operation keeps one through
 //! 16 bytes: `HEAD.compare_exchange(pushed, popped, AcqRel, Acquire)` pops a derived Treiber
@@ -160,8 +166,8 @@ pub use crate::atom::VtablePointer;
 pub use crate::atom::{Atom, AtomAdd, AtomBitwise, AtomOrd, FieldAdd, FieldBitwise, PointerAtom};
 pub use crate::atomic::{
     Atomic, AtomicBool, AtomicField, AtomicI8, AtomicI16, AtomicI32, AtomicI64, AtomicIsize,
-    AtomicPtr, AtomicU8, AtomicU16, AtomicU32, AtomicU64, AtomicUsize, Field, FieldPath, Join,
-    ProjectFields, Then, TopField, Whole,
+    AtomicPtr, AtomicU8, AtomicU16, AtomicU32, AtomicU64, AtomicUsize, Element, Field, FieldPath,
+    Indexed, Join, Last, ProjectFields, Then, TopField, Whole,
 };
 #[cfg(wide)]
 #[doc(cfg(any(

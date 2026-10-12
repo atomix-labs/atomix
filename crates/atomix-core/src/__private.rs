@@ -9,9 +9,9 @@
 use core::any::type_name;
 use core::ptr;
 
-pub use crate::atom::PointerReprAtom;
 use crate::atom::{Atom, AtomAdd, AtomBitwise, AtomOrd, PointerAtom};
-pub use crate::atomic::{HasPackedField, RawValue, Reach, project_field};
+pub use crate::atom::{FieldPatternsDecode, PointerReprAtom, Slots};
+pub use crate::atomic::{Array, HasPackedField, PlaceTail, RawValue, Reach, project_field};
 use crate::message::{Message, refuse};
 use crate::primitive::{CompareExchange, ExactBits, Primitive};
 #[cfg(wide)]

@@ -4,7 +4,8 @@
 //! instruction reads and writes, and decodes it on the way out. The integer, `bool` and pointer
 //! atomics are its aliases (`AtomicU64 = Atomic<u64>`), and any value implementing [`Atom`] is one
 //! more: a `NonZero`, a `char`, a float, a ranged integer, a shared reference, a function pointer,
-//! an `Option` that spends a spare repr on `None`, and a struct or an enum that derives it.
+//! an array, an `Option` that spends a spare repr on `None`, and a struct or an enum that derives
+//! it.
 //!
 //! A crate depends on `atomix-rs`, since crates.io's `atomix` is an unrelated 2017 placeholder:
 //!
@@ -27,20 +28,25 @@
 //!   the [`ProjectFields`] the derive implements, whose [`Fields`](ProjectFields::Fields) is the
 //!   struct of places it writes. A place's type names its [`FieldPath`]: a [`Field`], a [`Then`] of
 //!   a field's field, or [`Whole`], which [`Join`] extends; [`TopField`] marks the one that adds.
+//!   [`Element`] and [`Last`] are the paths to an array's element at a constant index, and
+//!   [`Indexed`] the path to one at an index known at run time, which [`Atomic::element`] lends, or
+//!   to a field of one, whose place holds where its bits lie.
 //! - **Values.** [`Atom`] encodes a value as its repr and back, its [`ReprRange`] says which reprs
 //!   it takes and its [`validity`] which decode, and [`PointerAtom`] is a value stored as a
 //!   pointer; [`AtomAdd`], [`AtomOrd`] and [`AtomBitwise`] add the read-modify-writes that mean
 //!   something for it, and [`FieldBitwise`] and [`FieldAdd`] those of a field of it. A shared
 //!   reference and a function pointer are stored as a [`ReprOf`] of themselves, which no bits
 //!   forge, and a reference's operations take no ordering weaker than an `Acquire` read and a
-//!   `Release` write. Two words hold a pair `(P, Q)` of values stored as pointers, references among
-//!   them, and a pointer to a slice, a `str` or a trait object. With the `derive` feature, each
-//!   derives: `Atom` for a struct or an enum, a pointer word or a pointer enum among them, which
-//!   keeps small fields as tags in its pointer's low bits and the pointer's provenance, and each
-//!   capability for a newtype whose field has it. A pointer word takes two words where a second
-//!   pointer, a wide one or tags no alignment holds need them. [`RangedU64<MIN, MAX>`](RangedU64)
-//!   and its siblings, `RangedU8` to `RangedIsize`, hold an integer from `MIN` to `MAX`, and
-//!   [`RangeError`] and [`ParseRangeError`] say why one refused an integer or a text.
+//!   `Release` write. An array `[T; N]` holds each element in a slot as wide as its repr, element 0
+//!   lowest: four bytes in a `u32`, their own bytes, and 64 `bool`s in a `u64`. Two words hold a
+//!   pair `(P, Q)` of values stored as pointers, references among them, two of them as an array,
+//!   and a pointer to a slice, a `str` or a trait object. With the `derive` feature, each derives:
+//!   `Atom` for a struct or an enum, a pointer word or a pointer enum among them, which keeps small
+//!   fields as tags in its pointer's low bits and the pointer's provenance, and each capability for
+//!   a newtype whose field has it. A pointer word takes two words where a second pointer, a wide
+//!   one or tags no alignment holds need them. [`RangedU64<MIN, MAX>`](RangedU64) and its siblings,
+//!   `RangedU8` to `RangedIsize`, hold an integer from `MIN` to `MAX`, and [`RangeError`] and
+//!   [`ParseRangeError`] say why one refused an integer or a text.
 //! - **Orderings.** The [`ordering`] types, each accepted only where it means something, and the
 //!   [`fence`](fn@fence) and [`compiler_fence`] they order.
 //! - **Primitives.** [`Primitive`], [`ExactBits`] where the bits are the whole value, a
@@ -112,6 +118,26 @@
 //! let expected = Quote { quantity: 300, live: false, flags: POST_ONLY };
 //! assert_eq!(QUOTE.load(Acquire), expected, "the bit off, the flag on, the quantity as it was");
 //! # }
+//! ```
+//!
+//! ## Changing One Element of an Array
+//! ```
+//! use atomix::Atomic;
+//! use atomix::ordering::{AcqRel, Acquire, Release};
+//!
+//! /// Which of 64 workers are busy, a bit each, in one `u64`.
+//! static BUSY: Atomic<[bool; 64]> = Atomic::new([false; 64]);
+//! /// How deep each of four price levels is, a byte each, in one `u32`: the array's own bytes.
+//! static DEPTHS: Atomic<[u8; 4]> = Atomic::new([0; 4]);
+//!
+//! // `lock bts`, or `ldsetal`, after the index's check: the one thread that finds the bit clear
+//! // claims the worker.
+//! let worker = 17;
+//! assert!(!BUSY.element(worker).test_and_set(AcqRel), "this thread claimed it");
+//! // Each element changes alone, its index known at run time, or, with `place`, a constant.
+//! DEPTHS.element(2).or(0x80, Release);
+//! DEPTHS.place::<0>().update(AcqRel, Acquire, |depth| depth.wrapping_add(1));
+//! assert_eq!(DEPTHS.load(Acquire), [1, 0, 0x80, 0], "each byte its own");
 //! ```
 //!
 //! ## Keeping Tags in a Pointer
@@ -349,7 +375,11 @@
 //!   [`update`](AtomicField::update) and [`try_update`](AtomicField::try_update), and its
 //!   [`load_rmw`](AtomicField::load_rmw) is one instruction on the whole word, and needs what the
 //!   field's value promises, [`FieldBitwise`] for the bitwise operations and [`FieldAdd`] for the
-//!   add, and what the container's repr runs: [`MaskBitwise`], [`BitTest`] or [`FetchAdd`].
+//!   add, and what the container's repr runs: [`MaskBitwise`], [`BitTest`] or [`FetchAdd`];
+//! - an array's element keeps a field's rules but the add, whose carry would reach the next
+//!   element: the last alone adds, through [`last`](Atomic::last), where the slots fill the repr;
+//!   at an index known at run time, [`element`](Atomic::element) adds the index's check and the
+//!   shift by its slot, and [`element_unchecked`](Atomic::element_unchecked) the shift alone.
 //!
 //! The `fetch_` operations take core's names, and return the value before as core's do, a field's
 //! the container before. [`bit_set`](Atomic::bit_set), [`bit_clear`](Atomic::bit_clear) and
@@ -507,11 +537,12 @@ pub use atomix_core::model;
 pub use atomix_core::{
     Atom, AtomAdd, AtomBitwise, AtomOrd, Atomic, AtomicBool, AtomicField, AtomicI8, AtomicI16,
     AtomicI32, AtomicI64, AtomicIsize, AtomicPtr, AtomicU8, AtomicU16, AtomicU32, AtomicU64,
-    AtomicUsize, BitTest, ExactBits, FetchAdd, FetchBitwise, Field, FieldAdd, FieldBitwise,
-    FieldPath, Join, Load, MaskBitwise, MinMax, ParseRangeError, PointerAtom, Primitive,
-    ProjectFields, RangeError, RangedI8, RangedI16, RangedI32, RangedI64, RangedI128, RangedIsize,
-    RangedU8, RangedU16, RangedU32, RangedU64, RangedU128, RangedUsize, RawAccess, ReadByExchange,
-    ReprOf, ReprRange, Store, Swap, Then, TopField, Whole, compiler_fence, fence,
+    AtomicUsize, BitTest, Element, ExactBits, FetchAdd, FetchBitwise, Field, FieldAdd,
+    FieldBitwise, FieldPath, Indexed, Join, Last, Load, MaskBitwise, MinMax, ParseRangeError,
+    PointerAtom, Primitive, ProjectFields, RangeError, RangedI8, RangedI16, RangedI32, RangedI64,
+    RangedI128, RangedIsize, RangedU8, RangedU16, RangedU32, RangedU64, RangedU128, RangedUsize,
+    RawAccess, ReadByExchange, ReprOf, ReprRange, Store, Swap, Then, TopField, Whole,
+    compiler_fence, fence,
 };
 #[cfg(any(
     target_arch = "aarch64",

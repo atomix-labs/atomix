@@ -4,6 +4,6 @@
 use atomix::Atom;
 
 #[derive(Clone, Copy, Atom)]
-struct Ticker([u8; 4]);
+struct Ticker([u8; 17]);
 
 fn main() {}

@@ -184,6 +184,35 @@ impl<R: Primitive> ReprRange<R> {
         Self::from_bounds(span.start, span.end)
     }
 
+    /// The range of an array of `count` values whose reprs are `E`'s and lie in `element`, each
+    /// in a slot of `E::BITS` bits, element 0 lowest, the bits above the slots clear.
+    ///
+    /// Where `element` does not wrap, each slot's bits lie between its bounds, so the array's lie
+    /// between the slots' bounds side by side; where it wraps, a slot below the top one holds any
+    /// bits, and a top one below the repr's top bit makes the range every repr up to its end.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn of_slots<E: Primitive>(element: ReprRange<E>, count: usize) -> Self {
+        let top = E::BITS.saturating_mul(count.saturating_sub(1).wrapping_cast::<u32>());
+        let end = top.saturating_add(E::BITS);
+        let span = element.span();
+        if span.wraps() && end < R::BITS {
+            return Self::from_bounds(0, mask(end));
+        }
+        let (mut low, mut high) = if span.wraps() { (0, mask(top)) } else { (0, 0) };
+        let mut below = 0;
+        while !span.wraps() && below < top {
+            low |= span.start.unbounded_shl(below);
+            high |= span.end.unbounded_shl(below);
+            below = below.saturating_add(E::BITS);
+        }
+        let largest = mask(R::BITS);
+        Self::from_bounds(
+            (span.start.unbounded_shl(top) | low) & largest,
+            (span.end.unbounded_shl(top) | high) & largest,
+        )
+    }
+
     /// The smallest range that holds this one and `bits`, a repr's unsigned bits: grown down to
     /// them or up to them, whichever adds fewer reprs, down on a tie.
     #[inline]

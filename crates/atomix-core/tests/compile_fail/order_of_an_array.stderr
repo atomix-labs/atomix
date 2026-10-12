@@ -1,0 +1,24 @@
+error[E0277]: `[u8; 4]` has no atomic maximum or minimum
+  --> tests/compile_fail/order_of_an_array.rs:10:27
+   |
+10 |     orders_as_its_reprs::<[u8; 4]>();
+   |                           ^^^^^^^ `fetch_max` and `fetch_min` need `AtomOrd`
+   |
+   = help: the trait `AtomOrd` is not implemented for `[u8; 4]`
+   = note: for your own newtype over a value that has it, derive it: `#[derive(AtomOrd)]`
+   = note: to change the value in a compare-exchange loop, call `update`
+   = help: the following other types implement trait `AtomOrd`:
+             NonZero<i128>
+             NonZero<i16>
+             NonZero<i32>
+             NonZero<i64>
+             NonZero<i8>
+             NonZero<isize>
+             NonZero<u128>
+             NonZero<u16>
+           and $N others
+note: required by a bound in `orders_as_its_reprs`
+  --> tests/compile_fail/order_of_an_array.rs:7:33
+   |
+ 7 | const fn orders_as_its_reprs<T: AtomOrd>() {}
+   |                                 ^^^^^^^ required by this bound in `orders_as_its_reprs`

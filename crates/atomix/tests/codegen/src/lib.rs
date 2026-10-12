@@ -166,6 +166,51 @@ pub fn top_fetch_add(atomic: &Atomic<Counted>, delta: u32) -> u32 {
     atomic.fields().count.fetch_add(delta, AcqRel).count
 }
 
+/// A record of a ring: whether it is written, and its length, 9 bits, in a 16-bit slot of an array.
+#[derive(Clone, Copy, Atom)]
+pub struct Record {
+    /// Whether it is written, at bit 0 of its slot.
+    pub written: bool,
+    /// How long it is, at bits 1 to 8 of its slot.
+    pub length: u8,
+}
+
+/// Three records, a 16-bit slot each, then the index of the head, at bit 48.
+#[derive(Clone, Copy, Atom)]
+pub struct Ring {
+    /// The records.
+    pub records: [Record; 3],
+    /// Which record is the head.
+    pub head: u8,
+}
+
+#[unsafe(no_mangle)]
+pub fn record_test_and_set_written(atomic: &Atomic<[Record; 4]>, index: usize) -> bool {
+    atomic.element(index).fields().written.test_and_set(AcqRel)
+}
+
+#[unsafe(no_mangle)]
+pub fn record_set_written(atomic: &Atomic<[Record; 4]>, index: usize) {
+    atomic.element(index).fields().written.set(Release);
+}
+
+#[unsafe(no_mangle)]
+pub fn record_load_length(atomic: &Atomic<[Record; 4]>, index: usize) -> u8 {
+    atomic.element(index).fields().length.load(Acquire)
+}
+
+#[unsafe(no_mangle)]
+pub fn ring_test_and_set_written(atomic: &Atomic<Ring>, index: usize) -> bool {
+    atomic.fields().records.element(index).fields().written.test_and_set(AcqRel)
+}
+
+#[unsafe(no_mangle)]
+pub fn grid_test_and_set_written(
+    atomic: &Atomic<[[Record; 2]; 2]>, row: usize, column: usize,
+) -> bool {
+    atomic.element(row).element(column).fields().written.test_and_set(AcqRel)
+}
+
 /// A node, aligned to 8: three low bits clear.
 #[repr(align(8))]
 pub struct Node {

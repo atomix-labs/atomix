@@ -8,11 +8,12 @@
 //! pointers and a slice's pointer, for the test that `x86_64` without `cmpxchg16b` refuses them.
 //! atomix-core's `deranged-05` feature is always on, for the probes of its conversions, and its
 //! `arbitrary-int` feature, for those of a field of an arbitrary-int integer. A bit's probes, at a
-//! position chosen at run time or by a constant, are in `bits`; the field operations' in `fields`,
-//! over packed structs `tests/testing/packed.rs` writes out; a pointer word's in `pointer_words`,
-//! over words `tests/testing/pointer_word.rs` writes out; a double word's, a pair's and a slice
-//! pointer's, in `double_words`; and a reference's and a function pointer's, beside a raw
-//! pointer's, in `references`.
+//! position chosen at run time or by a constant, are in `bits`; an array's and its elements',
+//! beside an integer's, in `arrays`; the field operations' in `fields`, over packed structs
+//! `tests/testing/packed.rs` writes out; a pointer word's in `pointer_words`, over words
+//! `tests/testing/pointer_word.rs` writes out; a double word's, a pair's and a slice pointer's, in
+//! `double_words`; and a reference's and a function pointer's, beside a raw pointer's, in
+//! `references`.
 //!
 //! The empty `[workspace]` in its manifest makes it a workspace of its own: the repository's does
 //! not list it, and the test builds it alone.
@@ -20,6 +21,7 @@
 #![no_std]
 #![feature(const_trait_impl)]
 
+pub mod arrays;
 pub mod bits;
 #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
 pub mod double_words;

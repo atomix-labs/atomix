@@ -45,6 +45,29 @@ mod tests {
         none_laws, round_trips,
     };
 
+    /// The depth of each of four price levels: a newtype over an array, its bytes.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Levels([u8; 4]);
+
+    /// Which of ten seats are taken, beside whether the table is open: an array that leaves bits
+    /// of its `u16` above it, as a field of eleven bits.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Table {
+        /// One bit per seat.
+        taken: [bool; 10],
+        /// Whether the table takes players.
+        open: bool,
+    }
+
+    /// Who holds each of four cells, a byte each, and whose turn it is above them.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Board {
+        /// Who holds each cell.
+        cells: [Side; 4],
+        /// Who moves next.
+        turn: Side,
+    }
+
     /// The side of the book an order rests on: one bit, from zero.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     enum Side {
@@ -419,6 +442,15 @@ mod tests {
         sign: Sign,
         /// Whether a pop is under way.
         marked: bool,
+    }
+
+    /// A head whose tags are an array: the top node or none, and two marks.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct MarkedHead {
+        /// The top node.
+        top: Option<NonNull<Node>>,
+        /// Two marks, in two of the bits a node's alignment leaves clear.
+        marks: [bool; 2],
     }
 
     /// A link never null, and its mark.
@@ -906,6 +938,10 @@ mod tests {
         repr_and_validity_are::<Current, ReprOf<&'static Config>, ZeroNiche>();
         repr_and_validity_are::<Measure, ReprOf<fn(&str) -> usize>, TotalZeroNiche>();
         repr_and_validity_are::<Published, ReprOf<&'static Config>, ZeroValid>();
+        repr_and_validity_are::<Levels, u32, Total>();
+        repr_and_validity_are::<Table, u16, ZeroValid>();
+        repr_and_validity_are::<Board, u32, ZeroValid>();
+        repr_and_validity_are::<MarkedHead, *mut Node, ZeroValid>();
         assert_eq!(Turn::REPRS, ReprRange::new(0, 0x1FF), "every repr up to the third's end");
         assert_eq!(Offer::Closed.to_repr(), 2, "and `Closed` above the side's 0 and 1");
     }
@@ -942,6 +978,11 @@ mod tests {
         every_repr_obeys_the_laws::<Option<Swing>>();
         every_repr_obeys_the_laws::<Option<Step>>();
         every_repr_obeys_the_laws::<Option<Option<Reading>>>();
+        every_repr_obeys_the_laws::<Table>();
+        every_repr_obeys_the_laws::<Option<Table>>();
+        every_repr_obeys_the_laws::<[Side; 2]>();
+        every_repr_obeys_the_laws::<[Sign; 2]>();
+        every_repr_obeys_the_laws::<[Step; 1]>();
     }
 
     #[test]
@@ -957,6 +998,7 @@ mod tests {
         // A nullable head's and a niche's null decodes, so neither has an `Option`.
         none_laws!(Link, Guarded, Bucket, Flagged<NonNull<Node>>, Either<NonNull<Node>, *mut Node>);
         none_laws!(MarkedLink, GuardedLink);
+        none_laws!(Table, Board, [Side; 4], [Quote; 1]);
     }
 
     proptest! {
@@ -1022,6 +1064,25 @@ mod tests {
             value_obeys_the_laws(VenueHalves::<u8> { low, high, venue: PhantomData }, bits)?;
             value_obeys_the_laws(order, bits)?;
             value_obeys_the_laws(entry, bits)?;
+        }
+
+        #[test]
+        fn arrays_in_derived_values_obey_the_laws(
+            levels in any::<[u8; 4]>().prop_map(Levels),
+            table in (any::<[bool; 10]>(), any::<bool>())
+                .prop_map(|(taken, open)| Table { taken, open }),
+            board in ([sides(), sides(), sides(), sides()], sides())
+                .prop_map(|(cells, turn)| Board { cells, turn }),
+            steps in [steps(), steps()],
+            quotes in [quotes()],
+            bits in edge_or_random_bits(&[]),
+        ) {
+            value_obeys_the_laws(levels, bits)?;
+            value_obeys_the_laws(table, bits)?;
+            value_obeys_the_laws(board, bits)?;
+            value_obeys_the_laws(steps, bits)?;
+            value_obeys_the_laws(quotes, bits)?;
+            value_obeys_the_laws(Some(board), bits)?;
         }
 
         #[test]
@@ -1096,6 +1157,9 @@ mod tests {
             keeps_provenance(flagged, |flagged| read(flagged.pointer))?;
             value_obeys_the_laws(published, bits)?;
             keeps_provenance(published, |published| published.config.map(|config| config.depth))?;
+            let marked = MarkedHead { top: head.top, marks: [head.marked, link.marked] };
+            value_obeys_the_laws(marked, bits)?;
+            keeps_provenance(marked, |marked| marked.top.map(read))?;
         }
 
         #[test]

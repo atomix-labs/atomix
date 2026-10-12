@@ -1,10 +1,11 @@
 //! The paths from an atomic's repr to the bits of one field: [`Field`], [`Then`] and [`Whole`],
-//! each a [`FieldPath`], and each a type alone.
+//! each a [`FieldPath`], and each a type alone; and [`Indexed`], whose places hold their bits.
 
 use core::any::type_name;
 use core::fmt;
 use core::marker::PhantomData;
 
+use super::{AtomicField, FieldPlacement};
 use crate::atom::Atom;
 use crate::primitive::Primitive;
 use crate::range::{PackedField, PackedLayout};
@@ -60,10 +61,11 @@ impl<A, B> fmt::Debug for Then<A, B> {
 ///
 /// [`Atomic::fields`]: crate::Atomic::fields
 /// [derive]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-one-field
-// Whole's rule: no place of it reaches code but `ProjectFields::project`. Its bits are every bit
-// of the repr, more than `FieldBitwise` and `FieldAdd` promise decode, so a place of it would
-// `not` a `UInt<u8, 4>` to a repr past its 4 bits. It has no constructor, and `Atomic::fields`
-// lends its one place to the projection alone, whose promise is to lend no place but its fields'.
+// Whole's rule: no place of it reaches code but `ProjectFields::project` and `Array::project`. Its
+// bits are every bit of the repr, more than `FieldBitwise` and `FieldAdd` promise decode, so a
+// place of it would `not` a `UInt<u8, 4>` to a repr past its 4 bits. It has no constructor, and
+// `Atomic::fields` and `Atomic::elements` lend its one place to a projection alone, which lends no
+// place but its fields' or its elements'.
 #[derive(Clone, Copy)]
 pub struct Whole<C>(Invariant<C>);
 
@@ -80,8 +82,11 @@ impl<C> fmt::Debug for Whole<C> {
 /// complement; and no other bit depends on the field, but, above a signed last field, the
 /// container's bits that copy its sign. Writing any repr of `Value` that decodes there, its sign
 /// copied so, and leaving every other bit as it is, leaves a repr of `Container` that decodes,
-/// with that field alone changed: [`AtomicField`](super::AtomicField)'s operations rest on it. A
-/// pointer repr's bits are its address, and each write keeps its provenance.
+/// with that field alone changed: [`AtomicField`]'s operations rest on it. A pointer repr's bits
+/// are its address, and each write keeps its provenance.
+///
+/// A path to a place at an index known at run time, [`Indexed`], places no bits by its constants,
+/// which are 0: each of its places holds where its bits lie, which keep that promise.
 ///
 /// A field stored as a pointer, a pointer word's pointer, is not its bits: the bits from `OFFSET`
 /// hold only the low `WIDTH` bits of its repr, its own tags, which a path to one of them goes on
@@ -112,10 +117,15 @@ pub impl(crate) const trait FieldPath: Copy {
     /// container's bits above its own width copy the field's top bit.
     #[doc(hidden)]
     const END: u32;
-    /// The path to `B`, a field of this one's value: `Then<Self, B>`, or `B` itself from
-    /// [`Whole`], so a field of an atomic's whole value has the path its own type names.
+    /// What a place of the path holds after its atomic: `()` where the path's constants place the
+    /// field, or, for [`Indexed`], `[()]`, whose length places it.
     #[doc(hidden)]
-    type Join<B: FieldPath<Container = Self::Value>>: FieldPath<Container = Self::Container, Value = B::Value>;
+    type Tail: ?Sized + const PlaceTail;
+    /// The path to `B`, a field of this one's value: `Then<Self, B>`, or `B` itself from
+    /// [`Whole`], so a field of an atomic's whole value has the path its own type names, or, from
+    /// [`Indexed`], `Indexed` of `B`'s value, whose place holds where `B` lies.
+    #[doc(hidden)]
+    type Join<B: FieldPath<Container = Self::Value, Tail = ()>>: FieldPath<Container = Self::Container, Value = B::Value, Tail = Self::Tail>;
     /// The field of `container`.
     #[doc(hidden)]
     fn field(container: Self::Container) -> Self::Value;
@@ -134,7 +144,8 @@ pub type Join<P, B> = <P as FieldPath>::Join<B>;
 /// A field that ends at its container repr's top bit, so a carry out of it leaves the word as it
 /// wraps the field: the one field an add changes alone.
 ///
-/// A field of a generic container, or of a field, has no such path: add to it with `update`.
+/// A field of a generic container, or of a field, and an element at an index known at run time
+/// have no such path: add to one with `update`.
 ///
 /// # Examples
 /// [`#[derive(Atom)]`'s example][derive] counts a slot's readers in its top field with
@@ -146,6 +157,7 @@ pub type Join<P, B> = <P as FieldPath>::Join<B>;
     label = "a carry out of this field would reach the bits above it",
     note = "only the field that ends at the repr's top bit adds in place, its carry leaving the word: make it the last field, of a width that fills the repr",
     note = "a field of a generic struct, or of a field, adds in place nowhere: no constant knows where it ends",
+    note = "an array's last element adds in place where its slots fill the repr and the element has `AtomAdd`",
     note = "to add to another field, call `update`"
 )]
 pub impl(crate) trait TopField: FieldPath {}
@@ -208,7 +220,8 @@ const impl<C: [const] Atom> FieldPath for Whole<C> {
     const WIDTH: u32 = C::Repr::BITS;
     const IS_SIGNED: bool = false;
     const END: u32 = C::Repr::BITS;
-    type Join<B: FieldPath<Container = C>> = B;
+    type Tail = ();
+    type Join<B: FieldPath<Container = C, Tail = ()>> = B;
     #[inline]
     fn field(container: C) -> C {
         container
@@ -233,37 +246,34 @@ const impl<C: [const] HasPackedField<INDEX, V> + [const] Atom, const INDEX: u32,
     } else {
         C::PLACEMENT.next_offset()
     };
-    type Join<B: FieldPath<Container = Self::Value>> = Then<Self, B>;
+    type Tail = ();
+    type Join<B: FieldPath<Container = Self::Value, Tail = ()>> = Then<Self, B>;
     #[inline]
     fn field(container: C) -> V {
         <C as HasPackedField<INDEX, V>>::field(container)
     }
 }
 
+impl<A: FieldPath, B: FieldPath<Container = A::Value>> Then<A, B> {
+    /// Where `B`'s bits lie in `A`'s container.
+    const PLACEMENT: FieldPlacement = FieldPlacement::of::<A>().then(FieldPlacement::of::<B>());
+}
+
 // `B`'s container is `A`'s value, whose repr's low `A::WIDTH` bits `A` stores, each of its fields
 // among them, so `B`'s bits lie at `A::OFFSET + B::OFFSET`; writing them keeps `A`'s value
 // decoding, by `B`'s promise, so the container too, by `A`'s. `B` governs no more of `A`'s value
-// than `A` stores, except that where the container's bits above `A` copy `A`'s top bit, which is
-// `B`'s where `B` is signed and ends at `A`'s width, it governs those too.
-const impl<A: [const] FieldPath, B: [const] FieldPath<Container = A::Value>> FieldPath
-    for Then<A, B>
+// than `A` stores, but the bits `FieldPlacement::then` adds.
+const impl<A: [const] FieldPath<Tail = ()>, B: [const] FieldPath<Container = A::Value, Tail = ()>>
+    FieldPath for Then<A, B>
 {
     type Container = A::Container;
     type Value = B::Value;
-    const OFFSET: u32 = A::OFFSET.saturating_add(B::OFFSET);
-    const WIDTH: u32 = B::WIDTH;
-    const IS_SIGNED: bool = B::IS_SIGNED;
-    const END: u32 = if A::END > A::OFFSET.saturating_add(A::WIDTH)
-        && B::IS_SIGNED
-        && B::OFFSET.saturating_add(B::WIDTH) == A::WIDTH
-    {
-        A::END
-    } else if B::END < A::WIDTH {
-        A::OFFSET.saturating_add(B::END)
-    } else {
-        A::OFFSET.saturating_add(A::WIDTH)
-    };
-    type Join<N: FieldPath<Container = Self::Value>> = Then<Self, N>;
+    const OFFSET: u32 = Self::PLACEMENT.offset;
+    const WIDTH: u32 = Self::PLACEMENT.width;
+    const IS_SIGNED: bool = Self::PLACEMENT.signed;
+    const END: u32 = Self::PLACEMENT.end;
+    type Tail = ();
+    type Join<N: FieldPath<Container = Self::Value, Tail = ()>> = Then<Self, N>;
     #[inline]
     fn field(container: A::Container) -> B::Value {
         B::field(A::field(container))
@@ -276,4 +286,129 @@ const impl<A: [const] FieldPath, B: [const] FieldPath<Container = A::Value>> Fie
 impl<C: HasPackedField<INDEX, V>, const INDEX: u32, V: Atom> TopField for Field<C, INDEX, V> where
     C::Reach: ReachesTop
 {
+}
+
+/// The value `V` at a place whose bits, in an atomic of `C`, come at run time, as a path: an
+/// array's element at an index known at run time, what [`Atomic::element`] lends a place of, or a
+/// field of one.
+///
+/// Its place holds where its bits lie, and lends its fields' places, and its elements' where it is
+/// an array, each `Indexed` too: `slots.element(index).fields().written`, the field `written` of
+/// the slot at `index`, is a place of `Indexed<[Slot; 4], bool>`, and has the operations a field of
+/// a `bool` has. Its constants, which place no bits, are 0.
+///
+/// # Examples
+/// ```
+/// # extern crate atomix_core as atomix;
+///
+/// use atomix::ordering::{AcqRel, Acquire};
+/// use atomix::{Atomic, AtomicField, Indexed};
+///
+/// /// Which of 64 workers are busy, a bit each.
+/// static BUSY: Atomic<[bool; 64]> = Atomic::new([false; 64]);
+///
+/// let worker = 17;
+/// let busy: &AtomicField<Indexed<[bool; 64], bool>> = BUSY.element(worker);
+/// assert!(!busy.test_and_set(AcqRel), "claimed once");
+/// assert!(BUSY.load(Acquire)[worker], "the one bit set");
+/// ```
+///
+/// [`Atomic::element`]: crate::Atomic::element
+// As `Field`'s.
+#[derive(Clone, Copy)]
+pub struct Indexed<C, V>(Invariant<(C, V)>);
+
+impl<C, V> fmt::Debug for Indexed<C, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Indexed<{}, {}>", type_name::<C>(), type_name::<V>())
+    }
+}
+
+// Each place of the path holds where its bits lie, which keep `FieldPath`'s promise, as
+// `AtomicField`'s tail INVARIANT says; no place reads these constants, which place no bits.
+const impl<C: [const] Atom, V: [const] Atom> FieldPath for Indexed<C, V> {
+    type Container = C;
+    type Value = V;
+    const OFFSET: u32 = 0;
+    const WIDTH: u32 = 0;
+    const IS_SIGNED: bool = false;
+    const END: u32 = 0;
+    type Tail = [()];
+    type Join<B: FieldPath<Container = V, Tail = ()>> = Indexed<C, B::Value>;
+    #[expect(clippy::panic, reason = "no place of the path reads its field through its type")]
+    #[inline]
+    fn field(container: C) -> V {
+        let _ = container;
+        panic!("a place at a run-time index reads its field's bits, which its type does not place")
+    }
+}
+
+/// What a place holds after its atomic: nothing, `()`, where its path's constants place its bits,
+/// or `[()]`, whose length holds their offset and end, where an index known at run time does.
+#[doc(hidden)]
+pub impl(crate) const trait PlaceTail {
+    /// Whether the tail places the bits, not the path's constants: `[()]`'s.
+    const IS_RUN_TIME: bool;
+    /// What the tail holds: the bits' offset and span, as `FieldPlacement::metadata` packs them,
+    /// or 0.
+    fn metadata(&self) -> usize;
+    /// The place of `B`, a field of the value at `place`, a place of `P`.
+    ///
+    /// # Safety
+    /// As [`project_field`](super::project_field)'s: the place reaches only code the field is
+    /// visible to.
+    #[expect(
+        unsafe_code,
+        reason = "lends a field's place, which only code it is visible to may hold"
+    )]
+    unsafe fn join<P: FieldPath<Tail = Self>, B: FieldPath<Container = P::Value, Tail = ()>>(
+        place: &AtomicField<P>,
+    ) -> &AtomicField<P::Join<B>>;
+}
+
+const impl PlaceTail for () {
+    const IS_RUN_TIME: bool = false;
+    #[inline]
+    fn metadata(&self) -> usize {
+        0
+    }
+    #[expect(
+        unsafe_code,
+        reason = "lends a field's place, which only code it is visible to may hold"
+    )]
+    #[inline]
+    unsafe fn join<P: FieldPath<Tail = ()>, B: FieldPath<Container = P::Value, Tail = ()>>(
+        place: &AtomicField<P>,
+    ) -> &AtomicField<P::Join<B>> {
+        // SAFETY: the place reaches only code the field is visible to, by the caller's contract,
+        // and its path ends at `B`, a field's, not at `Whole`.
+        unsafe { AtomicField::from_atomic(place.atomic()) }
+    }
+}
+
+const impl PlaceTail for [()] {
+    const IS_RUN_TIME: bool = true;
+    // The slice's own length. `ptr::metadata` of the place, in a method here generic over
+    // `P: FieldPath<Tail = Self>`, panics rustc's const evaluator where a constant reaches it,
+    // "layout mismatch for result of PtrMetadata": it types the result
+    // `<<Indexed<C, V> as FieldPath>::Tail as Pointee>::Metadata`, not normalized, against `usize`.
+    // No rustc issue names it yet.
+    #[inline]
+    fn metadata(&self) -> usize {
+        self.len()
+    }
+    #[expect(
+        unsafe_code,
+        reason = "lends a field's place, which only code it is visible to may hold"
+    )]
+    #[inline]
+    unsafe fn join<P: FieldPath<Tail = [()]>, B: FieldPath<Container = P::Value, Tail = ()>>(
+        place: &AtomicField<P>,
+    ) -> &AtomicField<P::Join<B>> {
+        let field = place.run_time_placement().then(FieldPlacement::of::<B>());
+        // SAFETY: `B`'s bits lie at its constants in the value at `place`, whose bits the place's
+        // tail holds, so at `field`, where `then` joins them, as `Then` joins two paths; and the
+        // place reaches only code the field is visible to, by the caller's contract.
+        unsafe { AtomicField::from_placement(place.atomic(), field) }
+    }
 }

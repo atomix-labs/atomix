@@ -104,6 +104,27 @@ mod codegen {
         ("reference_head_load_marked", SameAs("head_load_marked")),
         ("reference_head_set_marked", SameAs("head_set_marked")),
         ("reference_head_update_marked", SameAs("head_update_marked")),
+        (
+            "record_test_and_set_written",
+            Only(&[
+                "cmp", "b.hs", "lsl", "mov", "lsl", "ldsetal", "tst", "cset", "ret", "stp", "mov",
+                "adrp", "add", "mov", "mov", "bl",
+            ]),
+        ),
+        (
+            "record_set_written",
+            Only(&[
+                "cmp", "b.hs", "lsl", "mov", "lsl", "ldsetl", "ret", "stp", "mov", "adrp", "add",
+                "mov", "mov", "bl",
+            ]),
+        ),
+        (
+            "ring_test_and_set_written",
+            Only(&[
+                "cmp", "b.hs", "lsl", "mov", "lsl", "ldsetal", "tst", "cset", "ret", "stp", "mov",
+                "adrp", "add", "mov", "mov", "bl",
+            ]),
+        ),
     ];
 
     /// Each load and update on `aarch64` with the `+lse` floor, which reads with `ldar`.
@@ -159,6 +180,21 @@ mod codegen {
             ]),
         ),
         ("head_update_marked", Retry(&["ldar", "casa"])),
+        (
+            "record_load_length",
+            Only(&[
+                "cmp", "b.hs", "mov", "ldar", "orr", "lsr", "ret", "stp", "mov", "adrp", "add",
+                "mov", "mov", "bl",
+            ]),
+        ),
+        (
+            "grid_test_and_set_written",
+            Only(&[
+                "stp", "mov", "cmp", "b.hs", "cmp", "b.hs", "lsl", "mov", "orr", "lsl", "ldsetal",
+                "tst", "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl", "adrp", "add",
+                "mov", "mov", "mov", "bl",
+            ]),
+        ),
     ];
 
     /// Each load and update on `aarch64` with LSE2, `neoverse-v1` on Linux and macOS's floor,
@@ -234,6 +270,21 @@ mod codegen {
                 "b.ne", "and", "and", "stp", "ubfx", "strb", "ldp", "ret",
             ]),
         ),
+        (
+            "record_load_length",
+            Only(&[
+                "cmp", "b.hs", "ldapr", "mov", "orr", "lsr", "ret", "stp", "mov", "adrp", "add",
+                "mov", "mov", "bl",
+            ]),
+        ),
+        (
+            "grid_test_and_set_written",
+            Only(&[
+                "stp", "mov", "cmp", "b.hs", "cmp", "b.hs", "lsl", "mov", "orr", "lsl", "ldsetal",
+                "tst", "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl", "adrp", "add",
+                "mov", "mov", "mov", "bl",
+            ]),
+        ),
     ];
 
     /// The rest on `aarch64` macOS, whose `apple-m1` puts an update's instructions
@@ -251,6 +302,21 @@ mod codegen {
             RetryOnly(&[
                 "stp", "mov", "ldapr", "and", "mvn", "and", "add", "mov", "casal", "cmp", "mov",
                 "b.ne", "and", "and", "stp", "ubfx", "strb", "ldp", "ret",
+            ]),
+        ),
+        (
+            "record_load_length",
+            Only(&[
+                "cmp", "b.hs", "mov", "orr", "ldapr", "lsr", "ret", "stp", "mov", "adrp", "add",
+                "mov", "mov", "bl",
+            ]),
+        ),
+        (
+            "grid_test_and_set_written",
+            Only(&[
+                "stp", "mov", "cmp", "b.hs", "cmp", "b.hs", "lsl", "orr", "mov", "lsl", "ldsetal",
+                "tst", "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl", "adrp", "add",
+                "mov", "mov", "mov", "bl",
             ]),
         ),
     ];
@@ -445,69 +511,213 @@ mod codegen {
     ];
 
     /// The rest on `x86_64` Linux, where a function that calls aligns the stack with a push.
-    const X86_64_LINUX_PUSH: &[(&str, Lowering)] = &[(
-        "locked_child_update",
-        RetryOnly(&[
-            "movq",
-            "movb",
-            "testb",
-            "je",
-            "movl",
-            "movq",
-            "andq",
-            "notl",
-            "andl",
-            "addq",
-            "lock cmpxchgq",
-            "jne",
-            "movl",
-            "andl",
-            "movq",
-            "andq",
-            "shrb",
-            "andb",
-            "movq",
-            "movq",
-            "movb",
-            "movq",
-            "retq",
-            "pushq",
-            "leaq",
-            "callq",
-        ]),
-    )];
+    const X86_64_LINUX_PUSH: &[(&str, Lowering)] = &[
+        (
+            "locked_child_update",
+            RetryOnly(&[
+                "movq",
+                "movb",
+                "testb",
+                "je",
+                "movl",
+                "movq",
+                "andq",
+                "notl",
+                "andl",
+                "addq",
+                "lock cmpxchgq",
+                "jne",
+                "movl",
+                "andl",
+                "movq",
+                "andq",
+                "shrb",
+                "andb",
+                "movq",
+                "movq",
+                "movb",
+                "movq",
+                "retq",
+                "pushq",
+                "leaq",
+                "callq",
+            ]),
+        ),
+        (
+            "record_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "pushq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "record_set_written",
+            Only(&[
+                "cmpq", "jae", "shll", "movl", "shlxq", "lock orq", "retq", "pushq", "leaq",
+                "movq", "movl", "callq",
+            ]),
+        ),
+        (
+            "record_load_length",
+            Only(&[
+                "cmpq", "jae", "shll", "movq", "incb", "shrxq", "retq", "pushq", "leaq", "movq",
+                "movl", "callq",
+            ]),
+        ),
+        (
+            "ring_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "pushq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "grid_test_and_set_written",
+            Only(&[
+                "pushq",
+                "cmpq",
+                "jae",
+                "cmpq",
+                "jae",
+                "shlq",
+                "shlq",
+                "orq",
+                "lock btsq",
+                "setb",
+                "popq",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+                "leaq",
+                "movl",
+                "movq",
+                "movq",
+                "callq",
+            ]),
+        ),
+    ];
 
     /// The rest on `x86_64` macOS, where every function's frame record aligns the stack.
-    const X86_64_MACOS_FRAME: &[(&str, Lowering)] = &[(
-        "locked_child_update",
-        RetryOnly(&[
-            "movq",
-            "movb",
-            "testb",
-            "je",
-            "movl",
-            "movq",
-            "andq",
-            "notl",
-            "andl",
-            "addq",
-            "lock cmpxchgq",
-            "jne",
-            "movl",
-            "andl",
-            "movq",
-            "andq",
-            "shrb",
-            "andb",
-            "movq",
-            "movq",
-            "movb",
-            "movq",
-            "retq",
-            "leaq",
-            "callq",
-        ]),
-    )];
+    const X86_64_MACOS_FRAME: &[(&str, Lowering)] = &[
+        (
+            "locked_child_update",
+            RetryOnly(&[
+                "movq",
+                "movb",
+                "testb",
+                "je",
+                "movl",
+                "movq",
+                "andq",
+                "notl",
+                "andl",
+                "addq",
+                "lock cmpxchgq",
+                "jne",
+                "movl",
+                "andl",
+                "movq",
+                "andq",
+                "shrb",
+                "andb",
+                "movq",
+                "movq",
+                "movb",
+                "movq",
+                "retq",
+                "leaq",
+                "callq",
+            ]),
+        ),
+        (
+            "record_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "record_set_written",
+            Only(&[
+                "cmpq", "jae", "shll", "movl", "shlxq", "lock orq", "retq", "leaq", "movq", "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "record_load_length",
+            Only(&[
+                "cmpq", "jae", "shll", "movq", "incb", "shrxq", "retq", "leaq", "movq", "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "ring_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "grid_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "cmpq",
+                "jae",
+                "shlq",
+                "shlq",
+                "orq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+                "leaq",
+                "movl",
+                "movq",
+                "movq",
+                "callq",
+            ]),
+        ),
+    ];
 
     #[test]
     fn aarch64_linux_lowers_each_derived_operation_to_its_instructions() {
