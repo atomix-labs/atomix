@@ -1,10 +1,10 @@
-//! A tag shares a pointer's low bits: a value stored as an integer is no `PtrAtom`, and generic
+//! A tag shares a pointer's low bits: a value stored as an integer is no `PointerAtom`, and generic
 //! code that asks for one refuses it.
 
-use atomix_core::PtrAtom;
+use atomix_core::PointerAtom;
 
 /// Compiles only where `T` is stored as a pointer.
-fn stored_as_a_pointer<T: PtrAtom>() {}
+fn stored_as_a_pointer<T: PointerAtom>() {}
 
 fn main() {
     stored_as_a_pointer::<*mut u64>();

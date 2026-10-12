@@ -345,7 +345,7 @@ mod tests {
     fn option_takes_the_one_byte_no_variant_is() {
         repr_and_validity_are::<NonZeroByte, u8, TotalZeroNiche>();
         repr_and_validity_are::<Option<NonZeroByte>, u8, Total>();
-        assert_eq!(NonZeroByte::REPRS, ReprRange::NONZERO, "every byte but zero");
+        assert_eq!(NonZeroByte::REPRS, ReprRange::NON_ZERO, "every byte but zero");
         assert_eq!(None::<NonZeroByte>.to_repr(), 0, "`None` zero");
         decodes_every_byte_but::<NonZeroByte>(&[0]);
         repr_and_validity_are::<NonMaxByte, u8, ZeroValid>();

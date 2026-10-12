@@ -1317,9 +1317,9 @@ mod tests {
             quote! { enum Slot { Empty, Writing { lap: u32 }, Ready(u32) } },
             quote! { #[atom(repr = u64)] #[repr(u8)] enum Lock<O> { Free = 0, Owned(O) = 1 } },
             quote! { struct Link { next: NonNull<Node>, deleted: bool } },
-            quote! { struct Tagged<P> { #[atom(ptr)] pointer: P, flag: bool } },
+            quote! { struct Tagged<P> { #[atom(pointer)] pointer: P, flag: bool } },
             quote! { enum Slot { Empty, Inline(u32), Node(NonNull<Node>) } },
-            quote! { enum Either<A, B> { Left(#[atom(ptr)] A), Right(#[atom(ptr)] B) } },
+            quote! { enum Either<A, B> { Left(#[atom(pointer)] A), Right(#[atom(pointer)] B) } },
         ];
         for shape in shapes {
             let code = written(&derive_atom(quote! { #[atom(crate = renamed)] #shape }));

@@ -5,13 +5,13 @@ error[E0080]: evaluation panicked: `$CRATE::Union<core::ptr::non_null::NonNull<u
    |                       ^^^^ evaluation of `_::<impl atomix::Atom for Union<std::ptr::NonNull<u8>, std::ptr::NonNull<u8>>>::to_tagged_repr::{constant#0}` failed inside this call
    |
 note: inside `lay_out_checked::<NonNull<u8>, NonNull<u8>>`
-  --> tests/compile_fail/derive_on_a_pointer_enum_generic_instance_with_a_tag_past_its_pointees_alignment.rs:13:23
+  --> tests/compile_fail/derive_on_a_pointer_enum_generic_instance_with_a_tag_past_its_pointees_alignment.rs:13:27
    |
 11 | #[derive(Clone, Copy, Atom)]
    |                       ---- in this derive macro expansion
 12 | enum Union<A, B> {
-13 |     Left(#[atom(ptr)] A),
-   |                       ^ the failure occurred here
+13 |     Left(#[atom(pointer)] A),
+   |                           ^ the failure occurred here
    = note: this error originates in the derive macro `Atom` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 note: erroneous constant encountered

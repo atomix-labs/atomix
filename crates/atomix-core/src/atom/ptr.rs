@@ -1,5 +1,5 @@
 //! `Atom` for pointers, each stored in an atomic pointer, so it keeps its provenance, or, a wide
-//! one, in a `DoubleWord`; and [`PtrAtom`], every value stored as one pointer.
+//! one, in a `DoubleWord`; and [`PointerAtom`], every value stored as one pointer.
 
 #![expect(unsafe_code, reason = "each `Atom` impl here promises what loads rely on")]
 
@@ -248,7 +248,7 @@ const impl<T: ?Sized + Pointee<Metadata = DynMetadata<T>>> PointerMetadata<T> fo
     type RawValidity = ZeroNiche;
     type NonNullValidity = ZeroNiche;
     // The vtable pointer is never null.
-    const RAW_REPRS: ReprRange<Self::Repr> = ReprRange::NONZERO;
+    const RAW_REPRS: ReprRange<Self::Repr> = ReprRange::NON_ZERO;
     const POINTEE_ALIGNMENT: PointeeAlignment = PointeeAlignment::NONE;
     #[inline]
     fn to_repr(pointer: *mut T) -> Self::Repr {
@@ -334,7 +334,7 @@ where
 {
     type Repr = <Metadata<T> as PointerMetadata<T>>::Repr;
     type Validity = <Metadata<T> as PointerMetadata<T>>::NonNullValidity;
-    const REPRS: ReprRange<Self::Repr> = ReprRange::NONZERO;
+    const REPRS: ReprRange<Self::Repr> = ReprRange::NON_ZERO;
     const POINTEE_ALIGNMENT: PointeeAlignment =
         <Metadata<T> as PointerMetadata<T>>::POINTEE_ALIGNMENT;
     #[inline]
@@ -374,13 +374,13 @@ where
     note = "a pointer word's pointer field, or a pointer enum variant's, is a `NonNull`, an `Option` of one, a raw pointer, or a value stored as one, such as a newtype of one",
     note = "a pointer to a slice, a `str` or a trait object is two words, which the derive sees where the field's type writes the pointer out, never through an alias"
 )]
-pub const trait PtrAtom: [const] Atom<Repr = *mut Self::Pointee> {
+pub const trait PointerAtom: [const] Atom<Repr = *mut Self::Pointee> {
     /// The type the pointer points to.
     type Pointee;
 }
 
-// `do_not_recommend`, so a value whose repr is no pointer reports `PtrAtom`'s message.
+// `do_not_recommend`, so a value whose repr is no pointer reports `PointerAtom`'s message.
 #[diagnostic::do_not_recommend]
-const impl<T: [const] Atom<Repr = *mut P>, P> PtrAtom for T {
+const impl<T: [const] Atom<Repr = *mut P>, P> PointerAtom for T {
     type Pointee = P;
 }

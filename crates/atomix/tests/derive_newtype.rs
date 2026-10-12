@@ -104,7 +104,7 @@ mod tests {
         repr_and_validity_are::<OrderId, u64, TotalZeroNiche>();
         repr_and_validity_are::<Stamp, u64, Total>();
         assert_eq!(Seq::REPRS, ReprRange::FULL, "every repr of a `u64`");
-        assert_eq!(OrderId::REPRS, ReprRange::NONZERO, "every one but zero");
+        assert_eq!(OrderId::REPRS, ReprRange::NON_ZERO, "every one but zero");
     }
 
     #[test]

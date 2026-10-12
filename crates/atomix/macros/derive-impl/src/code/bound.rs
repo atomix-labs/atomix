@@ -42,8 +42,8 @@ pub(crate) enum BoundSite {
 }
 
 /// The bounds at `site` on each of `fields` that names a parameter and is no marker, each `[const]`
-/// in the impl's where clause: `PtrAtom` on a thin pointer; `Atom` on a wide one, two words; and
-/// `Atom` on any other field, whose repr a projection and the impl ask to be stored as bits.
+/// in the impl's where clause: `PointerAtom` on a thin pointer; `Atom` on a wide one, two words;
+/// and `Atom` on any other field, whose repr a projection and the impl ask to be stored as bits.
 pub(crate) fn field_bounds<'f, I: IntoIterator<Item = &'f Field>>(
     atomix: &Path, fields: I, site: BoundSite,
 ) -> impl Iterator<Item = TokenStream> {
@@ -54,8 +54,10 @@ pub(crate) fn field_bounds<'f, I: IntoIterator<Item = &'f Field>>(
     bounded_fields.map(move |Field { ty, is_pointer, is_wide_pointer, .. }| {
         let is_thin_pointer = *is_pointer && !*is_wide_pointer;
         match (is_thin_pointer, *is_wide_pointer, site) {
-            (true, _, BoundSite::LayOut | BoundSite::Projection) => quote!(#ty: #atomix::PtrAtom),
-            (true, _, BoundSite::Impl) => quote!(#ty: [const] #atomix::PtrAtom),
+            (true, _, BoundSite::LayOut | BoundSite::Projection) => {
+                quote!(#ty: #atomix::PointerAtom)
+            },
+            (true, _, BoundSite::Impl) => quote!(#ty: [const] #atomix::PointerAtom),
             (false, true, BoundSite::Impl) => quote!(#ty: [const] #atomix::Atom),
             (false, _, BoundSite::LayOut) | (false, true, BoundSite::Projection) => {
                 quote!(#ty: #atomix::Atom)

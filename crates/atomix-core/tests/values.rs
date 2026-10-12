@@ -144,7 +144,7 @@ mod tests {
     #[expect(unsafe_code, reason = "an `Atom` impl promises what loads rely on")]
     unsafe impl Atom for Ticket {
         type Repr = u32;
-        const REPRS: ReprRange<u32> = ReprRange::NONZERO;
+        const REPRS: ReprRange<u32> = ReprRange::NON_ZERO;
         fn to_repr(self) -> u32 {
             self.0.get()
         }

@@ -22,8 +22,8 @@ use proc_macro::{Diagnostic, Level, Span, TokenStream};
 /// The impl is `const`, so a `static` of the type builds, and a type without parameters needs no
 /// feature gate. `#[atom(…)]` on the type takes two keys: `repr`, below, and `crate = path`, which
 /// names atomix where `::atomix` does not, as in a crate that renames its dependency. On a field,
-/// `#[atom(ptr)]` marks a pointer its type does not show: an alias, a parameter, a newtype of one,
-/// a pointer word or a pointer enum.
+/// `#[atom(pointer)]` marks a pointer its type does not show: an alias, a parameter, a newtype of
+/// one, a pointer word or a pointer enum.
 ///
 /// # Shapes
 /// - **Newtype**, a struct of one field beside any `PhantomData` markers: the field's repr, range,
@@ -374,7 +374,7 @@ use proc_macro::{Diagnostic, Level, Span, TokenStream};
 /// /// A link and a lock its writer takes: a word holding another, its tag above the link's.
 /// #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
 /// struct Guarded {
-///     #[atom(ptr)]
+///     #[atom(pointer)]
 ///     link: Link,
 ///     locked: bool,
 /// }

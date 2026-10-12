@@ -32,7 +32,7 @@ mod tests {
     use atomix_core::ordering::{AcqRel, Acquire, Relaxed, Release};
     use atomix_core::validity::{Partial, Total, ZeroNiche, ZeroValid};
     use atomix_core::{
-        Atom, Atomic, AtomicField, Field, FieldPath, PtrAtom, RangedU8, ReprRange, Then,
+        Atom, Atomic, AtomicField, Field, FieldPath, PointerAtom, RangedU8, ReprRange, Then,
     };
 
     use crate::testing::atom::{low_bit_widths, repr_and_validity_are};
@@ -222,7 +222,7 @@ mod tests {
     }
 
     /// Compiles only where `T` is stored as a pointer to `P`.
-    const fn stored_as_a_pointer_to<T: PtrAtom<Pointee = P>, P>() {}
+    const fn stored_as_a_pointer_to<T: PointerAtom<Pointee = P>, P>() {}
 
     /// A node on the heap holding `value`, and the pointer to it, whose provenance is the box's.
     fn node(value: u64) -> NonNull<Node> {
@@ -273,7 +273,7 @@ mod tests {
         stored_as_a_pointer_to::<*const Node, Node>();
         stored_as_a_pointer_to::<Slot, ()>();
         assert_eq!(Head::REPRS, ReprRange::FULL, "a nullable pointer: every repr");
-        assert_eq!(Link::REPRS, ReprRange::NONZERO, "a pointer never null: every repr but zero");
+        assert_eq!(Link::REPRS, ReprRange::NON_ZERO, "a pointer never null: every repr but zero");
         assert_eq!(Slot::REPRS, ReprRange::FULL, "and an enum whose unit is null, every repr");
         assert_eq!(size_of::<Atomic<Option<Link>>>(), size_of::<usize>(), "`None` costs nothing");
     }

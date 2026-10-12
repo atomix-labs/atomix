@@ -233,7 +233,7 @@ pub enum Entry {
 #[derive(Clone, Copy, Atom)]
 pub struct LockedSlot {
     /// The slot.
-    #[atom(ptr)]
+    #[atom(pointer)]
     pub slot: Slot,
     /// The lock, at bit 2.
     pub locked: bool,
@@ -243,7 +243,7 @@ pub struct LockedSlot {
 #[derive(Clone, Copy, Atom)]
 pub struct LockedChild {
     /// The child.
-    #[atom(ptr)]
+    #[atom(pointer)]
     pub child: Child,
     /// The lock, at bit 1.
     pub locked: bool,
@@ -262,7 +262,7 @@ pub struct Marked {
 #[derive(Clone, Copy, Atom)]
 pub struct Guarded {
     /// The marked node.
-    #[atom(ptr)]
+    #[atom(pointer)]
     pub inner: Marked,
     /// The lock.
     pub locked: bool,

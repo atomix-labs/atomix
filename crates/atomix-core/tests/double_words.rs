@@ -108,7 +108,7 @@ mod tests {
         >();
         repr_and_validity_are::<(*mut Node, *const u8), DoubleWord<*mut Node, *mut u8>, ZeroValid>(
         );
-        assert_eq!(<(NonNull<Node>, *mut u8) as Atom>::REPRS, ReprRange::NONZERO, "never zero");
+        assert_eq!(<(NonNull<Node>, *mut u8) as Atom>::REPRS, ReprRange::NON_ZERO, "never zero");
         assert_eq!(<(*mut Node, *mut u8) as Atom>::REPRS, ReprRange::FULL, "or any repr");
         let widths = low_bit_widths::<(NonNull<Node>, NonNull<Node>)>();
         assert_eq!(widths, (0, 3), "no tags, and the first pointer's three clear low bits");
@@ -518,7 +518,7 @@ mod tests {
         repr_and_validity_are::<*const str, DoubleWord<*mut (), usize>, Total>();
         repr_and_validity_are::<NonNull<dyn Shape>, DoubleWord<*mut (), _>, ZeroNiche>();
         repr_and_validity_are::<*mut dyn Shape, DoubleWord<*mut (), _>, ZeroNiche>();
-        assert_eq!(<*mut dyn Shape as Atom>::REPRS, ReprRange::NONZERO, "its vtable never null");
+        assert_eq!(<*mut dyn Shape as Atom>::REPRS, ReprRange::NON_ZERO, "its vtable never null");
         assert_eq!(<*mut [u64] as Atom>::REPRS, ReprRange::FULL, "a slice's, any repr");
         assert_eq!(low_bit_widths::<NonNull<[u64]>>(), (0, 3), "a slice's elements' alignment");
         assert_eq!(low_bit_widths::<NonNull<str>>(), (0, 0), "a `str`'s bytes'");

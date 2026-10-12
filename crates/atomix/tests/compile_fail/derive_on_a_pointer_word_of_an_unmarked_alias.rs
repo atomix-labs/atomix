@@ -1,5 +1,5 @@
 //! The derive reads a pointer from its type's syntax: an alias of one shows none, so a struct of it
-//! is packed as bits, which hold no provenance, and refused; the note names `#[atom(ptr)]`.
+//! is packed as bits, which hold no provenance, and refused; the note names `#[atom(pointer)]`.
 
 use core::ptr::NonNull;
 

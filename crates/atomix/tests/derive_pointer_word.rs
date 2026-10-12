@@ -3,7 +3,7 @@
 //! exchange and tag operation keeps, as Miri checks under `-Zmiri-strict-provenance` by reading
 //! each node through the pointer decoded; its range and validity are what its fields promise, and
 //! its `Option` is free where its pointer is never null; it takes a pointer its type shows, or one
-//! marked `#[atom(ptr)]`, generic or not; and its projection lends each tag, and the pointer,
+//! marked `#[atom(pointer)]`, generic or not; and its projection lends each tag, and the pointer,
 //! read through the word.
 
 #![cfg(feature = "derive")]
@@ -28,7 +28,7 @@ mod tests {
 
     use atomix::ordering::{AcqRel, Acquire, Relaxed, Release};
     use atomix::validity::{Partial, Total, ZeroNiche, ZeroValid};
-    use atomix::{Atom, AtomBitwise, Atomic, AtomicField, Field, PtrAtom, ReprRange};
+    use atomix::{Atom, AtomBitwise, Atomic, AtomicField, Field, PointerAtom, ReprRange};
 
     use crate::testing::atom::repr_and_validity_are;
     use crate::testing::field::canonical;
@@ -136,7 +136,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct Aliased {
         /// The next node.
-        #[atom(ptr)]
+        #[atom(pointer)]
         next: NodePointer,
         /// Whether the node that holds this link is deleted.
         deleted: bool,
@@ -158,20 +158,20 @@ mod tests {
 
     /// A head, a derived newtype of a word, stored as the word is, with its tags.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
-    struct WrappedHead(#[atom(ptr)] Head);
+    struct WrappedHead(#[atom(pointer)] Head);
 
     /// A word over any pointer atom, marked since a parameter shows no pointer.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct Word<P> {
         /// The pointer.
-        #[atom(ptr)]
+        #[atom(pointer)]
         pointer: P,
         /// One tag.
         flag: bool,
     }
 
     /// Compiles only where `T` is stored as a pointer to `P`.
-    const fn stored_as_a_pointer_to<T: PtrAtom<Pointee = P>, P>() {}
+    const fn stored_as_a_pointer_to<T: PointerAtom<Pointee = P>, P>() {}
 
     /// A node on the heap holding `value`, and the pointer to it, whose provenance is the box's.
     fn node(value: u64) -> NonNull<Node> {
@@ -211,8 +211,8 @@ mod tests {
         stored_as_a_pointer_to::<Head, Node>();
         stored_as_a_pointer_to::<Word<NodeRef>, Node>();
         assert_eq!(Head::REPRS, ReprRange::FULL, "a nullable pointer: every repr");
-        assert_eq!(Link::REPRS, ReprRange::NONZERO, "a pointer never null: every repr but zero");
-        assert_eq!(Tagged::<u32>::REPRS, ReprRange::NONZERO, "and generic alike");
+        assert_eq!(Link::REPRS, ReprRange::NON_ZERO, "a pointer never null: every repr but zero");
+        assert_eq!(Tagged::<u32>::REPRS, ReprRange::NON_ZERO, "and generic alike");
         assert_eq!(size_of::<Atomic<Option<Link>>>(), size_of::<usize>(), "`None` costs nothing");
         assert_eq!(size_of::<Atomic<Option<Tagged<u32>>>>(), size_of::<usize>(), "nor generic");
     }

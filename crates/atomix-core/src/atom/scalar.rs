@@ -82,7 +82,7 @@ const _: () = {
 };
 
 /// Implements `Atom` and `AtomOrd` for the nonzero integers.
-macro_rules! nonzero {
+macro_rules! non_zero {
     ($($int:ty),+ $(,)?) => {$(
         // SAFETY: the repr is the integer, never zero, so within every repr but zero; `new`
         // decodes exactly the nonzero ones; a nonzero integer may cross threads.
@@ -90,7 +90,7 @@ macro_rules! nonzero {
         const unsafe impl Atom for NonZero<$int> {
             type Repr = $int;
             type Validity = TotalZeroNiche;
-            const REPRS: ReprRange<$int> = ReprRange::NONZERO;
+            const REPRS: ReprRange<$int> = ReprRange::NON_ZERO;
             #[inline]
             fn to_repr(self) -> $int {
                 self.get()
@@ -109,7 +109,7 @@ macro_rules! nonzero {
     )+};
 }
 
-nonzero!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
+non_zero!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 
 // SAFETY: the repr is the scalar value, from 0 to `char::MAX`; `from_u32` decodes exactly the
 // scalar values, refusing the surrogates; a `char` may cross threads.
@@ -238,4 +238,4 @@ wrappers! {
 #[cfg(wide)]
 integers! { [AtomOrd] u128, i128 }
 #[cfg(wide)]
-nonzero!(u128, i128);
+non_zero!(u128, i128);

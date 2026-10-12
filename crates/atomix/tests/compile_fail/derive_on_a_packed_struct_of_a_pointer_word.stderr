@@ -66,7 +66,7 @@ error[E0277]: a field stored as `*mut u64` cannot be packed beside others
    |           ^^^^ a pointer, whose bits do not hold its provenance
    |
    = help: the trait `atomix::__private::FieldRepr` is not implemented for `*mut u64`
-   = note: a pointer is stored alone, in a newtype or an `Option`, or as a pointer field of a pointer word or the one of a pointer enum's variant, marked `#[atom(ptr)]` where its type shows no pointer
+   = note: a pointer is stored alone, in a newtype or an `Option`, or as a pointer field of a pointer word or the one of a pointer enum's variant, marked `#[atom(pointer)]` where its type shows no pointer
 note: required by a bound in `atomix::__private::to_bits`
   --> $WORKSPACE/crates/atomix-core/src/__private.rs
    |

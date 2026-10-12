@@ -128,7 +128,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct Guarded {
         /// The marked link.
-        #[atom(ptr)]
+        #[atom(pointer)]
         link: Marked,
         /// Whether the link is locked.
         locked: bool,
@@ -165,7 +165,7 @@ mod tests {
     #[derive(Clone, Copy, Atom)]
     struct LockedLink {
         /// The link.
-        #[atom(ptr)]
+        #[atom(pointer)]
         link: GenericLink<Entry>,
         /// Whether the link is locked.
         locked: bool,

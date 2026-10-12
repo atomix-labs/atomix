@@ -270,7 +270,7 @@ pub impl(crate) trait FetchAdd: CompareExchange {
 ///
 /// Each keeps the pointer's provenance. Loom's pointer cell has no arithmetic, so under loom each
 /// offset is a compare-exchange loop.
-pub(crate) trait PtrOffset: CompareExchange {
+pub(crate) trait PointerOffset: CompareExchange {
     /// Offsets the pointer by `count` elements, wrapping, and returns the pointer before.
     fn fetch_ptr_add(cell: &Self::Cell, count: usize, order: CoreOrdering) -> Self;
     /// Offsets the pointer back by `count` elements, wrapping, and returns the pointer before.

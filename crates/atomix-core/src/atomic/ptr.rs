@@ -2,7 +2,7 @@
 
 use super::Atomic;
 use crate::ordering::RmwOrdering;
-use crate::primitive::PtrOffset;
+use crate::primitive::PointerOffset;
 
 /// An atomic `*mut T`.
 pub type AtomicPtr<T> = Atomic<*mut T>;
