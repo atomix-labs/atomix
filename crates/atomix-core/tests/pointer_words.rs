@@ -20,6 +20,7 @@ mod testing;
     reason = "frees the nodes the tests box, and reads them through each pointer"
 )]
 mod tests {
+    use core::cmp::Reverse;
     use core::mem::size_of;
     use core::ptr::{self, NonNull};
     use std::thread;
@@ -285,8 +286,18 @@ mod tests {
         assert_eq!(low_bit_widths::<Option<Link>>(), (1, 3), "an `Option` of a word, its word's");
         assert_eq!(low_bit_widths::<NonNull<Node>>(), (0, 3), "a pointer none");
         assert_eq!(low_bit_widths::<Outer>(), (2, 3), "a word over a word, both words' tags");
+        assert_eq!(low_bit_widths::<Reverse<Inner>>(), (1, 3), "a wrapper of a word, its word's");
         assert_eq!(low_bit_widths::<Slot>(), (2, 3), "an enum, its tag");
         assert_eq!(low_bit_widths::<u64>(), (0, 0), "and an integer nothing");
+    }
+
+    #[test]
+    fn a_tuple_keeps_its_flag_above_a_wrapped_words_mark() {
+        let inner = Reverse(Inner { node: node(7), marked: true });
+        let pair = Atomic::new((inner, true));
+        assert_eq!(pair.load(Acquire), (inner, true), "the word's mark and the tuple's flag");
+        assert_eq!(pair.load(Acquire).to_repr().addr() & 0b11, 0b11, "each in a bit of its own");
+        free(inner.0.node);
     }
 
     #[test]

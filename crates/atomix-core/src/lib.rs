@@ -31,6 +31,12 @@
 //! field a place of its own: `(Option<NonNull<Node>>, bool)` is one word, its flag in the pointer's
 //! low bits, and `HEAD.fields().1.test_and_set(AcqRel)` is `lock bts`, or `ldsetal`, on it.
 //!
+//! Core's small values are atomic values, each its fields side by side in one integer: an
+//! `Ipv4Addr` is its octets in core's order, so `PEER.load(Acquire)` is a `u32`'s load with no byte
+//! swap, and `PEER.and(netmask, AcqRel)` one `lock and`; a `SocketAddrV4` keeps its port above
+//! them; a `Duration` its seconds in a word above its nanoseconds; and an `Ordering` its
+//! discriminant, whose maximum is one `ldsmaxalb`.
+//!
 //! Two pointers, or one beside a counter or a slice's length, share a 16-byte atomic, a
 //! [`DoubleWord`], which exposes each pointer's provenance, as no Rust operation keeps one through
 //! 16 bytes: `HEAD.compare_exchange(pushed, popped, AcqRel, Acquire)` pops a derived Treiber

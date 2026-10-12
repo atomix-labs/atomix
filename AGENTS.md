@@ -139,6 +139,13 @@ What a change here keeps, beyond what the checks hold it to.
   `fields().0`, on the derive's own `Field` paths, and its last field adds in
   place where the slots fill the repr and every repr of its slot decodes,
   `Total`, as an array's last element asks `AtomAdd`.
+- A value of core's is stored as core lays it out where that costs no shift: an
+  IP address as its octets in core's order, so a load swaps no byte, and with no
+  `AtomOrd`, since a repr that ordered as the address would swap the bytes of
+  every load; a value of several fields, a socket address or a `Duration`, each
+  field in bits of its own, and `AtomOrd` only where the field compared first
+  lies highest, as a `Duration`'s seconds do. A wrapper, `Reverse` as
+  `Wrapping`, is its value's repr, tags and all.
 - A pointer word, a struct of pointers beside tags, and a pointer enum, an enum
   some of whose variants hold a pointer, keep their tags in the low bits a
   pointee's alignment leaves clear, or, a pointer word of two words, in an

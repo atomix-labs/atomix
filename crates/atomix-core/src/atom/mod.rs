@@ -2,12 +2,16 @@
 
 mod array;
 mod bool_array;
+mod net;
 mod option;
 mod packed;
 mod ptr;
 mod ranged;
 mod reference;
 mod scalar;
+// A duration takes 128 bits.
+#[cfg(wide)]
+mod time;
 mod tuple;
 
 pub use self::array::Slots;

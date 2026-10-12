@@ -64,6 +64,12 @@
 //! instruction, and a wide reference's a `u128`'s: a reference's load acquires and its store
 //! releases, as its floor asks, its `store_rmw` reading with `Relaxed`'s `ldr` as a raw pointer's
 //! does, and a function pointer's load is `Relaxed`'s `ldr`, or `mov`.
+//!
+//! Core's small values lower as their reprs do: an `Ipv4Addr`'s load is a `u32`'s, its octets kept
+//! in order with no byte swap, and so is a nonzero `char`'s; an `Ipv6Addr`'s is a `u128`'s, stored
+//! to the return slot an array of bytes takes, and a socket address's a `u64`'s; a netmask's `and`
+//! is one `lock and` or `ldclral`; an ordering's maximum is one `ldsmaxalb`; and a duration's load
+//! moves its words as they are, seconds and nanoseconds, with no shift.
 
 // Miri cannot run the compiler, and loom's atomics are not what ships.
 #![cfg(on_hardware)]
@@ -125,6 +131,9 @@ mod tests {
         ("marked_reference_load_flag", SameAs("marked_pointer_load_flag")),
         ("marked_reference_set_flag", SameAs("marked_pointer_set_flag")),
         ("counted_reference_load_count", SameAs("counted_pointer_load_count")),
+        ("ipv4_load", SameAs("u32_load")),
+        ("nonzero_char_load", SameAs("u32_load")),
+        ("socket_address_load", SameAs("u64_load")),
     ];
 
     /// Each read-modify-write on `aarch64` with LSE, the same at the floor, with LSE2 and on macOS:
@@ -296,6 +305,9 @@ mod tests {
                 "adrp", "add", "mov", "mov", "bl",
             ]),
         ),
+        ("ipv4_and", Only(&["mvn", "ldclral", "ret"])),
+        ("cmp_ordering_fetch_max", Only(&["ldsmaxalb", "ret"])),
+        ("duration_load_rmw", Only(&["mov", "mov", "caspa", "mov", "mov", "ret"])),
     ];
 
     /// Each load on `aarch64` without LSE2, at the `+lse` floor and at Android's default CPU,
@@ -331,6 +343,7 @@ mod tests {
         ),
         ("sixteen_bools_load", InOrder(&["ldarh", "tbl", "ushl", "and", "str", "ret"])),
         ("sixteen_bools_store", InOrder(&["ushl", "add", "add", "addp", "stlrh", "ret"])),
+        ("cmp_ordering_load", Only(&["ldarb", "ret"])),
     ];
 
     /// Each update on `aarch64` at the `+lse` floor, which has no LSE2: with no 128-bit load,
@@ -393,6 +406,9 @@ mod tests {
         ("quarter_load", Refuses(&["cmp", "b.hs", "ldapr", "lsr", "and", "ret"])),
         ("quarter_place_load", Only(&["ldapr", "ubfx", "ret"])),
         ("halves_load_second", Only(&["ldapr", "lsr", "ret"])),
+        ("cmp_ordering_load", Only(&["ldaprb", "ret"])),
+        ("duration_load", Only(&["ldp", "dmb ishld", "ret"])),
+        ("ipv6_load", Only(&["ldp", "dmb ishld", "stp", "ret"])),
     ];
 
     /// The rest on `aarch64` Linux with LSE2, `neoverse-v1`, which puts a word's instructions
@@ -727,6 +743,9 @@ mod tests {
                 "tst", "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl",
             ]),
         ),
+        ("ipv4_and", InOrder(&["ldaxr", "and", "stlxr"])),
+        ("cmp_ordering_fetch_max", InOrder(&["ldaxrb", "cmp", "stlxrb"])),
+        ("duration_load_rmw", InOrder(&["ldaxp", "cmp", "stxp", "stxp"])),
     ];
 
     /// Each function of the fixture on `x86_64` with `cmpxchg16b`: at the `x86-64-v3` floor on
@@ -940,6 +959,12 @@ mod tests {
         ("marked_reference_load_flag", SameAs("marked_pointer_load_flag")),
         ("marked_reference_set_flag", SameAs("marked_pointer_set_flag")),
         ("counted_reference_load_count", SameAs("counted_pointer_load_count")),
+        ("ipv4_load", SameAs("u32_load")),
+        ("nonzero_char_load", SameAs("u32_load")),
+        ("socket_address_load", SameAs("u64_load")),
+        ("cmp_ordering_load", Only(&["movzbl", "retq"])),
+        ("ipv4_and", Only(&["lock andl", "retq"])),
+        ("duration_load_rmw", InOrder(&["lock cmpxchg16b", "movq", "movq", "movl", "retq"])),
     ];
 
     /// The rest on `x86_64` with AVX, at the `x86-64-v3` floor: a 128-bit load or store is
@@ -992,6 +1017,8 @@ mod tests {
             ]),
         ),
         ("sixteen_bools_store", Only(&["vmovdqu", "vpsllw", "vpmovmskb", "movw", "retq"])),
+        ("duration_load", Only(&["vmovdqa", "vpextrq", "vmovd", "retq"])),
+        ("ipv6_load", Only(&["movq", "vmovaps", "vmovups", "retq"])),
     ];
 
     /// The rest on `x86_64` Linux and macOS: the System V calling convention passes the arguments

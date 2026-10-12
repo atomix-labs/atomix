@@ -1,11 +1,13 @@
 //! `Atom` for core's value types.
 
+use core::cmp::{Ordering, Reverse};
 use core::marker::PhantomData;
+use core::mem::transmute;
 use core::num::{NonZero, Saturating, Wrapping};
 
 use super::{Atom, AtomAdd, AtomBitwise, AtomOrd};
-use crate::range::ReprRange;
-use crate::validity::{Total, TotalZeroNiche, ZeroValid};
+use crate::range::{PointeeAlignment, ReprRange, Tags};
+use crate::validity::{Total, TotalZeroNiche, ZeroNiche, ZeroValid};
 
 /// Implements `Atom` for integers, and the capabilities listed.
 macro_rules! integers {
@@ -135,6 +137,74 @@ const unsafe impl Atom for char {
 
 impl AtomOrd for char {}
 
+// SAFETY: the repr is the scalar value, from 1 to `char::MAX`, never zero; `from_u32` and `new`
+// decode exactly the nonzero scalar values, refusing zero and the surrogates, and their unchecked
+// twins decode each of those alike; a `char` may cross threads.
+#[expect(unsafe_code, reason = "an `Atom` impl promises what loads rely on")]
+const unsafe impl Atom for NonZero<char> {
+    type Repr = u32;
+    type Validity = ZeroNiche;
+    const REPRS: ReprRange<u32> = ReprRange::new(1, 0x10_FFFF);
+    #[inline]
+    fn to_repr(self) -> u32 {
+        u32::from(self.get())
+    }
+    #[inline]
+    fn from_repr(repr: u32) -> Option<Self> {
+        match char::from_u32(repr) {
+            Some(scalar) => Self::new(scalar),
+            None => None,
+        }
+    }
+    #[inline]
+    unsafe fn from_repr_unchecked(repr: u32) -> Self {
+        // SAFETY: the caller's repr decodes, so it is a scalar value.
+        let scalar = unsafe { char::from_u32_unchecked(repr) };
+        // SAFETY: the caller's repr decodes, so it is not zero.
+        unsafe { Self::new_unchecked(scalar) }
+    }
+}
+
+impl AtomOrd for NonZero<char> {}
+
+// SAFETY: the repr is the ordering's discriminant, which its `#[repr(i8)]` documents as -1, 0 and
+// 1, a range through zero; `from_repr` decodes exactly those, by the repr alone, each as its
+// ordering, as the unchecked transmute does; an ordering holds no data, so it may cross threads.
+#[expect(unsafe_code, reason = "an `Atom` impl promises what loads rely on")]
+const unsafe impl Atom for Ordering {
+    type Repr = i8;
+    type Validity = ZeroValid;
+    const REPRS: ReprRange<i8> = ReprRange::from_signed(-1, 1);
+    #[inline]
+    fn to_repr(self) -> i8 {
+        match self {
+            Self::Less => -1,
+            Self::Equal => 0,
+            Self::Greater => 1,
+        }
+    }
+    #[inline]
+    fn from_repr(repr: i8) -> Option<Self> {
+        match repr {
+            -1 => Some(Self::Less),
+            0 => Some(Self::Equal),
+            1 => Some(Self::Greater),
+            _ => None,
+        }
+    }
+    // The default, `from_repr`'s unwrap, leaves a range check and a select after `fetch_max`'s
+    // `ldsmaxalb`, which `cmp_ordering_fetch_max`'s pin refuses.
+    #[inline]
+    unsafe fn from_repr_unchecked(repr: i8) -> Self {
+        // SAFETY: the caller's repr decodes, so it is -1, 0 or 1, a discriminant of `Ordering`'s
+        // documented `#[repr(i8)]`.
+        unsafe { transmute::<i8, Self>(repr) }
+    }
+}
+
+/// `Less`, `Equal` and `Greater` order as their discriminants, -1, 0 and 1.
+impl AtomOrd for Ordering {}
+
 /// Implements `Atom` for floats, as their bits.
 macro_rules! floats {
     ($($float:ty: $bits:ty),+ $(,)?) => {$(
@@ -199,15 +269,22 @@ zero_width! {
 /// Implements `Atom` for a wrapper stored as the value it wraps, and the capabilities it keeps.
 macro_rules! wrappers {
     ($($wrapper:ident: [$($capability:ident),*]);+ $(;)?) => {$(
-        // SAFETY: the repr, its range, the validity and the threads rule are the wrapped value's.
+        // SAFETY: the repr, its range, its tags, the validity and the threads rule are the wrapped
+        // value's.
         #[expect(unsafe_code, reason = "an `Atom` impl promises what loads rely on")]
         const unsafe impl<T: [const] Atom> Atom for $wrapper<T> {
             type Repr = T::Repr;
             type Validity = T::Validity;
             const REPRS: ReprRange<T::Repr> = T::REPRS;
+            const TAG_WIDTH: u32 = T::TAG_WIDTH;
+            const POINTEE_ALIGNMENT: PointeeAlignment = T::POINTEE_ALIGNMENT;
             #[inline]
             fn to_repr(self) -> T::Repr {
                 self.0.to_repr()
+            }
+            #[inline]
+            fn to_tagged_repr(self, tags: Tags) -> (T::Repr, usize) {
+                self.0.to_tagged_repr(tags)
             }
             #[inline]
             fn from_repr(repr: T::Repr) -> Option<Self> {
@@ -226,10 +303,12 @@ macro_rules! wrappers {
     )+};
 }
 
-// `Saturating` keeps no `AtomAdd`: the repr's add wraps, the value's saturates.
+// `Saturating` keeps no `AtomAdd`: the repr's add wraps, the value's saturates. `Reverse` keeps no
+// `AtomOrd`, as its order is the reverse of the repr's.
 wrappers! {
     Wrapping: [AtomAdd, AtomOrd, AtomBitwise];
     Saturating: [AtomOrd, AtomBitwise];
+    Reverse: [AtomBitwise];
 }
 
 // The 128-bit integers and their `NonZero`s, where a 16-byte compare-exchange exists. atomix

@@ -12,8 +12,8 @@
 //! beside an integer's, in `arrays`; the field operations' in `fields`, over packed structs
 //! `tests/testing/packed.rs` writes out; a pointer word's in `pointer_words`, over words
 //! `tests/testing/pointer_word.rs` writes out; a double word's, a pair's and a slice pointer's, in
-//! `double_words`; a reference's and a function pointer's, beside a raw pointer's, in
-//! `references`; and a tuple's and its fields', in `tuples`.
+//! `double_words`; a reference's and a function pointer's, beside a raw pointer's, in `references`;
+//! a tuple's and its fields', in `tuples`; and core's small values', in `core_values`.
 //!
 //! The empty `[workspace]` in its manifest makes it a workspace of its own: the repository's does
 //! not list it, and the test builds it alone.
@@ -23,6 +23,7 @@
 
 pub mod arrays;
 pub mod bits;
+pub mod core_values;
 #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
 pub mod double_words;
 pub mod fields;

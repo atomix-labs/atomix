@@ -25,8 +25,10 @@ mod testing;
 #[cfg(test)]
 mod tests {
     use core::any::type_name;
+    use core::cmp::Ordering;
     use core::fmt::Debug;
     use core::marker::PhantomData;
+    use core::net::Ipv4Addr;
     use core::num::NonZero;
     use core::ptr::NonNull;
 
@@ -85,6 +87,18 @@ mod tests {
         best: (u16, u16),
         /// Whether the book trades.
         live: bool,
+    }
+
+    /// A peer's address and port, beside how its last reply compared: core's small values as
+    /// fields, the ordering two signed bits at the top.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Peer {
+        /// Its address, its octets the struct's low 32 bits.
+        address: Ipv4Addr,
+        /// Its port, the 16 bits above.
+        port: u16,
+        /// How its last reply compared with the one before.
+        verdict: Ordering,
     }
 
     /// The side of the book an order rests on: one bit, from zero.
@@ -962,6 +976,7 @@ mod tests {
         repr_and_validity_are::<Board, u32, ZeroValid>();
         repr_and_validity_are::<PackedBoard, u8, ZeroValid>();
         repr_and_validity_are::<MarkedHead, *mut Node, ZeroValid>();
+        repr_and_validity_are::<Peer, u64, ZeroValid>();
         assert_eq!(Turn::REPRS, ReprRange::new(0, 0x1FF), "every repr up to the third's end");
         assert_eq!(Offer::Closed.to_repr(), 2, "and `Closed` above the side's 0 and 1");
     }
@@ -1110,6 +1125,16 @@ mod tests {
             value_obeys_the_laws(steps, bits)?;
             value_obeys_the_laws(quotes, bits)?;
             value_obeys_the_laws(Some(board), bits)?;
+        }
+
+        #[test]
+        fn core_values_in_derived_values_obey_the_laws(
+            peer in (any::<Ipv4Addr>(), any::<u16>(), any::<Ordering>())
+                .prop_map(|(address, port, verdict)| Peer { address, port, verdict }),
+            bits in edge_or_random_bits(&[]),
+        ) {
+            value_obeys_the_laws(peer, bits)?;
+            value_obeys_the_laws(Some(peer), bits)?;
         }
 
         #[test]

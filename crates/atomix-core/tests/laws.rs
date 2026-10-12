@@ -4,7 +4,8 @@
 //! `None` takes a spare repr: zero where zero is the niche, else one outside its value's range;
 //! no bits make a reference or a function pointer, but null; an array's repr decodes where each
 //! slot's does, and a `Packed` one's where each field's does and the bits above extend the last;
-//! and a tuple's of bits where each field's does in its slot.
+//! a tuple's of bits where each field's does in its slot; and core's small values': an ordering,
+//! the IP addresses, a socket address, a duration, a nonzero `char` and a reversed value.
 //!
 //! Each law runs on every repr of a byte, on the edges of each width and range, and on random bits;
 //! a 16-bit ranged integer's, on every repr of 16 bits too.
@@ -19,10 +20,16 @@ mod testing;
 
 #[cfg(test)]
 mod tests {
+    use core::cmp::{Ordering, Reverse};
     use core::fmt::Debug;
     use core::marker::PhantomData;
+    #[cfg(wide)]
+    use core::net::Ipv6Addr;
+    use core::net::{Ipv4Addr, SocketAddrV4};
     use core::num::{NonZero, Saturating, Wrapping};
     use core::ptr::{self, NonNull};
+    #[cfg(wide)]
+    use core::time::Duration;
 
     #[cfg(aarch64_code)]
     use atomix_core::ordering::Relaxed;
@@ -36,6 +43,8 @@ mod tests {
     #[cfg(wide)]
     use atomix_core::{RangedI128, RangedU128};
     use proptest::prelude::prop_oneof;
+    #[cfg(wide)]
+    use proptest::prelude::{Strategy, any};
     use proptest::test_runner::TestCaseError;
     use proptest::{prop_assert, prop_assert_eq, proptest};
 
@@ -46,6 +55,11 @@ mod tests {
 
     /// The last scalar value, and the first and last surrogates.
     const CHAR_EDGES: [u128; 3] = [0x10_FFFF, 0xD800, 0xDFFF];
+
+    /// The bits past a socket address's port, a duration's last nanosecond and first second, and
+    /// the longest duration's, where its range ends.
+    const CORE_VALUE_EDGES: [u128; 5] =
+        [1 << 48, 999_999_999, 1 << 64, (1 << 64) + 999_999_999, (u128::MAX << 64) + 999_999_999];
 
     /// The range and round-trip laws for `value`, whose repr is a pointer.
     fn pointer_round_trips<T: Atom<Repr = *mut P> + PartialEq + Debug, P>(
@@ -225,6 +239,70 @@ mod tests {
         Ok(())
     }
 
+    /// Every law on the low bits of `bits` as each of core's small values of 64 bits or fewer, and
+    /// of their `Option`s.
+    ///
+    /// The order laws compare each value `bits` makes with the one `other` makes, if any.
+    fn core_value_laws(bits: u128, other: u128) -> Result<(), TestCaseError> {
+        let (sign, repr) = (i8::from_bits(bits), u32::from_bits(bits));
+        decodes_as_promised::<ZeroValid, Ordering>(sign)?;
+        decodes_as_promised::<ZeroValid, Option<Ordering>>(sign)?;
+        decodes_as_promised::<Total, Ipv4Addr>(repr)?;
+        decodes_as_promised::<ZeroValid, SocketAddrV4>(u64::from_bits(bits))?;
+        decodes_as_promised::<ZeroValid, Option<SocketAddrV4>>(u64::from_bits(bits))?;
+        decodes_as_promised::<ZeroNiche, NonZero<char>>(repr)?;
+        decodes_as_promised::<ZeroValid, Option<NonZero<char>>>(repr)?;
+        decodes_as_promised::<Total, Reverse<u8>>(u8::from_bits(bits))?;
+        decodes_as_promised::<ZeroValid, Reverse<char>>(repr)?;
+        round_trips(Ipv4Addr::from_bits(repr))?;
+        round_trips(Reverse(u8::from_bits(bits)))?;
+        if let Some(socket) = SocketAddrV4::from_repr(u64::from_bits(bits)) {
+            round_trips(socket)?;
+            round_trips(Some(socket))?;
+        }
+        if let (Some(a), Some(b)) =
+            (Ordering::from_repr(sign), Ordering::from_repr(i8::from_bits(other)))
+        {
+            round_trips(a)?;
+            reprs_order_as_ord(a, b)?;
+            #[cfg(aarch64_code)]
+            atomics_order_as_ord(a, b)?;
+        }
+        if let (Some(a), Some(b)) =
+            (NonZero::<char>::from_repr(repr), NonZero::<char>::from_repr(u32::from_bits(other)))
+        {
+            round_trips(a)?;
+            round_trips(Some(a))?;
+            reprs_order_as_ord(a, b)?;
+            #[cfg(aarch64_code)]
+            atomics_order_as_ord(a, b)?;
+        }
+        Ok(())
+    }
+
+    /// A duration's repr: any seconds, and nanoseconds below a billion, which random bits alone
+    /// make once in 1.8e10 draws.
+    #[cfg(wide)]
+    fn duration_reprs() -> impl Strategy<Value = u128> {
+        (any::<u64>(), 0..1_000_000_000_u128)
+            .prop_map(|(seconds, nanoseconds)| u128::from(seconds) << 64 | nanoseconds)
+    }
+
+    /// Every law on `bits` and `other` as each of core's 128-bit values, and of their `Option`s.
+    #[cfg(wide)]
+    fn wide_core_value_laws(bits: u128, other: u128) -> Result<(), TestCaseError> {
+        decodes_as_promised::<Total, Ipv6Addr>(bits)?;
+        decodes_as_promised::<ZeroValid, Duration>(bits)?;
+        decodes_as_promised::<ZeroValid, Option<Duration>>(bits)?;
+        round_trips(Ipv6Addr::from_bits(bits))?;
+        if let (Some(a), Some(b)) = (Duration::from_repr(bits), Duration::from_repr(other)) {
+            round_trips(a)?;
+            round_trips(Some(a))?;
+            reprs_order_as_ord(a, b)?;
+        }
+        Ok(())
+    }
+
     /// Every law on the low bits of `bits` as each float's.
     fn float_laws(bits: u128) -> Result<(), TestCaseError> {
         keeps_every_bit(bits, f16::from_bits)?;
@@ -348,6 +426,7 @@ mod tests {
             assert_holds(narrow_ranged_laws(bits, bits.wrapping_add(1)));
             assert_holds(array_laws(bits));
             assert_holds(tuple_laws(bits));
+            assert_holds(core_value_laws(bits, bits.wrapping_add(1)));
             let byte = u8::from_bits(bits);
             assert_holds(decodes_as_promised::<ZeroValid, ()>(byte));
             assert_holds(decodes_as_promised::<ZeroValid, PhantomData<str>>(byte));
@@ -375,7 +454,7 @@ mod tests {
 
     #[test]
     fn every_edge_obeys_the_laws() {
-        for bits in edges(&CHAR_EDGES) {
+        for bits in edges(&[CHAR_EDGES.as_slice(), &CORE_VALUE_EDGES].concat()) {
             assert_holds(narrow_integer_laws(bits, bits.wrapping_sub(1)));
             assert_holds(narrow_ranged_laws(bits, bits.wrapping_sub(1)));
             assert_holds(char_laws(bits, char::MAX));
@@ -383,8 +462,11 @@ mod tests {
             assert_holds(pointer_laws(bits));
             assert_holds(array_laws(bits));
             assert_holds(tuple_laws(bits));
+            assert_holds(core_value_laws(bits, bits.wrapping_sub(1)));
             #[cfg(wide)]
             assert_holds(wide_laws(bits, bits.wrapping_sub(1)));
+            #[cfg(wide)]
+            assert_holds(wide_core_value_laws(bits, bits.wrapping_sub(1)));
         }
     }
 
@@ -399,6 +481,9 @@ mod tests {
         none_laws!(RangedU8<1, 10>, RangedI8<-5, 5>, RangedI8<-100, -10>, RangedU16<3>);
         none_laws!(RangedI16<-300, 300>, RangedU32<7, 7>, RangedI32<{ i32::MIN }, -1>);
         none_laws!(RangedU64<3>, RangedI64<{ i64::MIN }, 5>, RangedUsize<1>, RangedIsize<-1, 1>);
+        none_laws!(Ordering, SocketAddrV4, NonZero<char>, Reverse<NonZero<u8>>);
+        #[cfg(wide)]
+        none_laws!(Duration);
         #[cfg(wide)]
         none_laws!(NonZero<u128>, NonZero<i128>);
         #[cfg(wide)]
@@ -460,6 +545,13 @@ mod tests {
         fn references_and_function_pointers_obey_the_laws(bits in edge_or_random_bits(&[])) {
             sealed_laws(bits)?;
         }
+
+        #[test]
+        fn core_values_obey_the_laws(
+            bits in edge_or_random_bits(&CORE_VALUE_EDGES), other in edge_or_random_bits(&[]),
+        ) {
+            core_value_laws(bits, other)?;
+        }
     }
 
     #[cfg(wide)]
@@ -467,6 +559,18 @@ mod tests {
         #[test]
         fn wide_values_obey_the_laws(bits in edge_or_random_bits(&[]), other: u128) {
             wide_laws(bits, other)?;
+        }
+
+        #[test]
+        fn durations_obey_the_laws(a in duration_reprs(), b in duration_reprs()) {
+            wide_core_value_laws(a, b)?;
+        }
+
+        #[test]
+        fn wide_core_values_obey_the_laws(
+            bits in edge_or_random_bits(&CORE_VALUE_EDGES), other in edge_or_random_bits(&CORE_VALUE_EDGES),
+        ) {
+            wide_core_value_laws(bits, other)?;
         }
     }
 }
