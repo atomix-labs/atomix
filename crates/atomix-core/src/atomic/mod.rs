@@ -634,11 +634,11 @@ impl<T: Atom> Atomic<T> {
     /// The repr's address, for interop.
     ///
     /// Every access through it while the atomic is shared is atomic and of the repr's width, and a
-    /// write leaves a repr [`from_repr`](Atom::from_repr) decodes: for a reference or a function
-    /// pointer, whose repr is a [`ReprOf`](crate::ReprOf), null or the pointer of a value of `T`,
-    /// a reference's to what lives as long as its lifetime, a function's of its signature. A repr
-    /// of two words, whose cell holds its pointers' addresses alone, lends none, as [`RawAccess`]
-    /// says.
+    /// write leaves a repr [`from_repr`](Atom::from_repr) decodes: for a reference, a function
+    /// pointer or a borrowed descriptor, whose repr is a [`ReprOf`](crate::ReprOf), null or the
+    /// repr a value of `T` gave, a reference's to what lives as long as its lifetime, a function's
+    /// of its signature, a descriptor's of one open for all of its lifetime. A repr of two words,
+    /// whose cell holds its pointers' addresses alone, lends none, as [`RawAccess`] says.
     #[cfg(not(loom))]
     #[inline]
     #[must_use]
@@ -658,10 +658,11 @@ impl<T: Atom> Atomic<T> {
     /// For all of `'a`: `ptr` is aligned to `align_of::<Atomic<T>>()` and valid for reads and
     /// writes; no non-atomic or different-width access reaches it without synchronization; and
     /// the pointee holds a repr [`from_repr`](Atom::from_repr) decodes (any repr, where
-    /// `T::Validity` is [`Total`](crate::validity::Total)), which every write keeps: for a
-    /// reference or a function pointer, whose repr is a [`ReprOf`](crate::ReprOf), null or the
-    /// pointer of a value of `T`, a reference's to what lives as long as its lifetime, a function's
-    /// of its signature.
+    /// `T::Validity` is [`Total`](crate::validity::Total) and `T::Repr` is no
+    /// [`ReprOf`](crate::ReprOf)), which every write keeps: for a reference, a function pointer or
+    /// a borrowed descriptor, whose repr is a [`ReprOf`](crate::ReprOf), null or the repr a value
+    /// of `T` gave, a reference's to what lives as long as its lifetime, a function's of its
+    /// signature, a descriptor's of one open for all of its lifetime.
     ///
     /// # Examples
     /// ```

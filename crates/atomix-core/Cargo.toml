@@ -12,7 +12,7 @@ repository.workspace   = true
 ignored-paths = ["tests/compile_fail/**/*.rs", "tests/compile_pass/*.rs"]
 
 [package.metadata.docs.rs]
-features = ["arbitrary", "arbitrary-int", "bytemuck", "deranged-05", "serde", "zerocopy-08"]
+features = ["arbitrary", "arbitrary-int", "bytemuck", "deranged-05", "serde", "std", "zerocopy-08"]
 
 [features]
 default       = []
@@ -22,6 +22,7 @@ bytemuck      = ["dep:bytemuck"]
 deranged-05   = ["dep:deranged"]
 loom          = ["dep:loom", "dep:tracing", "dep:tracing-subscriber"]
 serde         = ["dep:serde_core"]
+std           = []
 zerocopy-08   = ["dep:zerocopy"]
 
 [lints]

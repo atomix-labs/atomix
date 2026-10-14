@@ -508,6 +508,7 @@
 //! | `arbitrary`     | `Arbitrary` for an atomic, and a ranged integer, held to its range         |
 //! | `arbitrary-int` | `Atom`, `AtomOrd`, `FieldBitwise` and `FieldAdd` for `UInt` and `Int`      |
 //! | `deranged-05`   | `Atom`, `AtomOrd` and `From` with atomix's own for deranged 0.5's integers |
+//! | `std`           | `Atom` for `ExitStatus`, Unix's `BorrowedFd`, and `SystemTime` in 16 bytes |
 //! | `loom`          | loom's types under `--cfg loom`; nothing without the cfg                   |
 //!
 //! `serde`, `zerocopy-08` and `arbitrary` each give a [`Packed`] what its array has of that crate's
@@ -530,10 +531,10 @@
 )]
 #![no_std]
 #![feature(doc_cfg)]
-// No badge names `loom` or atomix-core's aliases `aarch64_code` and `wide`: a loom build is a model
-// of this one, not a target of its own, and an item writes out an alias's condition where its badge
-// needs one.
-#![doc(auto_cfg(hide(loom, aarch64_code, wide)))]
+// No badge names `loom` or atomix-core's aliases `aarch64_code`, `wide`, `std_values` and
+// `wait_status`: a loom build is a model of this one, not a target of its own, and an item writes
+// out an alias's condition where its badge needs one.
+#![doc(auto_cfg(hide(loom, aarch64_code, wide, std_values, wait_status)))]
 
 #[doc(hidden)]
 pub use atomix_core::__private;

@@ -76,6 +76,7 @@
 //! | `arbitrary`     | `Arbitrary` for an atomic, and a ranged integer, held to its range         |
 //! | `arbitrary-int` | `Atom`, `AtomOrd`, `FieldBitwise` and `FieldAdd` for `UInt` and `Int`      |
 //! | `deranged-05`   | `Atom`, `AtomOrd` and `From` with atomix's own for deranged 0.5's integers |
+//! | `std`           | `Atom` for `ExitStatus`, Unix's `BorrowedFd`, and `SystemTime` in 16 bytes |
 //! | `loom`          | loom's types under `--cfg loom`; nothing without the cfg                   |
 //!
 //! `serde`, `zerocopy-08` and `arbitrary` each give a [`Packed`] what its array has of that crate's
@@ -142,7 +143,7 @@
 )]
 // No badge names `loom` or an alias `build.rs` declares: a loom build is a model of this one, not
 // a target of its own, and an item writes out an alias's condition where its badge needs one.
-#![doc(auto_cfg(hide(loom, aarch64_code, wide, wide_load_store)))]
+#![doc(auto_cfg(hide(loom, aarch64_code, wide, wide_load_store, std_values, wait_status)))]
 
 #[cfg(all(loom, not(feature = "loom")))]
 compile_error!(concat!(
@@ -153,10 +154,11 @@ compile_error!(concat!(
      where atomix-core is the dependency"
 ));
 
-// The loom model of a 128-bit cell keeps its table in `std`; `alloc` only where that model is.
+// `std` holds the loom model's table of a 128-bit cell, and the values the `std` feature adds;
+// `alloc` only where that model is.
 #[cfg(all(loom, wide))]
 extern crate alloc;
-#[cfg(loom)]
+#[cfg(any(loom, feature = "std"))]
 extern crate std;
 
 #[doc(hidden)]

@@ -202,7 +202,8 @@ What a change here keeps, beyond what the checks hold it to.
   is a 0.x crate, `zerocopy-08` and `deranged-05` as t2t's `chrono-04`, so the
   next 0.y can sit beside it; a 1.x or later dependency's feature is its name:
   `serde`, `bytemuck`, `arbitrary`, `arbitrary-int`. `loom`, the model-checking
-  seam rather than an integration, keeps its name.
+  seam rather than an integration, keeps its name, and so does `std`, which adds
+  `Atom` for std's own values and nothing else.
 - A nightly feature is taken where it makes the API right, as `ptr_metadata`
   lets one `Atom` impl of a pointer choose its repr by its pointee's metadata,
   and `fn_static`'s `FnPtr` lets one impl hold every function pointer beside the

@@ -1,0 +1,7 @@
+error: lifetime may not live long enough
+  --> tests/compile_fail/std/descriptor_loaded_beyond_its_lifetime.rs:10:5
+   |
+ 9 | fn outlive<'a>(atomic: &Atomic<BorrowedFd<'a>>) -> BorrowedFd<'static> {
+   |            -- lifetime `'a` defined here
+10 |     atomic.load(Relaxed)
+   |     ^^^^^^^^^^^^^^^^^^^^ returning this value requires that `'a` must outlive `'static`

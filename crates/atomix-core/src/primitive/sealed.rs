@@ -1,5 +1,5 @@
-//! [`ReprOf`]: the repr of a reference or a function pointer, which no bits forge, and whose low
-//! bits a word's tags may share.
+//! [`ReprOf`]: the repr of a reference, a function pointer or a borrowed descriptor, which no bits
+//! forge, and whose low bits a word's tags may share.
 
 use core::fmt;
 use core::hash::{Hash, Hasher};
@@ -23,6 +23,9 @@ use crate::range::{PointeeAlignment, mask};
 /// The repr of a value no bits may forge, a reference or a function pointer: the primitive a raw
 /// pointer to the same place is stored as, holding a pointer a `V` gave, or null.
 ///
+/// On Unix and with the `std` feature, a borrowed file descriptor's too: a `u32` of the
+/// descriptor's complement, or zero.
+///
 /// It has no constructor: a `V` gives one, through its [`Atom::to_repr`](crate::Atom::to_repr),
 /// and bits make none. A repr built of bits is null, which decodes as no value, and so is one whose
 /// bits change anywhere but in the low bits its pointee's alignment leaves clear, where a word that
@@ -31,9 +34,10 @@ use crate::range::{PointeeAlignment, mask};
 /// its tags before it decodes its pointer. `V` names the value whole, its lifetimes and its
 /// signature too, and the repr is invariant in it, so no repr one type gave decodes as another.
 ///
-/// Its operations are the raw pointer's, so its every instruction is one an `AtomicPtr`, or a
-/// double word of a wide reference, runs. A reference's take an `Acquire` read and a `Release`
-/// write, or stronger, as [`LoadOrdering`](crate::ordering::LoadOrdering) and its siblings say.
+/// Its operations are the raw repr's, so its every instruction is one an `AtomicPtr`, a double word
+/// of a wide reference, or a descriptor's `AtomicU32` runs. A reference's take an `Acquire` read
+/// and a `Release` write, or stronger, as [`LoadOrdering`](crate::ordering::LoadOrdering) and its
+/// siblings say.
 ///
 /// # Examples
 /// ```
@@ -54,19 +58,19 @@ use crate::range::{PointeeAlignment, mask};
 /// ```
 #[repr(transparent)]
 pub struct ReprOf<V: SealedValue> {
-    // INVARIANT: null, as `V::Raw::from_bits(0)` gives it, or the repr of a pointer a `V`'s
-    // `to_repr` gave, its provenance kept; either with any of the bits below `V`'s pointee
-    // alignment, `alignment_mask::<V>()`, set, a word's tags. Its writers are `new`, whose callers
-    // prove it; `from_bits`, `with_packed_bits` and `clear_packed_bits`, which change only
-    // those bits or make it null; `null`, which makes it null; `Word::from_exposed_bits`,
-    // whose callers pass the bits `exposed_bits` gave of such a repr, as a double word's cell
-    // does; the cell's reads and read-modify-writes, from a `SealedCell<V>`, which holds only
-    // what `into_cell`, `set` and the cell's writes put there, each a `ReprOf<V>`, or such a
-    // repr with its tag bits changed by `MaskBitwise`, which confines its masks to them; and
-    // the raw place `RawAccess` lends, whose `get_mut` takes only a `ReprOf<V>`, and whose
-    // pointer `Atomic::from_ptr` and `Atomic::as_ptr` bind to this invariant in their
-    // contracts.
-    /// The pointer, as the raw pointer's repr.
+    // INVARIANT: null, as `V::Raw::from_bits(0)` gives it, or the raw repr a `V`'s `to_repr` gave,
+    // a pointer with its provenance kept or a descriptor's complement; either with any of the bits
+    // below `V`'s pointee alignment, `alignment_mask::<V>()`, set, a word's tags. Its writers are
+    // `new`, whose callers prove it; `from_bits`, `with_packed_bits` and `clear_packed_bits`,
+    // which change only those bits or make it null; `null`, which makes it null;
+    // `Word::from_exposed_bits`, whose callers pass the bits `exposed_bits` gave of such a repr,
+    // as a double word's cell does; the cell's reads and read-modify-writes, from a
+    // `SealedCell<V>`, which holds only what `into_cell`, `set` and the cell's writes put
+    // there, each a `ReprOf<V>`, or such a repr with its tag bits changed by `MaskBitwise`,
+    // which confines its masks to them; and the raw place `RawAccess` lends, whose `get_mut`
+    // takes only a `ReprOf<V>`, and whose pointer `Atomic::from_ptr` and `Atomic::as_ptr` bind
+    // to this invariant in their contracts.
+    /// The pointer, as the raw pointer's repr, or the descriptor's complement.
     repr: V::Raw,
     /// The value that gave it, held invariantly, and `Send` and `Sync` whatever it is.
     marker: PhantomData<fn(V) -> V>,
@@ -76,15 +80,16 @@ impl<V: SealedValue> ReprOf<V> {
     /// The repr `repr`, sealed.
     ///
     /// # Safety
-    /// `repr` is null, or the repr of a pointer a `V` gave, its provenance kept, either with tags
-    /// in the low bits `V`'s pointee alignment leaves clear, as the field INVARIANT says.
+    /// `repr` is null, or the raw repr a `V`'s `to_repr` gave, a pointer with its provenance kept
+    /// or a descriptor's complement, either with tags in the low bits `V`'s pointee alignment
+    /// leaves clear, as the field INVARIANT says.
     #[expect(unsafe_code, reason = "a repr whose decode trusts it")]
     #[inline]
     pub(crate) const unsafe fn new(repr: V::Raw) -> Self {
         Self { repr, marker: PhantomData }
     }
 
-    /// The pointer, as the raw pointer's repr: null, or one a `V` gave, either with tags.
+    /// The raw repr: null, or one a `V` gave, either with tags.
     #[inline]
     pub(crate) const fn repr(self) -> V::Raw {
         self.repr
@@ -107,22 +112,24 @@ pub(crate) const fn alignment_mask<V: SealedValue>() -> u128 {
     mask(V::POINTEE_ALIGNMENT.width())
 }
 
-/// A value stored as a [`ReprOf`], a reference or a function pointer: the primitive a raw pointer
-/// to the same place is stored as, and the orderings an operation on it takes.
+/// A value stored as a [`ReprOf`], a reference, a function pointer or a borrowed file descriptor:
+/// the primitive a raw pointer to the same place is stored as, or a descriptor's, and the
+/// orderings an operation on it takes.
 #[diagnostic::on_unimplemented(
-    message = "`{Self}` is not a reference or a function pointer",
-    label = "expected `&T` or a `fn` pointer"
+    message = "`{Self}` is not a reference, a function pointer or a borrowed descriptor",
+    label = "expected `&T`, a `fn` pointer or a `BorrowedFd`"
 )]
 pub impl(crate) trait SealedValue {
-    /// The primitive a raw pointer to the same place is stored as: `*mut T`, a `DoubleWord` for a
-    /// wide reference, `*mut ()` for a function.
+    /// The primitive it is stored as: a raw pointer's to the same place, `*mut T`, a `DoubleWord`
+    /// for a wide reference, `*mut ()` for a function; or a descriptor's `u32`.
     type Raw: Copy;
     /// The weakest ordering an operation on it takes: a reference's `AcqRel`, an `Acquire` read and
     /// a `Release` write, so a thread that reads it sees the writes that made what it points to; a
-    /// function pointer's `Relaxed`, as it points to code no write changes.
+    /// function pointer's `Relaxed`, as it points to code no write changes, and a descriptor's, as
+    /// it names the kernel's resource, which its lifetime keeps open.
     type OrderingFloor: const OrderingFloor;
     /// The alignment of what the pointer points to, which leaves its low bits clear for a word's
-    /// tags: none for a function, whose code's alignment no type says.
+    /// tags: none for a function, whose code's alignment no type says, nor for a descriptor.
     ///
     /// Only code reads it, never a type's layout, as [`Atom::POINTEE_ALIGNMENT`] says.
     ///
@@ -182,8 +189,8 @@ impl<V: SealedValue<Raw: fmt::Debug>> fmt::Debug for ReprOf<V> {
     }
 }
 
-// SAFETY: by the field INVARIANT, the repr is null or a `V`'s pointer, so it reaches what a `V`
-// reaches: moving it to another thread moves no more than moving the `V` would.
+// SAFETY: by the field INVARIANT, the repr is null or the raw repr a `V` gave, so it reaches what a
+// `V` reaches: moving it to another thread moves no more than moving the `V` would.
 #[expect(unsafe_code, reason = "a raw pointer takes away the auto `Send`")]
 unsafe impl<V: SealedValue + Send> Send for ReprOf<V> {}
 
@@ -305,13 +312,14 @@ const impl<V: SealedValue<Raw: [const] Word + [const] Primitive>> Word for ReprO
     }
 }
 
-/// The cell of a [`ReprOf`]: the raw pointer's own, in a type only `into_cell` builds, so it holds
+/// The cell of a [`ReprOf`]: the raw repr's own, in a type only `into_cell` builds, so it holds
 /// only a repr a `V` gave, or null, either with tags in the bits its pointee's alignment leaves
 /// clear.
 #[repr(transparent)]
 pub struct SealedCell<V: SealedValue<Raw: CellAccess>> {
-    // INVARIANT: holds a `ReprOf<V>`'s raw repr: null, or a pointer a `V`'s `to_repr` gave, its
-    // provenance kept; either with tags in the bits below `V`'s pointee alignment. Its writers are
+    // INVARIANT: holds a `ReprOf<V>`'s raw repr: null, or the raw repr a `V`'s `to_repr` gave, a
+    // pointer with its provenance kept or a descriptor's complement; either with tags in the bits
+    // below `V`'s pointee alignment, `alignment_mask::<V>()`. Its writers are
     // `into_cell` and `set`, each of a `ReprOf<V>`; the exchanges, `store`, `swap` and
     // `store_by_exchange`, each of a `ReprOf<V>` their caller passes, and
     // `compare_exchange_write_back_weak`, of one `with_packed_bits` gives, as its caller promises;
@@ -492,7 +500,8 @@ const impl<V: SealedValue<Raw: [const] Swap>> Swap for ReprOf<V> {
 
 // A double word's exchange compares every bit of its cell, which holds addresses alone, so one of
 // zero for zero writes nothing new; a pointer's compares its address alone, as `ReadByExchange`
-// says, so neither a pointer nor its `ReprOf` reads by exchange.
+// says, so neither a pointer nor its `ReprOf` reads by exchange; a descriptor's `u32` does, as its
+// every bit is its own and an exchange writes them back as they were.
 #[diagnostic::do_not_recommend]
 const impl<V: SealedValue<Raw: [const] ReadByExchange + [const] Primitive>> ReadByExchange
     for ReprOf<V>

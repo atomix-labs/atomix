@@ -35,6 +35,9 @@ mod wide;
 pub use self::double::{DoubleWord, Word};
 pub(crate) use self::narrow::{address, subtract_tags};
 pub use self::sealed::ReprOf;
+// A borrowed descriptor's repr is sealed too.
+#[cfg(all(std_values, unix))]
+pub(crate) use self::sealed::SealedValue;
 pub(crate) use self::sealed::alignment_mask;
 
 /// A primitive's cell, and every access to it that is not an atomic instruction.

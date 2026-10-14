@@ -263,6 +263,7 @@ has them.
 | `arbitrary`     | `Arbitrary` for an atomic, and a ranged integer, held to its range         |
 | `arbitrary-int` | `Atom`, `AtomOrd`, `FieldBitwise` and `FieldAdd` for `UInt` and `Int`      |
 | `deranged-05`   | `Atom`, `AtomOrd` and `From` with atomix's own for deranged 0.5's integers |
+| `std`           | `Atom` for `ExitStatus`, Unix's `BorrowedFd`, and `SystemTime` in 16 bytes |
 | `loom`          | loom's types under `--cfg loom`; nothing without the cfg                   |
 
 `serde`, `zerocopy-08` and `arbitrary` each give a `Packed` what its array has
