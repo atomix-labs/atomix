@@ -1,13 +1,16 @@
-//! `Atom` for a tuple of one to twelve values, laid out as `#[derive(Atom)]` lays out the struct of
-//! its fields.
+//! `Atom` for a tuple of one to twelve values, each field in a slot as wide as its repr: the layout
+//! `#[derive(Atom)]` gives the struct of its fields where each field fills its repr.
 //!
 //! Each field stored as bits, an integer or a `bool`, sits in a slot of its repr's width, side by
-//! side from bit 0 in declaration order, as an array's elements do. A field stored as a pointer
-//! takes a word of its own, its provenance kept, and the others lie in its low bits, above its own
-//! tags, where they take 29 bits or fewer, as a pointer word's tags do, else in an integer word
-//! beside it. A function pointer's code leaves no low bit clear, so beside one the others take an
-//! integer word whatever their bits, as a derived struct's take with `#[atom(repr = u128)]`. Two
-//! pointers take two words, the others in the first one's low bits.
+//! side from bit 0 in declaration order, as an array's elements do, and the bits above the slots
+//! are clear. A field narrower than its repr, a two-variant enum or a ranged integer, takes its
+//! whole slot, where a derived struct packs it at its range's width and extends a signed top
+//! field's sign above it. A field stored as a pointer takes a word of its own, its provenance kept,
+//! and the others lie in its low bits, above its own tags, where they take 29 bits or fewer, as a
+//! pointer word's tags do, else in an integer word beside it. A function pointer's code leaves no
+//! low bit clear, so beside one the others take an integer word whatever their bits, as a derived
+//! struct's take with `#[atom(repr = u128)]`. Two pointers take two words, the others in the first
+//! one's low bits.
 //!
 //! A generic impl chooses its repr from types alone, so a hidden table folds the kinds of the
 //! fields' reprs, a width, a pointer to data or a function pointer, into the tuple's shape: the

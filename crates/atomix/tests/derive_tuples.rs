@@ -1,8 +1,9 @@
 //! Tuples beside the structs `#[derive(Atom)]` writes: a tuple is laid out as the struct of its
-//! fields, a pointer beside a flag in one word, a function pointer beside one in two, and integers
-//! side by side, unless a field is narrower than its repr, which a struct packs and a tuple keeps
-//! in its slot; a tuple of derived values; and a tuple as a field of a derived struct, its fields
-//! places through the struct's.
+//! fields where each field fills its repr, a pointer beside a flag in one word, a function pointer
+//! beside one in two, and integers side by side; a field narrower than its repr, which a struct
+//! packs at its range's width, its sign extended above it where it is signed and on top, a tuple
+//! keeps in its whole slot, the bits above clear; a tuple of derived values; and a tuple as a field
+//! of a derived struct, its fields places through the struct's.
 
 #![cfg(feature = "derive")]
 #![cfg(not(loom))]
@@ -23,7 +24,7 @@ mod tests {
     use atomix::Primitive;
     use atomix::ordering::{AcqRel, Acquire, Relaxed, Release};
     use atomix::validity::ZeroValid;
-    use atomix::{Atom, Atomic};
+    use atomix::{Atom, Atomic, RangedI8};
 
     use crate::testing::atom::repr_and_validity_are;
     use crate::testing::law::{assert_holds, decodes_as_promised};
@@ -60,6 +61,11 @@ mod tests {
     /// Two sides, packed a bit each.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct Sides(Side, Side);
+
+    /// An order's quantity, whether it is live, and its skew from the mid price: the struct of the
+    /// tuple `(u32, bool, RangedI8<-5, 5>)`, its skew in four bits at its top.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Order(u32, bool, RangedI8<-5, 5>);
 
     /// The best bid and ask beside whether the book trades: a tuple as a field.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
@@ -122,6 +128,21 @@ mod tests {
         for bits in 0..=u16::MAX {
             assert_holds(decodes_as_promised::<_, (Side, Side)>(bits));
         }
+    }
+
+    #[test]
+    fn a_tuple_keeps_a_narrow_signed_top_field_in_its_slot() {
+        let skew = RangedI8::<-5, 5>::new(-1).expect("-1 lies in -5 to 5");
+        assert_eq!(
+            Order(1, false, skew).to_repr(),
+            0xFFFF_FFFE_0000_0001,
+            "a struct extends its top field's sign through the bits above"
+        );
+        assert_eq!(
+            (1_u32, false, skew).to_repr(),
+            0x0000_01FE_0000_0001,
+            "a tuple keeps the field in its slot, the bits above clear"
+        );
     }
 
     #[test]
