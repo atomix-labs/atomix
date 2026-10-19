@@ -19,6 +19,7 @@ features = [
     "deranged-05",
     "derive",
     "serde",
+    "std",
     "zerocopy-08",
 ]
 
@@ -31,6 +32,7 @@ deranged-05   = ["atomix-core/deranged-05"]
 derive        = ["dep:atomix-derive"]
 loom          = ["atomix-core/loom"]
 serde         = ["atomix-core/serde"]
+std           = ["atomix-core/std"]
 zerocopy-08   = ["atomix-core/zerocopy-08"]
 
 [lints]

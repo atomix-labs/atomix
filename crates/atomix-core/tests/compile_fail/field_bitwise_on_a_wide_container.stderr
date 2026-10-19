@@ -22,7 +22,7 @@ note: required by a bound in `AtomicField::<P>::or`
    |
    | impl<P: FieldPath> AtomicField<P> {
 ...
-   |     pub const fn or<O: RmwOrdering>(&self, value: P::Value, order: O)
+   |     pub const fn or<O: RmwOrdering<P::Value>>(&self, value: P::Value, order: O)
 ...
    |         ContainerRepr<P>: [const] MaskBitwise,
    |                           ^^^^^^^^^^^^^^^^^^^ required by this bound in `AtomicField::<P>::or`

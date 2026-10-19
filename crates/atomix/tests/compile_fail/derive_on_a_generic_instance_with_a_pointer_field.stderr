@@ -1,13 +1,19 @@
-error[E0277]: a field stored as `*mut u64` cannot be packed beside others
+error[E0277]: `Pair<NonNull<u64>, u8>` cannot be stored in an atomic
   --> tests/compile_fail/derive_on_a_generic_instance_with_a_pointer_field.rs:18:25
    |
 18 |     let _ = Atomic::new(Pair { first: NonNull::<u64>::dangling(), second: 0_u8 });
-   |             ----------- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ a pointer, whose bits do not hold its provenance
+   |             ----------- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not `Atom`
    |             |
    |             required by a bound introduced by this call
    |
-   = help: the trait `atomix::__private::FieldRepr` is not implemented for `*mut u64`
-   = note: a pointer is stored alone, in a newtype or an `Option`, or as a pointer field of a pointer word or the one of a pointer enum's variant, marked `#[atom(pointer)]` where its type shows no pointer
+help: the trait `Atom` is not implemented for `Pair<NonNull<u64>, u8>`
+  --> tests/compile_fail/derive_on_a_generic_instance_with_a_pointer_field.rs:12:1
+   |
+12 | struct Pair<A, B> {
+   | ^^^^^^^^^^^^^^^^^
+   = note: an atomic value is a primitive, a pointer or a shared reference, an array or a tuple of atomic values that fits 128 bits, a core type such as `NonZero<u32>`, or a type that derives `Atom`: `Atom`'s implementors list each
+   = note: for a type of your own, derive it, `#[derive(Atom)]`, with atomix's `derive` feature, or keep each promise of `Atom`'s `# Safety` section in a `const unsafe impl`
+   = note: a function's name is a value of its own type, not a function pointer: name the pointer's type, as `Atomic<fn(&str) -> usize>` does
 help: the trait `Atom` is conditionally implemented for `Pair<A, B>`
   --> tests/compile_fail/derive_on_a_generic_instance_with_a_pointer_field.rs:10:23
    |
@@ -17,17 +23,6 @@ help: the trait `Atom` is conditionally implemented for `Pair<A, B>`
    |                       unsatisfied requirement introduced here: `<_ as Atom>::Repr: atomix::__private::FieldRepr`
    |                       unsatisfied requirement introduced here: `Pair<_, _>: Send`
    |                       unsatisfied requirement introduced here: `Pair<_, _>: Sync`
-note: required for `Pair<NonNull<u64>, u8>` to implement `Atom`
-  --> tests/compile_fail/derive_on_a_generic_instance_with_a_pointer_field.rs:12:8
-   |
-10 | #[derive(Clone, Copy, Atom)]
-   |                       ----
-   |                       |
-   |                       type parameter would need to implement `Atom`
-   |                       in this derive macro expansion
-11 | #[atom(repr = u64)]
-12 | struct Pair<A, B> {
-   |        ^^^^
 note: required by a bound in `atomix::Atomic::<T>::new`
   --> $WORKSPACE/crates/atomix-core/src/atomic/mod.rs
    |
@@ -39,14 +34,20 @@ note: required by a bound in `atomix::Atomic::<T>::new`
    |            ^^^^^^^^^^ required by this bound in `Atomic::<T>::new`
    = note: this error originates in the derive macro `Atom` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: a field stored as `*mut u64` cannot be packed beside others
+error[E0277]: `Pair<NonNull<u64>, u8>` cannot be stored in an atomic
   --> tests/compile_fail/derive_on_a_generic_instance_with_a_pointer_field.rs:18:13
    |
 18 |     let _ = Atomic::new(Pair { first: NonNull::<u64>::dangling(), second: 0_u8 });
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ a pointer, whose bits do not hold its provenance
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not `Atom`
    |
-   = help: the trait `atomix::__private::FieldRepr` is not implemented for `*mut u64`
-   = note: a pointer is stored alone, in a newtype or an `Option`, or as a pointer field of a pointer word or the one of a pointer enum's variant, marked `#[atom(pointer)]` where its type shows no pointer
+help: the trait `Atom` is not implemented for `Pair<NonNull<u64>, u8>`
+  --> tests/compile_fail/derive_on_a_generic_instance_with_a_pointer_field.rs:12:1
+   |
+12 | struct Pair<A, B> {
+   | ^^^^^^^^^^^^^^^^^
+   = note: an atomic value is a primitive, a pointer or a shared reference, an array or a tuple of atomic values that fits 128 bits, a core type such as `NonZero<u32>`, or a type that derives `Atom`: `Atom`'s implementors list each
+   = note: for a type of your own, derive it, `#[derive(Atom)]`, with atomix's `derive` feature, or keep each promise of `Atom`'s `# Safety` section in a `const unsafe impl`
+   = note: a function's name is a value of its own type, not a function pointer: name the pointer's type, as `Atomic<fn(&str) -> usize>` does
 help: the trait `Atom` is conditionally implemented for `Pair<A, B>`
   --> tests/compile_fail/derive_on_a_generic_instance_with_a_pointer_field.rs:10:23
    |
@@ -56,17 +57,6 @@ help: the trait `Atom` is conditionally implemented for `Pair<A, B>`
    |                       unsatisfied requirement introduced here: `<_ as Atom>::Repr: atomix::__private::FieldRepr`
    |                       unsatisfied requirement introduced here: `Pair<_, _>: Send`
    |                       unsatisfied requirement introduced here: `Pair<_, _>: Sync`
-note: required for `Pair<NonNull<u64>, u8>` to implement `Atom`
-  --> tests/compile_fail/derive_on_a_generic_instance_with_a_pointer_field.rs:12:8
-   |
-10 | #[derive(Clone, Copy, Atom)]
-   |                       ----
-   |                       |
-   |                       type parameter would need to implement `Atom`
-   |                       in this derive macro expansion
-11 | #[atom(repr = u64)]
-12 | struct Pair<A, B> {
-   |        ^^^^
 note: required by a bound in `atomix::Atomic`
   --> $WORKSPACE/crates/atomix-core/src/atomic/mod.rs
    |

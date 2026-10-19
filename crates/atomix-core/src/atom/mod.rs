@@ -1,18 +1,41 @@
 //! A value storable in an atomic, and which read-modify-writes mean something on it.
 
-mod option;
+// A layout takes 128 bits.
 #[cfg(wide)]
-mod pair;
+mod alloc;
+mod array;
+mod bool_array;
+mod core_range;
+mod enum_with_fields;
+mod net;
+mod option;
+mod packed;
 mod ptr;
 mod ranged;
+mod reference;
 mod scalar;
+// std's values, which the `std` feature adds.
+#[cfg(std_values)]
+mod system;
+// A duration takes 128 bits.
+#[cfg(wide)]
+mod time;
+mod tuple;
 
-pub use self::ptr::PointerAtom;
+pub use self::array::Slots;
+pub use self::enum_with_fields::{EnumShape, Wider};
+pub use self::packed::Packed;
 #[cfg(wide)]
 pub use self::ptr::VtablePointer;
+pub(crate) use self::ptr::{Metadata, PointerMetadata};
+pub use self::ptr::{PointerAtom, PointerReprAtom};
 // For deranged's ranged integers, which take the impls atomix's own do.
 #[cfg(feature = "deranged-05")]
 pub(crate) use self::ranged::ranged_atom;
+pub use self::tuple::{
+    Fill, Fold, Integer, IntegerWord, Integers, IntegersBeside, LastField, LastReach, Padding,
+    Pointer, Pointers, Push, ReachOf, Shape, Tagged, TupleFieldRepr, TwoPointers,
+};
 use crate::primitive::{Bitwise, CompareExchange, ExactBits, FetchAdd, Primitive};
 use crate::range::{PointeeAlignment, ReprRange, Tags};
 use crate::validity::{Partial, Total, Validity};
@@ -92,7 +115,9 @@ use crate::validity::{Partial, Total, Validity};
 #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot be stored in an atomic",
     label = "not `Atom`",
-    note = "for a type of your own, derive it, `#[derive(Atom)]`, with atomix's `derive` feature, or keep each promise of `Atom`'s `# Safety` section in a `const unsafe impl`"
+    note = "an atomic value is a primitive, a pointer or a shared reference, an array or a tuple of atomic values that fits 128 bits, a core type such as `NonZero<u32>`, or a type that derives `Atom`: `Atom`'s implementors list each",
+    note = "for a type of your own, derive it, `#[derive(Atom)]`, with atomix's `derive` feature, or keep each promise of `Atom`'s `# Safety` section in a `const unsafe impl`",
+    note = "a function's name is a value of its own type, not a function pointer: name the pointer's type, as `Atomic<fn(&str) -> usize>` does"
 )]
 #[cfg_attr(
     x86_64_without_cmpxchg16b,
@@ -225,14 +250,29 @@ pub trait AtomBitwise: Atom<Validity = Total, Repr: Bitwise> {}
 #[expect(unsafe_code, reason = "a field's bitwise operations write any pattern of its bits")]
 pub unsafe trait FieldBitwise: Atom<Repr: const ExactBits> {}
 
+/// Every pattern of the bits a packed value stores a `T` in, read back so, decodes, where `T` has
+/// this validity and its bitwise operations combine values: [`FieldBitwise`], keyed by the
+/// validity, so an array of [`AtomBitwise`] values has it whether its slots fill its repr, and it
+/// is `Total`, or leave bits above them.
+///
+/// # Safety
+/// As `FieldBitwise`'s, for each `T` an impl names.
+#[doc(hidden)]
+#[expect(unsafe_code, reason = "a field's bitwise operations write any pattern of its bits")]
+pub impl(crate) unsafe trait FieldPatternsDecode<T> {}
+
+// SAFETY: every repr of an `AtomBitwise` value decodes (`Total`), so every pattern of its bits,
+// read back however, does.
+#[expect(unsafe_code, reason = "`Total` keeps the promise")]
+unsafe impl<T: AtomBitwise> FieldPatternsDecode<T> for Total {}
+
 // `do_not_recommend`, so a value without `AtomBitwise` reports this trait's message, which speaks
 // of fields, not `AtomBitwise`'s.
 //
-// SAFETY: every repr of an `AtomBitwise` value decodes (`Total`), so every pattern of its bits,
-// read back however, does.
+// SAFETY: the validity promises every pattern of the field's bits decodes.
 #[diagnostic::do_not_recommend]
-#[expect(unsafe_code, reason = "`Total` keeps the promise")]
-unsafe impl<T: AtomBitwise<Repr: const ExactBits>> FieldBitwise for T {}
+#[expect(unsafe_code, reason = "the validity keeps the promise")]
+unsafe impl<T: Atom<Repr: const ExactBits, Validity: FieldPatternsDecode<T>>> FieldBitwise for T {}
 
 /// Wrapping add and subtract on the bits a packed value stores it in are add and subtract on the
 /// value, and every pattern of those bits decodes.

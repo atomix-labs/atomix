@@ -47,6 +47,31 @@ pub impl(crate) const trait Validity {
     /// a generic derived value's validity nests it over its fields.
     #[doc(hidden)]
     type ZeroValidityWith<V: Validity>: const Validity;
+    /// The validity of an array of values of this validity, several, whose slots fill its repr:
+    /// every repr decodes where each slot's does, and zero where zero does, or does not where it
+    /// does not.
+    #[doc(hidden)]
+    type Elements: const Validity;
+    /// The validity of an array of values of this validity whose slots leave bits of its repr
+    /// above them, which `to_repr` writes one way, clear, or, a `Packed`'s, as copies of a signed
+    /// last element's sign: as [`Elements`](Self::Elements)', but a repr whose bits there differ
+    /// does not decode.
+    #[doc(hidden)]
+    type PaddedElements: const Validity;
+    /// The validity of a value of this validity and one of `V`'s side by side, filling the repr:
+    /// every repr decodes where every one of each does, and zero where zero of each does, or does
+    /// not where either's does not.
+    #[doc(hidden)]
+    type Beside<V: const Validity>: const Validity;
+    /// The validity of a value of this validity beside a `Total` one before it.
+    #[doc(hidden)]
+    type AfterTotal: const Validity;
+    /// The validity of a value of this validity beside a `ZeroValid` one before it.
+    #[doc(hidden)]
+    type AfterZeroValid: const Validity;
+    /// The validity of a value of this validity beside a `Partial` one before it.
+    #[doc(hidden)]
+    type AfterPartial: const Validity;
     /// Wraps a primitive's cell.
     #[doc(hidden)]
     fn wrap<R: CellAccess>(cell: R::Cell) -> Self::Cell<R>;
@@ -108,6 +133,12 @@ const impl Validity for Total {
     const PROMISES_ZERO_DECODES: bool = true;
     type ZeroValidity = ZeroValid;
     type ZeroValidityWith<V: Validity> = V::ZeroValidity;
+    type Elements = Total;
+    type PaddedElements = ZeroValid;
+    type Beside<V: const Validity> = V::AfterTotal;
+    type AfterTotal = Total;
+    type AfterZeroValid = ZeroValid;
+    type AfterPartial = Partial;
     #[inline]
     fn wrap<R: CellAccess>(cell: R::Cell) -> R::Cell {
         cell
@@ -130,7 +161,8 @@ const impl Validity for Total {
 macro_rules! opaque {
     ($(
         $kind:ident => $optional:ident, $none_takes_zero:literal, $zero_decodes:literal,
-        $zero_validity:ident, $zero_validity_with:ty
+        $zero_validity:ident, $zero_validity_with:ty, $elements:ident,
+        $beside:ty, $after_total:ident, $after_zero_valid:ident, $after_partial:ident
     );+ $(;)?) => {$(
         const impl Validity for $kind {
             type Cell<R: CellAccess> = Opaque<R::Cell>;
@@ -140,6 +172,12 @@ macro_rules! opaque {
             const PROMISES_ZERO_DECODES: bool = $zero_decodes;
             type ZeroValidity = $zero_validity;
             type ZeroValidityWith<V: Validity> = $zero_validity_with;
+            type Elements = $elements;
+            type PaddedElements = $elements;
+            type Beside<V: const Validity> = $beside;
+            type AfterTotal = $after_total;
+            type AfterZeroValid = $after_zero_valid;
+            type AfterPartial = $after_partial;
             #[inline]
             fn wrap<R: CellAccess>(cell: R::Cell) -> Opaque<R::Cell> {
                 Opaque(cell)
@@ -161,12 +199,20 @@ macro_rules! opaque {
 }
 
 // Each kind: its `Option`'s validity, whether `None` takes zero, whether zero decodes, its
-// `ZeroValidity`, and its `ZeroValidityWith<V>`.
+// `ZeroValidity`, its `ZeroValidityWith<V>`, and an array's of it, padded or not: an array of
+// values whose zero does not decode has no zero either, though other reprs, a slot's zero among
+// them, may not decode. Then its `Beside<V>`, and its validity beside one before it of `Total`,
+// `ZeroValid` and `Partial`: a value whose zero does not decode keeps that beside any other, and
+// one whose zero does decodes zero beside another whose zero does.
 opaque! {
-    TotalZeroNiche => Total, true, false, Partial, Partial;
-    ZeroValid => ZeroValid, false, true, ZeroValid, V::ZeroValidity;
-    ZeroNiche => ZeroValid, true, false, Partial, Partial;
-    Partial => Partial, false, false, Partial, Partial;
+    TotalZeroNiche => Total, true, false, Partial, Partial, ZeroNiche,
+        ZeroNiche, ZeroNiche, ZeroNiche, ZeroNiche;
+    ZeroValid => ZeroValid, false, true, ZeroValid, V::ZeroValidity, ZeroValid,
+        V::AfterZeroValid, ZeroValid, ZeroValid, Partial;
+    ZeroNiche => ZeroValid, true, false, Partial, Partial, ZeroNiche,
+        ZeroNiche, ZeroNiche, ZeroNiche, ZeroNiche;
+    Partial => Partial, false, false, Partial, Partial, Partial,
+        V::AfterPartial, Partial, Partial, Partial;
 }
 
 #[cfg(test)]
@@ -228,6 +274,41 @@ mod tests {
             Partial => Partial, Partial, Partial, Partial, Partial;
         }
     }
+
+    /// Compiles only where an array of several `V` values has validity `F` where its slots fill
+    /// its repr, and `P` where they leave bits above.
+    const fn elements_are<
+        V: Validity<Elements = F, PaddedElements = P>,
+        F: Validity,
+        P: Validity,
+    >() {
+    }
+
+    /// Compiles only where a value of validity `A` beside one of `B` has validity `C`.
+    const fn beside_is<A: Validity<Beside<B> = C>, B: const Validity, C: Validity>() {}
+
+    // Values side by side promise what both do.
+    const _: () = {
+        beside_is::<Total, Total, Total>();
+        beside_is::<Total, ZeroValid, ZeroValid>();
+        beside_is::<ZeroValid, Total, ZeroValid>();
+        beside_is::<Total, Partial, Partial>();
+        beside_is::<Partial, ZeroValid, Partial>();
+        beside_is::<Total, TotalZeroNiche, ZeroNiche>();
+        beside_is::<TotalZeroNiche, Total, ZeroNiche>();
+        beside_is::<Partial, ZeroNiche, ZeroNiche>();
+        beside_is::<ZeroNiche, Partial, ZeroNiche>();
+        beside_is::<ZeroValid, ZeroValid, ZeroValid>();
+    };
+
+    // An array promises what each element does, but a padded one's bits above.
+    const _: () = {
+        elements_are::<Total, Total, ZeroValid>();
+        elements_are::<TotalZeroNiche, ZeroNiche, ZeroNiche>();
+        elements_are::<ZeroValid, ZeroValid, ZeroValid>();
+        elements_are::<ZeroNiche, ZeroNiche, ZeroNiche>();
+        elements_are::<Partial, Partial, Partial>();
+    };
 
     #[test]
     fn every_repr_decodes_for_total_alone_and_zero_for_total_and_zero_valid() {

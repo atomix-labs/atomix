@@ -1,5 +1,5 @@
 //! zerocopy's traits on an atomic, each derived through its cell: which atomics have each, and an
-//! atomic read from bytes, from zeros, and at any offset.
+//! atomic read from bytes, from zeros, and at any offset; and on a `Packed`, its array's.
 
 #![cfg(feature = "zerocopy-08")]
 // The derives are absent under loom, whose cells are not plain memory.
@@ -11,9 +11,11 @@ mod tests {
     use core::ptr::{self, NonNull};
 
     use atomix_core::ordering::Release;
-    use atomix_core::{Atomic, AtomicBool, AtomicI8, AtomicU8, AtomicU64, RangedU8, RangedU64};
+    use atomix_core::{
+        Atomic, AtomicBool, AtomicI8, AtomicU8, AtomicU64, Packed, RangedU8, RangedU64,
+    };
     use zerocopy::{
-        FromBytes, FromZeros, IntoBytes, KnownLayout, TryFromBytes, Unaligned, transmute,
+        FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromBytes, Unaligned, transmute,
     };
 
     /// Compiles only where zerocopy knows `T`'s layout.
@@ -26,6 +28,8 @@ mod tests {
     const fn has_from_bytes<T: FromBytes>() {}
     /// Compiles only where `T` reads from zeros, and so from checked bytes.
     const fn has_from_zeros<T: FromZeros>() {}
+    /// Compiles only where `T` has no interior mutability.
+    const fn has_immutable<T: Immutable>() {}
 
     #[test]
     fn every_atomic_has_a_known_layout() {
@@ -90,6 +94,22 @@ mod tests {
             "any other address is refused: bytes carry no provenance"
         );
         assert!(!AtomicBool::new_zeroed().into_inner(), "a `bool` from zeros, false");
+    }
+
+    // A packed array has its array's traits.
+    const _: () = {
+        has_known_layout::<Packed<[u16; 3], u64>>();
+        has_into_bytes::<Packed<[bool; 3], u8>>();
+        has_from_bytes::<Packed<[u8; 3], u32>>();
+        has_unaligned::<Packed<[u8; 3], u32>>();
+        has_immutable::<Packed<[u8; 3], u32>>();
+    };
+
+    #[test]
+    fn a_packed_array_reads_from_its_arrays_bytes() {
+        let read = Packed::<[u8; 3], u32>::read_from_bytes(&[1, 2, 3]).expect("three bytes");
+        assert_eq!(read, Packed::new([1, 2, 3]), "the array's bytes");
+        assert_eq!(read.as_bytes(), [1, 2, 3], "and back");
     }
 
     #[test]

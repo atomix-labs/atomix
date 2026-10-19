@@ -1,0 +1,11 @@
+error[E0599]: the method `element` exists for struct `atomix_core::Atomic<[NonNull<u64>; 1]>`, but its trait bounds were not satisfied
+  --> tests/compile_fail/element_of_an_array_of_pointers.rs:12:22
+   |
+12 |     let _ = pointers.element(0).load(Acquire);
+   |                      ^^^^^^^ method cannot be called on `atomix_core::Atomic<[NonNull<u64>; 1]>` due to unsatisfied trait bounds
+   |
+   = note: the following trait bounds were not satisfied:
+           `*mut u64: ExactBits`
+           which is required by `<[NonNull<u64>; 1] as atomix_core::__private::Array>::Element = _`
+           `*mut u64: ExactBits`
+           which is required by `[NonNull<u64>; 1]: atomix_core::__private::Array`

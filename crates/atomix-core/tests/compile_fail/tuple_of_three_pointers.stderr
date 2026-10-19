@@ -1,0 +1,41 @@
+error[E0277]: `(NonNull<u64>, NonNull<u64>, NonNull<u64>)` cannot be stored in an atomic
+  --> tests/compile_fail/tuple_of_three_pointers.rs:10:25
+   |
+10 |     let _ = Atomic::new((pointer, pointer, pointer));
+   |             ----------- ^^^^^^^^^^^^^^^^^^^^^^^^^^^ not `Atom`
+   |             |
+   |             required by a bound introduced by this call
+   |
+   = help: the trait `Atom` is not implemented for `(NonNull<u64>, NonNull<u64>, NonNull<u64>)`
+   = note: an atomic value is a primitive, a pointer or a shared reference, an array or a tuple of atomic values that fits 128 bits, a core type such as `NonZero<u32>`, or a type that derives `Atom`: `Atom`'s implementors list each
+   = note: for a type of your own, derive it, `#[derive(Atom)]`, with atomix's `derive` feature, or keep each promise of `Atom`'s `# Safety` section in a `const unsafe impl`
+   = note: a function's name is a value of its own type, not a function pointer: name the pointer's type, as `Atomic<fn(&str) -> usize>` does
+   = help: the following other types implement trait `Atom`:
+             (T₁, T₂, …, Tₙ) up to tuples of arity 12
+note: required by a bound in `atomix_core::Atomic::<T>::new`
+  --> src/atomic/mod.rs
+   |
+   | impl<T: Atom> Atomic<T> {
+...
+   |     pub const fn new(value: T) -> Self
+   |     where
+   |         T: const Atom,
+   |            ^^^^^^^^^^ required by this bound in `Atomic::<T>::new`
+
+error[E0277]: `(NonNull<u64>, NonNull<u64>, NonNull<u64>)` cannot be stored in an atomic
+  --> tests/compile_fail/tuple_of_three_pointers.rs:10:13
+   |
+10 |     let _ = Atomic::new((pointer, pointer, pointer));
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not `Atom`
+   |
+   = help: the trait `Atom` is not implemented for `(NonNull<u64>, NonNull<u64>, NonNull<u64>)`
+   = note: an atomic value is a primitive, a pointer or a shared reference, an array or a tuple of atomic values that fits 128 bits, a core type such as `NonZero<u32>`, or a type that derives `Atom`: `Atom`'s implementors list each
+   = note: for a type of your own, derive it, `#[derive(Atom)]`, with atomix's `derive` feature, or keep each promise of `Atom`'s `# Safety` section in a `const unsafe impl`
+   = note: a function's name is a value of its own type, not a function pointer: name the pointer's type, as `Atomic<fn(&str) -> usize>` does
+   = help: the following other types implement trait `Atom`:
+             (T₁, T₂, …, Tₙ) up to tuples of arity 12
+note: required by a bound in `atomix_core::Atomic`
+  --> src/atomic/mod.rs
+   |
+   | pub struct Atomic<T: Atom> {
+   |                      ^^^^ required by this bound in `Atomic`

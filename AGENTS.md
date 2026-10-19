@@ -107,6 +107,49 @@ What a change here keeps, beyond what the checks hold it to.
   private field may carry an invariant its module's unsafe code relies on: a
   path is a type alone, and the hidden `project_field` that builds each place is
   `unsafe`.
+- An array `[T; N]` is stored in slots of its element's repr's width, element 0
+  lowest, by the hidden `Slots` table, one impl per element repr and length,
+  since a repr chosen by a width needs `generic_const_exprs`; two pointers take
+  a `DoubleWord`. An element is as visible as its array, so an atomic array, a
+  field of one, and an element that is one lend each element's place, an
+  `AtomicField`: `place::<I>()` and `last()` at an `Element` or `Last` path, and
+  `element(i)`, `element_checked` and `element_unchecked` at an `Indexed` one,
+  whose place holds where its bits lie in its tail, a slice of units, which
+  takes no bytes, its length their offset and span: `AtomicField` is `repr(C)`,
+  the atomic its first field, so a reference to the atomic is one to each place.
+  A place at a run-time index lends its fields' and elements' places, at
+  `Indexed` too, and `elements()` is the array of them. Only a whole array's
+  `last()` adds. Only an element stored as bits has a place: a pointer's
+  provenance is no bits. `Packed<[T; N], R>` packs the elements at their range's
+  width in the integer it states, as a packed struct packs its fields, and lends
+  them alike.
+- A tuple of one to twelve values is laid out as `#[derive(Atom)]` lays out the
+  struct of its fields, by the hidden table of shapes in
+  `crates/atomix-core/src/atom/tuple/table.rs`, which `tests/tuples.rs` writes
+  and checks: fields stored as bits side by side in slots of their reprs'
+  widths; one pointer, the others in its low bits up to 29 bits, else in an
+  integer word beside it; two pointers, the others in the first one's low bits.
+  Beside a function pointer, the others take an integer word whatever their
+  bits, since code leaves no low bit clear, which its repr's
+  `PointerRepr::Pointee` says by type, `Data` or `Code`, never by an alignment.
+  Every use of a tuple, its encode, decodes and projection, refuses one whose
+  first pointer leaves too few bits for them. A pointer field is set apart as a
+  `*mut ()` and rebuilt by its own repr's `PointerRepr::from_raw`, so a sealed
+  `ReprOf` keeps its seal. Its projection is a tuple of its fields' places,
+  `fields().0`, on the derive's own `Field` paths, and its last field adds in
+  place where the slots fill the repr and every repr of its slot decodes,
+  `Total`, as an array's last element asks `AtomAdd`.
+- A value of core's is stored as core lays it out where that costs no shift: an
+  IP address as its octets in core's order, so a load swaps no byte, and with no
+  `AtomOrd`, since a repr that ordered as the address would swap the bytes of
+  every load; a value of several fields, a socket address or a `Duration`, each
+  field in bits of its own, and `AtomOrd` only where the field compared first
+  lies highest, as a `Duration`'s seconds do. A wrapper, `Reverse` as
+  `Wrapping`, is its value's repr, tags and all. An enum of core's of payloads
+  stored as bits, `Result`, `ControlFlow` or `Bound`, keeps its variant's index
+  as a tag above the wider payload's slot, by the hidden table on the payloads'
+  kinds in `crates/atomix-core/src/atom/enum_with_fields.rs`; a payload stored
+  as a pointer has no entry: a derived enum of the same variants lays it out.
 - A pointer word, a struct of pointers beside tags, and a pointer enum, an enum
   some of whose variants hold a pointer, keep their tags in the low bits a
   pointee's alignment leaves clear, or, a pointer word of two words, in an
@@ -129,6 +172,24 @@ What a change here keeps, beyond what the checks hold it to.
   from, one word or two, reads a pointee's alignment, since a type's layout may
   read them: only code and the checks read `POINTEE_ALIGNMENT`, so a node can
   hold an atomic of the word that points to it.
+- A reference and a function pointer are stored as a `ReprOf` of themselves, the
+  raw pointer's repr sealed: only a value's `to_repr` makes one, bits make null,
+  and so does a change of any bit but the low bits its pointee's alignment
+  leaves clear, a word's tags, so a safe `from_repr` hands out no reference or
+  function pointer a value did not give, and refuses a tagged one. A pointer
+  word or a tuple holds a reference as it holds a `NonNull`, and a pointer word
+  keeps its tags in those low bits, to which `ReprOf` confines each operation's
+  mask. A value that holds a reference takes no ordering weaker than an
+  `Acquire` read and a `Release` write: the floor is its repr's,
+  `Primitive::OrderingFloor`, which an `Option`, a newtype or a derived value
+  inherits with no code of its own, and a double word's is the stronger of its
+  words'. Each operation that reads or writes a `T` takes `LoadOrdering<T>`,
+  `StoreOrdering<T>` or `RmwOrdering<T>`. A field stored as bits takes its own
+  value's, every ordering, where it hands out no more than itself, through a
+  primitive's hidden operation that returns bits or a `bool` and raises nothing;
+  where it returns its container, `RmwOrdering<FieldOf<C>>`, an `Acquire` read,
+  since its write puts back the reference it read. A function pointer points to
+  code no write changes, so it takes any.
 - A function that can be `const` is, and a trait whose impls can be is a `const
   trait`: each atomic operation is `const` where core's is, so not a pointer's
   compare-exchange, offsets or masks, nor any under loom, whose impls are plain.
@@ -141,24 +202,29 @@ What a change here keeps, beyond what the checks hold it to.
   is a 0.x crate, `zerocopy-08` and `deranged-05` as t2t's `chrono-04`, so the
   next 0.y can sit beside it; a 1.x or later dependency's feature is its name:
   `serde`, `bytemuck`, `arbitrary`, `arbitrary-int`. `loom`, the model-checking
-  seam rather than an integration, keeps its name.
+  seam rather than an integration, keeps its name, and so does `std`, which adds
+  `Atom` for std's own values and nothing else.
 - A nightly feature is taken where it makes the API right, as `ptr_metadata`
   lets one `Atom` impl of a pointer choose its repr by its pointee's metadata,
-  never to reach core's internals beyond four: the 128-bit intrinsics; a ranged
-  integer's pattern-type field, which `transmute_neo` alone converts and a plain
-  integer replaces should a nightly break it; `DynMetadata`'s layout, its vtable
-  pointer, which `transmute` reads, as core's own `vtable_ptr` does, and writes
-  back, since the compiler hard-codes it: `transmute` refuses a change of its
-  size, and `crates/atomix-core/tests/double_words.rs` calls through a trait
-  object's pointer read back; and `const_eval_select`, whose callers do at run
-  time what no constant can. Four read in a constant no address of a pointer
-  with provenance, three null's alone and `exposed_address` that of a pointer
-  made of an integer, a tagged null, by a `transmute` a constant refuses of any
-  other: `address` reads a pointer's address with `addr`; `exposed_address`, a
-  double word's, exposes its provenance with `expose_provenance`; `clear_tags`,
-  a word's decode, clears its tag bits with `ptr_mask`'s `mask`, which tells
-  LLVM they are clear; and `subtract_tags`, a pointer enum's, offsets the
-  pointer back by its tag, which a match's arm knows, and tells LLVM through
+  and `fn_static`'s `FnPtr` lets one impl hold every function pointer beside the
+  one for references, as `with_negative_coherence` proves no reference is a
+  function pointer, and `ptr_alignment_type` and `ascii_char` let core's
+  `Alignment` and `ascii::Char` be atomic values, never to reach core's
+  internals beyond four: the 128-bit intrinsics; a ranged integer's pattern-type
+  field, which `transmute_neo` alone converts and a plain integer replaces
+  should a nightly break it; `DynMetadata`'s layout, its vtable pointer, which
+  `transmute` reads, as core's own `vtable_ptr` does, and writes back, since the
+  compiler hard-codes it: `transmute` refuses a change of its size, and
+  `crates/atomix-core/tests/double_words.rs` calls through a trait object's
+  pointer read back; and `const_eval_select`, whose callers do at run time what
+  no constant can. Four read in a constant no address of a pointer with
+  provenance, three null's alone and `exposed_address` that of a pointer made of
+  an integer, a tagged null, by a `transmute` a constant refuses of any other:
+  `address` reads a pointer's address with `addr`; `exposed_address`, a double
+  word's, exposes its provenance with `expose_provenance`; `clear_tags`, a
+  word's decode, clears its tag bits with `ptr_mask`'s `mask`, which tells LLVM
+  they are clear; and `subtract_tags`, a pointer enum's, offsets the pointer
+  back by its tag, which a match's arm knows, and tells LLVM through
   `assert_unchecked` that the bits are clear. Four keep to run time what a
   constant cannot run, and in a constant, which runs on one thread, do the same
   plainly: an integer's `BitTest` on `x86_64`, `lock bts` and its kin in an
@@ -166,8 +232,13 @@ What a change here keeps, beyond what the checks hold it to.
   on `x86_64`, `cmpxchg16b`, there a read and a write; `fence(StoreStore)` on
   `aarch64`, `dmb ishst`, there nothing; and the lock of Miri's double-word
   cell, taken and given back around each operation, there none, as a constant
-  reads no `static` with interior mutability. `generic_const_exprs`,
-  `specialization` and `unsafe_fields` stay out.
+  reads no `static` with interior mutability. Two vectorize at run time what a
+  constant does by multiplies, eight `bool`s to a multiply, and give the same
+  result: `spread_word`, an array of `bool`s' decode, by NEON's `tbl; ushl; and`
+  or AVX2's `vpshufb; vpand; vpcmpeqb`, and `gather_word`, its encode, by NEON's
+  `ushl; addp` or AVX2's `vpsllw; vpmovmskb`; each where the build enables the
+  vector's feature, and NEON's off Miri, which runs none of it.
+  `generic_const_exprs`, `specialization` and `unsafe_fields` stay out.
 
 ### Docs
 

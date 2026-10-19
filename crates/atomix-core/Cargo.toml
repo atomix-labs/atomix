@@ -12,7 +12,7 @@ repository.workspace   = true
 ignored-paths = ["tests/compile_fail/**/*.rs", "tests/compile_pass/*.rs"]
 
 [package.metadata.docs.rs]
-features = ["arbitrary", "arbitrary-int", "bytemuck", "deranged-05", "serde", "zerocopy-08"]
+features = ["arbitrary", "arbitrary-int", "bytemuck", "deranged-05", "serde", "std", "zerocopy-08"]
 
 [features]
 default       = []
@@ -22,6 +22,7 @@ bytemuck      = ["dep:bytemuck"]
 deranged-05   = ["dep:deranged"]
 loom          = ["dep:loom", "dep:tracing", "dep:tracing-subscriber"]
 serde         = ["dep:serde_core"]
+std           = []
 zerocopy-08   = ["dep:zerocopy"]
 
 [lints]
@@ -34,10 +35,12 @@ arbitrary-int = { workspace = true, optional = true }
 bytemuck      = { workspace = true, optional = true }
 deranged      = { workspace = true, optional = true }
 serde_core    = { workspace = true, optional = true }
+zerocopy      = { workspace = true, optional = true }
 
 [dev-dependencies]
 # external
 arbitrary-int = { workspace = true, features = ["hint"] }
+bytemuck      = { workspace = true, features = ["min_const_generics"] }
 proptest      = { workspace = true }
 serde_json    = { workspace = true }
 trybuild      = { workspace = true }
@@ -51,7 +54,3 @@ cfg_aliases = { workspace = true }
 loom               = { workspace = true, optional = true }
 tracing            = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
-
-[target.'cfg(not(loom))'.dependencies]
-# external
-zerocopy = { workspace = true, optional = true }

@@ -1,0 +1,12 @@
+error[E0597]: `local` does not live long enough
+  --> tests/compile_fail/reference_to_a_local_in_a_static.rs:15:18
+   |
+14 |     let local = 8_u64;
+   |         ----- binding `local` declared here
+15 |     CONFIG.store(&local, Release);
+   |     -------------^^^^^^----------
+   |     |            |
+   |     |            borrowed value does not live long enough
+   |     argument requires that `local` is borrowed for `'static`
+16 | }
+   | - `local` dropped here while still borrowed

@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+  --> tests/compile_fail/function_pointer_repr_of_another_signature.rs:12:49
+   |
+12 |     let _ = <fn(u64) -> u64 as Atom>::from_repr(repr);
+   |             ----------------------------------- ^^^^ expected `ReprOf<fn(u64) -> u64>`, found `ReprOf<fn(u8) -> u8>`
+   |             |
+   |             arguments to this function are incorrect
+   |
+   = note: expected struct `ReprOf<fn(u64) -> u64>`
+              found struct `ReprOf<fn(u8) -> u8>`
+note: associated function defined here
+  --> src/atom/mod.rs
+   |
+   |     fn from_repr(repr: Self::Repr) -> Option<Self>;
+   |        ^^^^^^^^^

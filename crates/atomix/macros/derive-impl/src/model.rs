@@ -229,9 +229,9 @@ pub(crate) struct Field {
     /// Whether its type names a parameter of the type, so that an impl bounds it in its where
     /// clause rather than checking it once beside the impl, unless it is a marker.
     pub(crate) is_generic: bool,
-    /// Whether it is written as a raw pointer, a `NonNull` or an `Option` of one, or
-    /// marked `#[atom(pointer)]`, which need not be `Send` or `Sync`: `Atom` promises such a
-    /// value may cross threads.
+    /// Whether it is written as a raw pointer, a `NonNull`, a shared reference, a function pointer
+    /// or an `Option` of one, or marked `#[atom(pointer)]`, which need not be `Send` or `Sync`:
+    /// `Atom` promises such a value may cross threads.
     pub(crate) is_pointer: bool,
     /// Whether it is written as a pointer to a value of no size known at compile time, a slice, a
     /// `str` or a trait object, whose pointer holds its metadata beside its address: two words.

@@ -1,5 +1,5 @@
-//! serde's `Serialize` and `Deserialize`: an atomic as its value, and a ranged integer as its
-//! integer, checked against the range on the way in.
+//! serde's `Serialize` and `Deserialize`: an atomic as its value, a ranged integer as its integer,
+//! checked against the range on the way in, and a `Packed` as its array.
 
 use core::fmt::{self, Formatter};
 use core::marker::PhantomData;
@@ -7,13 +7,13 @@ use core::marker::PhantomData;
 use serde_core::de::{Error, Unexpected, Visitor};
 use serde_core::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::atom::Atom;
+use crate::atom::{Atom, Packed};
 use crate::atomic::Atomic;
 use crate::ranged::{self, each_ranged_integer};
 
-/// Serializes the value a `Relaxed` read gives, as serde does core's atomics, reading it as `Debug`
-/// does: a load where the target has one, else the compare-exchange `load_rmw` is, which writes the
-/// cache line.
+/// Serializes the value a read gives, `Relaxed` as serde reads core's atomics, or `Acquire` where
+/// the value holds a reference: a load where the target has one, else the compare-exchange
+/// `load_rmw` is, as `Debug` reads, which writes the cache line.
 impl<T: Atom + Serialize> Serialize for Atomic<T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.load_or_exchange().serialize(serializer)
@@ -24,6 +24,21 @@ impl<T: Atom + Serialize> Serialize for Atomic<T> {
 impl<'de, T: Atom + Deserialize<'de>> Deserialize<'de> for Atomic<T> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         T::deserialize(deserializer).map(Self::from)
+    }
+}
+
+/// Serializes the array, as serde serializes one: the integer it is packed in is no part of it.
+impl<A: Serialize, R> Serialize for Packed<A, R> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        (**self).serialize(serializer)
+    }
+}
+
+/// Deserializes an array, and packs it: every array of the elements is one, as each element's own
+/// impl reads only values.
+impl<'de, A: Deserialize<'de>, R> Deserialize<'de> for Packed<A, R> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        A::deserialize(deserializer).map(Self::new)
     }
 }
 

@@ -1,0 +1,17 @@
+error[E0080]: evaluation panicked: `atomix_core::atom::packed::Packed<[u8; 0], u8>`: it packs no elements, and a `Packed` packs one at least
+ --> src/atom/packed.rs
+  |
+  |         let (layout, width) = const { packed_layout::<T, N, R>() };
+  |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `<atomix_core::Packed<[u8; 0], u8> as atomix_core::Atom>::to_repr::{constant#0}` failed here
+
+note: erroneous constant encountered
+ --> src/atom/packed.rs
+  |
+  |         let (layout, width) = const { packed_layout::<T, N, R>() };
+  |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: the above error was encountered while instantiating `fn <Packed<[u8; 0], u8> as Atom>::to_repr`
+ --> src/atomic/mod.rs
+  |
+  |             cell: T::Validity::wrap::<T::Repr>(value.to_repr().into_cell()),
+  |                                                ^^^^^^^^^^^^^^^

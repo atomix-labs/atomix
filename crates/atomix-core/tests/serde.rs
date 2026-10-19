@@ -1,6 +1,6 @@
-//! serde on an atomic, as the value a `Relaxed` read gives, a 128-bit one's on every target, and
-//! on each ranged integer, as its integer: refused outside the range in serde's words, at
-//! `serde_json`'s line and column.
+//! serde on an atomic, as the value a `Relaxed` read gives, a 128-bit one's on every target; on
+//! each ranged integer, as its integer: refused outside the range in serde's words, at
+//! `serde_json`'s line and column; and on a `Packed`, as its array.
 
 #![cfg(feature = "serde")]
 
@@ -8,7 +8,7 @@
 // this.
 #[cfg(loom)]
 const _: () = {
-    use atomix_core::{AtomicU64, RangedU8};
+    use atomix_core::{AtomicU64, Packed, RangedU8};
     use serde_core::{Deserialize, Serialize};
 
     /// Compiles only where `T` serializes and deserializes.
@@ -16,6 +16,7 @@ const _: () = {
 
     has_serde_traits::<RangedU8<1, 10>>();
     has_serde_traits::<AtomicU64>();
+    has_serde_traits::<Packed<[RangedU8<1, 10>; 2], u8>>();
 };
 
 // Loom's cells exist only inside a model; `model.rs` holds the loom tests.
@@ -30,8 +31,8 @@ mod tests {
     #[cfg(wide)]
     use atomix_core::ordering::Relaxed;
     use atomix_core::{
-        Atom, Atomic, Load, RangedI8, RangedI16, RangedI32, RangedI64, RangedI128, RangedIsize,
-        RangedU8, RangedU16, RangedU32, RangedU64, RangedU128, RangedUsize,
+        Atom, Atomic, Load, Packed, RangedI8, RangedI16, RangedI32, RangedI64, RangedI128,
+        RangedIsize, RangedU8, RangedU16, RangedU32, RangedU64, RangedU128, RangedUsize,
     };
     use serde_core::Serialize;
     use serde_core::de::value::Error;
@@ -95,6 +96,18 @@ mod tests {
             atomic_round_trip(Depth::MAX),
             ("10".to_owned(), Depth::MAX),
             "and a ranged integer"
+        );
+    }
+
+    #[test]
+    fn a_packed_array_is_its_array() {
+        let depths = Packed::<_, u8>::new([Depth::MIN, Depth::MAX]);
+        assert_eq!(round_trip(&depths), ("[1,10]".to_owned(), depths), "the array, as JSON's");
+        assert_eq!(atomic_round_trip(depths).1, depths, "and in an atomic");
+        assert_eq!(
+            refusal::<Packed<[Depth; 2], u8>>("[1,11]"),
+            "invalid value: integer `11`, expected an integer in 1..=10 at line 1 column 5",
+            "each element refused as its own impl refuses it"
         );
     }
 

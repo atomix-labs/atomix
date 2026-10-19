@@ -98,7 +98,9 @@ impl<'a> EnumCode<'a> {
         let private = quote!(#atomix::__private);
         let pointers = enum_with_fields.variants.iter().flat_map(|variant| &variant.fields);
         let pointers = pointers.filter(|field| field.is_pointer).map(|field| &field.ty);
-        let mut layout = LayoutCode::new(implementor, def_site).stored_as_pointers(pointers);
+        let mut layout = LayoutCode::new(implementor, def_site)
+            .bounded_as_pointer_enum()
+            .stored_as_pointers(pointers);
         let variants: Vec<VariantCode<'a>> = (0_usize..)
             .zip(&enum_with_fields.variants)
             .map(|(index, variant)| {

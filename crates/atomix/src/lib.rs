@@ -3,8 +3,9 @@
 //! [`Atomic<T>`](Atomic) holds a `T` as its [`Repr`](Atom::Repr), one primitive an atomic
 //! instruction reads and writes, and decodes it on the way out. The integer, `bool` and pointer
 //! atomics are its aliases (`AtomicU64 = Atomic<u64>`), and any value implementing [`Atom`] is one
-//! more: a `NonZero`, a `char`, a float, a ranged integer, an `Option` that spends a spare repr on
-//! `None`, and a struct or an enum that derives it.
+//! more: a `NonZero`, a `char`, a float, a ranged integer, a shared reference, a function pointer,
+//! an array, a tuple, an IP address, a `Duration`, an `Ordering`, a `Result`, a range, an `Option`
+//! that spends a spare repr on `None`, and a struct or an enum that derives it.
 //!
 //! A crate depends on `atomix-rs`, since crates.io's `atomix` is an unrelated 2017 placeholder:
 //!
@@ -27,18 +28,28 @@
 //!   the [`ProjectFields`] the derive implements, whose [`Fields`](ProjectFields::Fields) is the
 //!   struct of places it writes. A place's type names its [`FieldPath`]: a [`Field`], a [`Then`] of
 //!   a field's field, or [`Whole`], which [`Join`] extends; [`TopField`] marks the one that adds.
+//!   [`Element`] and [`Last`] are the paths to an array's element at a constant index, and
+//!   [`Indexed`] the path to one at an index known at run time, which [`Atomic::element`] lends, or
+//!   to a field of one, whose place holds where its bits lie.
 //! - **Values.** [`Atom`] encodes a value as its repr and back, its [`ReprRange`] says which reprs
 //!   it takes and its [`validity`] which decode, and [`PointerAtom`] is a value stored as a
 //!   pointer; [`AtomAdd`], [`AtomOrd`] and [`AtomBitwise`] add the read-modify-writes that mean
-//!   something for it, and [`FieldBitwise`] and [`FieldAdd`] those of a field of it. Two words hold
-//!   a pair `(P, Q)` of values stored as pointers, and a pointer to a slice, a `str` or a trait
-//!   object. With the `derive` feature, each derives: `Atom` for a struct or an enum, a pointer
-//!   word or a pointer enum among them, which keeps small fields as tags in its pointer's low bits
-//!   and the pointer's provenance, and each capability for a newtype whose field has it. A pointer
-//!   word takes two words where a second pointer, a wide one or tags no alignment holds need them.
-//!   [`RangedU64<MIN, MAX>`](RangedU64) and its siblings, `RangedU8` to `RangedIsize`, hold an
-//!   integer from `MIN` to `MAX`, and [`RangeError`] and [`ParseRangeError`] say why one refused an
-//!   integer or a text.
+//!   something for it, and [`FieldBitwise`] and [`FieldAdd`] those of a field of it. A shared
+//!   reference and a function pointer are stored as a [`ReprOf`] of themselves, which no bits
+//!   forge, and a reference's operations take no ordering weaker than an `Acquire` read and a
+//!   `Release` write. An array `[T; N]` holds each element in a slot as wide as its repr, element 0
+//!   lowest: four bytes in a `u32`, their own bytes, and 64 `bool`s in a `u64`; [`Packed`] holds
+//!   each at the bits its range needs, in an integer it states. A tuple of one to twelve values is
+//!   laid out as the derived struct of its fields would be, its fields places through `fields().0`
+//!   and its kin. Two words hold two values stored as pointers, references among them, as a tuple
+//!   or an array, a pointer beside more tags than its word holds, a function pointer beside any,
+//!   and a pointer to a slice, a `str` or a trait object. With the `derive` feature, each derives:
+//!   `Atom` for a struct or an enum, a pointer word or a pointer enum among them, which keeps small
+//!   fields as tags in its pointer's low bits and the pointer's provenance, and each capability for
+//!   a newtype whose field has it. A pointer word takes two words where a second pointer, a wide
+//!   one or tags no alignment holds need them. [`RangedU64<MIN, MAX>`](RangedU64) and its siblings,
+//!   `RangedU8` to `RangedIsize`, hold an integer from `MIN` to `MAX`, and [`RangeError`] and
+//!   [`ParseRangeError`] say why one refused an integer or a text.
 //! - **Orderings.** The [`ordering`] types, each accepted only where it means something, and the
 //!   [`fence`](fn@fence) and [`compiler_fence`] they order.
 //! - **Primitives.** [`Primitive`], [`ExactBits`] where the bits are the whole value, a
@@ -110,6 +121,26 @@
 //! let expected = Quote { quantity: 300, live: false, flags: POST_ONLY };
 //! assert_eq!(QUOTE.load(Acquire), expected, "the bit off, the flag on, the quantity as it was");
 //! # }
+//! ```
+//!
+//! ## Changing One Element of an Array
+//! ```
+//! use atomix::Atomic;
+//! use atomix::ordering::{AcqRel, Acquire, Release};
+//!
+//! /// Which of 64 workers are busy, a bit each, in one `u64`.
+//! static BUSY: Atomic<[bool; 64]> = Atomic::new([false; 64]);
+//! /// How deep each of four price levels is, a byte each, in one `u32`: the array's own bytes.
+//! static DEPTHS: Atomic<[u8; 4]> = Atomic::new([0; 4]);
+//!
+//! // `lock bts`, or `ldsetal`, after the index's check: the one thread that finds the bit clear
+//! // claims the worker.
+//! let worker = 17;
+//! assert!(!BUSY.element(worker).test_and_set(AcqRel), "this thread claimed it");
+//! // Each element changes alone, its index known at run time, or, with `place`, a constant.
+//! DEPTHS.element(2).or(0x80, Release);
+//! DEPTHS.place::<0>().update(AcqRel, Acquire, |depth| depth.wrapping_add(1));
+//! assert_eq!(DEPTHS.load(Acquire), [1, 0, 0x80, 0], "each byte its own");
 //! ```
 //!
 //! ## Keeping Tags in a Pointer
@@ -228,6 +259,33 @@
 //! # }
 //! ```
 //!
+//! ## Sharing a Reference or a Function
+//! ```
+//! use atomix::Atomic;
+//! use atomix::ordering::{Acquire, Relaxed, Release};
+//!
+//! /// What a trading service reads on every order: replaced whole, never changed in place.
+//! struct Config {
+//!     depth: u32,
+//! }
+//!
+//! /// The type of a hook, which measures a symbol.
+//! type Hook = fn(&str) -> usize;
+//!
+//! static DEFAULT: Config = Config { depth: 10 };
+//! static CONFIG: Atomic<&'static Config> = Atomic::new(&DEFAULT);
+//! static HOOK: Atomic<Option<Hook>> = Atomic::new(None);
+//!
+//! // A reference is stored with `Release` and loaded with `Acquire`, so the thread that loads it
+//! // sees the writes that made what it points to: `load(Relaxed)` does not compile.
+//! CONFIG.store(Box::leak(Box::new(Config { depth: 20 })), Release);
+//! assert_eq!(CONFIG.load(Acquire).depth, 20, "the new config, read through the reference");
+//! // A function pointer points to code, which no write changes, so any ordering reads it.
+//! HOOK.store(Some(str::len), Release);
+//! assert_eq!(HOOK.load(Relaxed).map(|measure| measure("AAPL")), Some(4), "the hook, called");
+//! assert_eq!(size_of_val(&HOOK), 8, "and an optional hook fits one pointer, `None` too");
+//! ```
+//!
 //! ## Handing Out Ids
 //! ```
 //! use core::num::NonZero;
@@ -304,7 +362,9 @@
 //!
 //! An operation exists only where it is what its name says:
 //!
-//! - orderings are types ([`ordering`]), so `load(Release)` does not compile;
+//! - orderings are types ([`ordering`]), so `load(Release)` does not compile, and a value that
+//!   holds a reference takes none weaker than an `Acquire` load and a `Release` store, so neither
+//!   does its `load(Relaxed)`;
 //! - a read-modify-write needs the capability that makes it mean something: [`AtomAdd`],
 //!   [`AtomOrd`], [`AtomBitwise`], or for a raw pointer's `and`, `or` and `xor`, a `usize` mask;
 //!   anything else is [`update`](Atomic::update);
@@ -318,7 +378,11 @@
 //!   [`update`](AtomicField::update) and [`try_update`](AtomicField::try_update), and its
 //!   [`load_rmw`](AtomicField::load_rmw) is one instruction on the whole word, and needs what the
 //!   field's value promises, [`FieldBitwise`] for the bitwise operations and [`FieldAdd`] for the
-//!   add, and what the container's repr runs: [`MaskBitwise`], [`BitTest`] or [`FetchAdd`].
+//!   add, and what the container's repr runs: [`MaskBitwise`], [`BitTest`] or [`FetchAdd`];
+//! - an array's element keeps a field's rules but the add, whose carry would reach the next
+//!   element: the last alone adds, through [`last`](Atomic::last), where the slots fill the repr;
+//!   at an index known at run time, [`element`](Atomic::element) adds the index's check and the
+//!   shift by its slot, and [`element_unchecked`](Atomic::element_unchecked) the shift alone.
 //!
 //! The `fetch_` operations take core's names, and return the value before as core's do, a field's
 //! the container before. [`bit_set`](Atomic::bit_set), [`bit_clear`](Atomic::bit_clear) and
@@ -444,7 +508,11 @@
 //! | `arbitrary`     | `Arbitrary` for an atomic, and a ranged integer, held to its range         |
 //! | `arbitrary-int` | `Atom`, `AtomOrd`, `FieldBitwise` and `FieldAdd` for `UInt` and `Int`      |
 //! | `deranged-05`   | `Atom`, `AtomOrd` and `From` with atomix's own for deranged 0.5's integers |
+//! | `std`           | `Atom` for `ExitStatus`, Unix's `BorrowedFd`, and `SystemTime` in 16 bytes |
 //! | `loom`          | loom's types under `--cfg loom`; nothing without the cfg                   |
+//!
+//! `serde`, `zerocopy-08` and `arbitrary` each give a [`Packed`] what its array has of that crate's
+//! traits, and `bytemuck` the array's `Zeroable`, `NoUninit` and `AnyBitPattern`.
 //!
 //! atomix holds `atomix-derive`, which `derive` adds, at its own version whether the feature is
 //! on or not, so the code a derive writes always calls the hidden items it was written against.
@@ -463,10 +531,10 @@
 )]
 #![no_std]
 #![feature(doc_cfg)]
-// No badge names `loom` or atomix-core's aliases `aarch64_code` and `wide`: a loom build is a model
-// of this one, not a target of its own, and an item writes out an alias's condition where its badge
-// needs one.
-#![doc(auto_cfg(hide(loom, aarch64_code, wide)))]
+// No badge names `loom` or atomix-core's aliases `aarch64_code`, `wide`, `std_values` and
+// `wait_status`: a loom build is a model of this one, not a target of its own, and an item writes
+// out an alias's condition where its badge needs one.
+#![doc(auto_cfg(hide(loom, aarch64_code, wide, std_values, wait_status)))]
 
 #[doc(hidden)]
 pub use atomix_core::__private;
@@ -476,11 +544,12 @@ pub use atomix_core::model;
 pub use atomix_core::{
     Atom, AtomAdd, AtomBitwise, AtomOrd, Atomic, AtomicBool, AtomicField, AtomicI8, AtomicI16,
     AtomicI32, AtomicI64, AtomicIsize, AtomicPtr, AtomicU8, AtomicU16, AtomicU32, AtomicU64,
-    AtomicUsize, BitTest, ExactBits, FetchAdd, FetchBitwise, Field, FieldAdd, FieldBitwise,
-    FieldPath, Join, Load, MaskBitwise, MinMax, ParseRangeError, PointerAtom, Primitive,
-    ProjectFields, RangeError, RangedI8, RangedI16, RangedI32, RangedI64, RangedI128, RangedIsize,
-    RangedU8, RangedU16, RangedU32, RangedU64, RangedU128, RangedUsize, RawAccess, ReadByExchange,
-    ReprRange, Store, Swap, Then, TopField, Whole, compiler_fence, fence,
+    AtomicUsize, BitTest, Element, ExactBits, FetchAdd, FetchBitwise, Field, FieldAdd,
+    FieldBitwise, FieldPath, Indexed, Join, Last, Load, MaskBitwise, MinMax, Packed,
+    ParseRangeError, PointerAtom, Primitive, ProjectFields, RangeError, RangedI8, RangedI16,
+    RangedI32, RangedI64, RangedI128, RangedIsize, RangedU8, RangedU16, RangedU32, RangedU64,
+    RangedU128, RangedUsize, RawAccess, ReadByExchange, ReprOf, ReprRange, Store, Swap, Then,
+    TopField, Whole, compiler_fence, fence,
 };
 #[cfg(any(
     target_arch = "aarch64",

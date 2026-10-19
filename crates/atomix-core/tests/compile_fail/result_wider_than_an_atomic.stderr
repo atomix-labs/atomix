@@ -1,0 +1,58 @@
+error[E0277]: `Result<u128, u8>` cannot be stored in an atomic
+ --> tests/compile_fail/result_wider_than_an_atomic.rs:6:25
+  |
+6 |     let _ = Atomic::new(Ok::<u128, u8>(1));
+  |             ----------- ^^^^^^^^^^^^^^^^^ the trait `Atom` is not implemented for `Result<u128, u8>`
+  |             |
+  |             required by a bound introduced by this call
+  |
+  = note: the trait bound `Result<u128, u8>: Atom` is not satisfied
+note: required by a bound in `atomix_core::Atomic::<T>::new`
+ --> src/atomic/mod.rs
+  |
+  | impl<T: Atom> Atomic<T> {
+...
+  |     pub const fn new(value: T) -> Self
+  |     where
+  |         T: const Atom,
+  |            ^^^^^^^^^^ required by this bound in `Atomic::<T>::new`
+help: consider borrowing here
+  |
+6 |     let _ = Atomic::new(&Ok::<u128, u8>(1));
+  |                         +
+
+error[E0277]: `Result<u128, u8>` cannot be stored in an atomic
+ --> tests/compile_fail/result_wider_than_an_atomic.rs:6:13
+  |
+6 |     let _ = Atomic::new(Ok::<u128, u8>(1));
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not `Atom`
+  |
+  = help: the trait `Atom` is not implemented for `Result<u128, u8>`
+  = note: an atomic value is a primitive, a pointer or a shared reference, an array or a tuple of atomic values that fits 128 bits, a core type such as `NonZero<u32>`, or a type that derives `Atom`: `Atom`'s implementors list each
+  = note: for a type of your own, derive it, `#[derive(Atom)]`, with atomix's `derive` feature, or keep each promise of `Atom`'s `# Safety` section in a `const unsafe impl`
+  = note: a function's name is a value of its own type, not a function pointer: name the pointer's type, as `Atomic<fn(&str) -> usize>` does
+help: the trait `Atom` is conditionally implemented for `Result<T, E>`
+ --> src/atom/enum_with_fields.rs
+  |
+  | /         const unsafe impl<$($param),+> Atom for $enumeration<$($param),+>
+  | |         where
+  | |             $first: [const] Atom<Repr: [const] TupleFieldRepr + [const] ExactBits>,
+  | |             $second: [const] Atom<Repr: [const] TupleFieldRepr + [const] ExactBits>,
+  | |             <$first::Repr as TupleFieldRepr>::Kind:
+  | |                 Wider<<$second::Repr as TupleFieldRepr>::Kind, Kind: const EnumShape<1>>,
+  | |______________________________________________________________________------------------_^
+  |                                                                        |
+  |                                                                        unsatisfied requirement introduced here: `<<<_ as Atom>::Repr as atomix_core::__private::TupleFieldRepr>::Kind as atomix_core::__private::Wider<<<_ as Atom>::Repr as atomix_core::__private::TupleFieldRepr>::Kind>>::Kind: atomix_core::__private::EnumShape<1>`
+  |                                                                        unsatisfied requirement introduced here: `<<<_ as Atom>::Repr as atomix_core::__private::TupleFieldRepr>::Kind as atomix_core::__private::Wider<<<_ as Atom>::Repr as atomix_core::__private::TupleFieldRepr>::Kind>>::Kind: const atomix_core::__private::EnumShape<1>`
+...
+  | / two_variants! {
+  | |     Result<T, E>: T Ok, E Err;
+  | |     ControlFlow<B, C>: C Continue, B Break;
+  | | }
+  | |_- in this macro invocation
+note: required by a bound in `atomix_core::Atomic`
+ --> src/atomic/mod.rs
+  |
+  | pub struct Atomic<T: Atom> {
+  |                      ^^^^ required by this bound in `Atomic`
+  = note: this error originates in the macro `two_variants` (in Nightly builds, run with -Z macro-backtrace for more info)

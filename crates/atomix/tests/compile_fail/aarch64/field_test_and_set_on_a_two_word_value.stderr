@@ -21,7 +21,7 @@ note: required by a bound in `AtomicField::<P>::test_and_set`
    |
    | impl<P: FieldPath> AtomicField<P> {
 ...
-   |     pub const fn test_and_set<O: RmwOrdering>(&self, order: O) -> bool
+   |     pub const fn test_and_set<O: RmwOrdering<P::Value>>(&self, order: O) -> bool
 ...
    |         ContainerRepr<P>: [const] BitTest,
    |                           ^^^^^^^^^^^^^^^ required by this bound in `AtomicField::<P>::test_and_set`

@@ -44,6 +44,9 @@ mod tests {
         if cfg!(feature = "bytemuck") {
             cases.compile_fail("tests/compile_fail/bytemuck/*.rs");
         }
+        if cfg!(all(feature = "std", unix)) {
+            cases.compile_fail("tests/compile_fail/std/*.rs");
+        }
         // The refusals that LSE2's 16-byte load and store lift, which only macOS's floor has, run
         // where this test is built without them. trybuild removes `RUSTFLAGS`, so it builds these
         // with the floor while this test is built at the CPU `RUSTFLAGS` names: a leg that adds

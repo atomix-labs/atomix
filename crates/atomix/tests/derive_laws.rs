@@ -25,13 +25,18 @@ mod testing;
 #[cfg(test)]
 mod tests {
     use core::any::type_name;
+    use core::cmp::Ordering;
     use core::fmt::Debug;
     use core::marker::PhantomData;
+    use core::net::Ipv4Addr;
     use core::num::NonZero;
     use core::ptr::NonNull;
 
     use atomix::validity::{Partial, Total, TotalZeroNiche, ZeroNiche, ZeroValid};
-    use atomix::{Atom, Atomic, ExactBits, Primitive, RangedI8, RangedU8, RangedU64, ReprRange};
+    use atomix::{
+        Atom, Atomic, ExactBits, Packed, Primitive, RangedI8, RangedU8, RangedU64, ReprOf,
+        ReprRange,
+    };
     use proptest::prelude::{Just, Strategy, any, prop_oneof};
     use proptest::sample::select;
     use proptest::test_runner::TestCaseError;
@@ -42,6 +47,59 @@ mod tests {
         Promise, assert_holds, decodes_as_promised, edge_or_random_bits, keeps_provenance,
         none_laws, round_trips,
     };
+
+    /// The depth of each of four price levels: a newtype over an array, its bytes.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Levels([u8; 4]);
+
+    /// Which of ten seats are taken, beside whether the table is open: an array that leaves bits
+    /// of its `u16` above it, as a field of eleven bits.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Table {
+        /// One bit per seat.
+        taken: [bool; 10],
+        /// Whether the table takes players.
+        open: bool,
+    }
+
+    /// Who holds each of four cells, a byte each, and whose turn it is above them.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Board {
+        /// Who holds each cell.
+        cells: [Side; 4],
+        /// Who moves next.
+        turn: Side,
+    }
+
+    /// The same board, its cells packed a bit each, and the last move's sign above them.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct PackedBoard {
+        /// Who holds each cell, a bit each.
+        cells: Packed<[Side; 4], u8>,
+        /// Which way the last move went.
+        sign: Sign,
+    }
+
+    /// The best bid and ask beside whether the book trades: a tuple as a field.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Spread {
+        /// The best bid and ask, in ticks.
+        best: (u16, u16),
+        /// Whether the book trades.
+        live: bool,
+    }
+
+    /// A peer's address and port, beside how its last reply compared: core's small values as
+    /// fields, the ordering two signed bits at the top.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Peer {
+        /// Its address, its octets the struct's low 32 bits.
+        address: Ipv4Addr,
+        /// Its port, the 16 bits above.
+        port: u16,
+        /// How its last reply compared with the one before.
+        verdict: Ordering,
+    }
 
     /// The side of the book an order rests on: one bit, from zero.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
@@ -121,6 +179,34 @@ mod tests {
     /// A sequence number, every repr of which decodes.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
     struct Seq(u64);
+
+    /// What a trading service reads on every order: replaced whole, never changed in place.
+    #[derive(Debug, PartialEq, Eq)]
+    struct Config {
+        /// How many price levels a quote shows.
+        depth: u32,
+    }
+
+    /// The configurations the tests point to, for as long as the program runs.
+    static CONFIGS: [Config; 2] = [Config { depth: 10 }, Config { depth: 20 }];
+
+    /// The configuration in force: a newtype over a reference, stored as the reference is.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Current(&'static Config);
+
+    /// A hook that measures a symbol: a newtype over a function pointer, stored as it is.
+    #[derive(Clone, Copy, Debug, Atom)]
+    struct Measure(fn(&str) -> usize);
+
+    /// The configuration in force, or none, and whether it is stale: a pointer word over a
+    /// reference, its tag in the low bits a `Config`'s alignment, 4, leaves clear.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Published {
+        /// The configuration.
+        config: Option<&'static Config>,
+        /// Whether a newer one is on its way.
+        stale: bool,
+    }
 
     /// A lock's owner, from 3, as its field's range.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
@@ -389,6 +475,15 @@ mod tests {
         sign: Sign,
         /// Whether a pop is under way.
         marked: bool,
+    }
+
+    /// A head whose tags are an array: the top node or none, and two marks.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct MarkedHead {
+        /// The top node.
+        top: Option<NonNull<Node>>,
+        /// Two marks, in two of the bits a node's alignment leaves clear.
+        marks: [bool; 2],
     }
 
     /// A link never null, and its mark.
@@ -873,6 +968,15 @@ mod tests {
         repr_and_validity_are::<GuardedLink, *mut Linked, ZeroNiche>();
         repr_and_validity_are::<GenericLink<u64>, *mut GenericNode<u64>, ZeroValid>();
         repr_and_validity_are::<VenueHalves<u8>, u32, Total>();
+        repr_and_validity_are::<Current, ReprOf<&'static Config>, ZeroNiche>();
+        repr_and_validity_are::<Measure, ReprOf<fn(&str) -> usize>, TotalZeroNiche>();
+        repr_and_validity_are::<Published, ReprOf<&'static Config>, ZeroValid>();
+        repr_and_validity_are::<Levels, u32, Total>();
+        repr_and_validity_are::<Table, u16, ZeroValid>();
+        repr_and_validity_are::<Board, u32, ZeroValid>();
+        repr_and_validity_are::<PackedBoard, u8, ZeroValid>();
+        repr_and_validity_are::<MarkedHead, *mut Node, ZeroValid>();
+        repr_and_validity_are::<Peer, u64, ZeroValid>();
         assert_eq!(Turn::REPRS, ReprRange::new(0, 0x1FF), "every repr up to the third's end");
         assert_eq!(Offer::Closed.to_repr(), 2, "and `Closed` above the side's 0 and 1");
     }
@@ -909,6 +1013,17 @@ mod tests {
         every_repr_obeys_the_laws::<Option<Swing>>();
         every_repr_obeys_the_laws::<Option<Step>>();
         every_repr_obeys_the_laws::<Option<Option<Reading>>>();
+        every_repr_obeys_the_laws::<Table>();
+        every_repr_obeys_the_laws::<(Side, Sign)>();
+        every_repr_obeys_the_laws::<(Side, NonZeroByte)>();
+        every_repr_obeys_the_laws::<Option<(Side, Side)>>();
+        every_repr_obeys_the_laws::<PackedBoard>();
+        every_repr_obeys_the_laws::<Option<PackedBoard>>();
+        every_repr_obeys_the_laws::<Packed<[Sign; 3], u8>>();
+        every_repr_obeys_the_laws::<Option<Table>>();
+        every_repr_obeys_the_laws::<[Side; 2]>();
+        every_repr_obeys_the_laws::<[Sign; 2]>();
+        every_repr_obeys_the_laws::<[Step; 1]>();
     }
 
     #[test]
@@ -924,6 +1039,8 @@ mod tests {
         // A nullable head's and a niche's null decodes, so neither has an `Option`.
         none_laws!(Link, Guarded, Bucket, Flagged<NonNull<Node>>, Either<NonNull<Node>, *mut Node>);
         none_laws!(MarkedLink, GuardedLink);
+        none_laws!(Table, Board, [Side; 4], [Quote; 1]);
+        none_laws!((Side, Sign), (Step, bool), Spread, (Quote,));
     }
 
     proptest! {
@@ -946,12 +1063,17 @@ mod tests {
             id in any::<NonZero<u16>>().prop_map(Id),
             seq in any::<u64>().prop_map(Seq),
             owner in owner_ids(),
+            current in select(&[0_usize, 1]).prop_map(|index| Current(&CONFIGS[index])),
             bits in edge_or_random_bits(&[]),
         ) {
             value_obeys_the_laws(id, bits)?;
             value_obeys_the_laws(seq, bits)?;
             value_obeys_the_laws(owner, bits)?;
             value_obeys_the_laws(Marker, bits)?;
+            value_obeys_the_laws(current, bits)?;
+            value_obeys_the_laws(Some(current), bits)?;
+            keeps_provenance(current, |current| current.0.depth)?;
+            keeps_provenance(Measure(str::len), |measure| (measure.0)("AAPL"))?;
         }
 
         #[test]
@@ -984,6 +1106,49 @@ mod tests {
             value_obeys_the_laws(VenueHalves::<u8> { low, high, venue: PhantomData }, bits)?;
             value_obeys_the_laws(order, bits)?;
             value_obeys_the_laws(entry, bits)?;
+        }
+
+        #[test]
+        fn arrays_in_derived_values_obey_the_laws(
+            levels in any::<[u8; 4]>().prop_map(Levels),
+            table in (any::<[bool; 10]>(), any::<bool>())
+                .prop_map(|(taken, open)| Table { taken, open }),
+            board in ([sides(), sides(), sides(), sides()], sides())
+                .prop_map(|(cells, turn)| Board { cells, turn }),
+            steps in [steps(), steps()],
+            quotes in [quotes()],
+            bits in edge_or_random_bits(&[]),
+        ) {
+            value_obeys_the_laws(levels, bits)?;
+            value_obeys_the_laws(table, bits)?;
+            value_obeys_the_laws(board, bits)?;
+            value_obeys_the_laws(steps, bits)?;
+            value_obeys_the_laws(quotes, bits)?;
+            value_obeys_the_laws(Some(board), bits)?;
+        }
+
+        #[test]
+        fn core_values_in_derived_values_obey_the_laws(
+            peer in (any::<Ipv4Addr>(), any::<u16>(), any::<Ordering>())
+                .prop_map(|(address, port, verdict)| Peer { address, port, verdict }),
+            bits in edge_or_random_bits(&[]),
+        ) {
+            value_obeys_the_laws(peer, bits)?;
+            value_obeys_the_laws(Some(peer), bits)?;
+        }
+
+        #[test]
+        fn tuples_of_derived_values_obey_the_laws(
+            pair in (sides(), signs()),
+            step in (steps(), any::<bool>()),
+            spread in (any::<(u16, u16)>(), any::<bool>()).prop_map(|(best, live)| Spread { best, live }),
+            quote in quotes().prop_map(|quote| (quote,)),
+            bits in edge_or_random_bits(&[]),
+        ) {
+            value_obeys_the_laws(pair, bits)?;
+            value_obeys_the_laws(step, bits)?;
+            value_obeys_the_laws(spread, bits)?;
+            value_obeys_the_laws(quote, bits)?;
         }
 
         #[test]
@@ -1043,6 +1208,9 @@ mod tests {
             link in links(),
             guarded in guarded_links(),
             flagged in (nodes(), any::<bool>()).prop_map(|(pointer, flag)| Flagged { pointer, flag }),
+            published in (option::of(select(&[0_usize, 1])), any::<bool>()).prop_map(
+                |(index, stale)| Published { config: index.map(|index| &CONFIGS[index]), stale },
+            ),
             bits in edge_or_random_bits(&[0xF, 0x10]),
         ) {
             value_obeys_the_laws(head, bits)?;
@@ -1053,6 +1221,14 @@ mod tests {
             keeps_provenance(guarded, |guarded| read(guarded.link.next))?;
             value_obeys_the_laws(flagged, bits)?;
             keeps_provenance(flagged, |flagged| read(flagged.pointer))?;
+            value_obeys_the_laws(published, bits)?;
+            keeps_provenance(published, |published| published.config.map(|config| config.depth))?;
+            let marked = MarkedHead { top: head.top, marks: [head.marked, link.marked] };
+            value_obeys_the_laws(marked, bits)?;
+            keeps_provenance(marked, |marked| marked.top.map(read))?;
+            let tuple = (head.top, head.marked, link.marked);
+            value_obeys_the_laws(tuple, bits)?;
+            keeps_provenance(tuple, |tuple| tuple.0.map(read))?;
         }
 
         #[test]

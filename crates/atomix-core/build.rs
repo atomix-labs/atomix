@@ -51,5 +51,19 @@ fn main() {
         // where the bit lands in an `Option`; neither loom nor Miri runs `asm!`, and
         // ThreadSanitizer sees no access inside one.
         lock_bit_test: { all(target_arch = "x86_64", on_hardware, not(sanitize = "thread")) },
+        // An array of `bool`s decoded and encoded by NEON at run time, which Miri does not run.
+        neon_bools: { all(aarch64_code, target_feature = "neon", not(miri)) },
+        // An array of `bool`s decoded and encoded by AVX2 at run time.
+        avx2_bools: { all(target_arch = "x86_64", target_feature = "avx2") },
+        // NEON or AVX2: an array of `bool`s takes either at run time, and multiplies in a constant.
+        vector_bools: { any(neon_bools, avx2_bools) },
+        // std's values with the `std` feature, on Unix and Windows: their `SystemTime` counts in an
+        // `i64` of seconds, and their `ExitStatus` and descriptors are what the impls read.
+        std_values: { all(feature = "std", any(unix, windows)) },
+        // std's `ExitStatus` as a wait status that `from_raw` and `into_raw` give back whole: not
+        // Fuchsia's, whose `into_raw` moves the code up a byte and panics past one.
+        wait_status: { all(unix, not(target_os = "fuchsia")) },
+        // std's `ExitStatus` as atomix stores it: Unix's wait status, or Windows' exit code.
+        exit_status: { any(wait_status, windows) },
     }
 }

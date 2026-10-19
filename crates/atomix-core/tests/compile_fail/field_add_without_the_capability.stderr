@@ -12,7 +12,7 @@ note: required by a bound in `AtomicField::<P>::fetch_add`
    |
    | impl<P: FieldPath> AtomicField<P> {
 ...
-   |     pub const fn fetch_add<O: RmwOrdering>(
+   |     pub const fn fetch_add<O: RmwOrdering<FieldOf<P::Container>>>(
 ...
    |         P::Value: FieldAdd,
    |                   ^^^^^^^^ required by this bound in `AtomicField::<P>::fetch_add`

@@ -23,7 +23,7 @@ mod tests {
     use crate::testing::pointer_word::pointer_word;
 
     /// A value published behind a flag the writer stores with `order`.
-    fn publish<O: StoreOrdering + Send + Sync + 'static>(order: O) {
+    fn publish<O: StoreOrdering<bool> + Send + Sync + 'static>(order: O) {
         check(move || {
             let shared = Arc::new((AtomicU64::new(0), AtomicBool::new(false)));
             let writer = {
@@ -336,6 +336,141 @@ mod tests {
         });
     }
 
+    /// A reference: stored by one thread, and read through by another, which sees the writes that
+    /// made what it points to only through a `Release` store and an `Acquire` load, the floor a
+    /// reference's orderings keep.
+    mod reference {
+        use core::ptr;
+
+        use atomix_core::cell::UnsafeCell;
+        use atomix_core::model::{Arc, check, thread};
+        use atomix_core::ordering::{AcqRel, Acquire, CoreRmwOrdering, Relaxed, Release};
+        use atomix_core::{Atom, Atomic, AtomicPtr, Load, Primitive, Store};
+
+        /// A value written in place before a reference to it is published.
+        struct Slot(UnsafeCell<u64>);
+
+        // SAFETY: each model writes a slot only before publishing a reference to it, and reads it
+        // only through a reference it loaded.
+        #[expect(unsafe_code, reason = "a slot read only through its publication")]
+        unsafe impl Sync for Slot {}
+
+        /// A slot holding `value`, written in place, and leaked for the rest of the model.
+        fn slot(value: u64) -> &'static Slot {
+            let slot: &'static Slot = Box::leak(Box::new(Slot(UnsafeCell::new(0))));
+            // SAFETY: no other thread holds a reference to the slot yet.
+            #[expect(unsafe_code, reason = "writes a slot before it is published")]
+            slot.0.with_mut(|place| unsafe { *place = value });
+            slot
+        }
+
+        /// What `slot` holds, read in place.
+        fn read(slot: &Slot) -> u64 {
+            // SAFETY: the slot was written before its reference was published, and is not written
+            // again; loom reports a read the publication does not order after that write.
+            #[expect(unsafe_code, reason = "reads a published slot")]
+            slot.0.with(|place| unsafe { *place })
+        }
+
+        #[test]
+        fn a_reference_stored_with_release_publishes_what_it_points_to() {
+            check(|| {
+                let published = Arc::new(Atomic::new(slot(1)));
+                let writer = {
+                    let published = Arc::clone(&published);
+                    thread::spawn(move || published.store(slot(7), Release))
+                };
+                let seen = read(published.load(Acquire));
+                assert!(seen == 1 || seen == 7, "the first slot, or the one published whole");
+                writer.join().expect("the writer does not panic");
+            });
+        }
+
+        #[test]
+        fn a_reference_swapped_with_acq_rel_is_read_whole_on_both_sides() {
+            check(|| {
+                let published = Arc::new(Atomic::new(slot(1)));
+                let other = {
+                    let published = Arc::clone(&published);
+                    thread::spawn(move || read(published.swap(slot(7), AcqRel)))
+                };
+                let mine = read(published.swap(slot(9), AcqRel));
+                let theirs = other.join().expect("the other swapper does not panic");
+                assert!([1, 7].contains(&mine), "this thread reads the first slot or the other's");
+                assert!([1, 9].contains(&theirs), "and the other the first or this thread's");
+            });
+        }
+
+        /// The cell of `repr`, through the bound every repr has, as a caller of the hidden
+        /// primitive operations reaches one.
+        fn cell_of<R: Primitive>(repr: R) -> R::Cell {
+            R::into_cell(repr)
+        }
+
+        /// The repr of a reference to a slot.
+        type SlotRepr = <&'static Slot as Atom>::Repr;
+
+        // A caller of the hidden primitive operations may pass `Relaxed`, which a reference's
+        // repr raises to its floor: the store releases and the load acquires all the same.
+        #[test]
+        fn a_reference_stored_and_loaded_relaxed_through_its_primitive_is_published() {
+            check(|| {
+                let cell = Arc::new(cell_of(slot(1).to_repr()));
+                let writer = {
+                    let cell = Arc::clone(&cell);
+                    thread::spawn(move || {
+                        <SlotRepr as Store>::store(&cell, slot(7).to_repr(), Relaxed::CORE);
+                    })
+                };
+                let loaded = <SlotRepr as Load>::load(&cell, Relaxed::CORE);
+                let slot = <&Slot as Atom>::from_repr(loaded).expect("a slot is published");
+                let seen = read(slot);
+                assert!(seen == 1 || seen == 7, "the first slot, or the one published whole");
+                writer.join().expect("the writer does not panic");
+            });
+        }
+
+        /// The race the floor refuses: a pointer published `Relaxed`, which a raw pointer allows,
+        /// and read through, which only unsafe code may.
+        #[test]
+        #[should_panic(expected = "Causality violation")]
+        fn a_pointer_stored_relaxed_publishes_nothing() {
+            check(|| {
+                let published = Arc::new(AtomicPtr::new(ptr::from_ref(slot(1)).cast_mut()));
+                let writer = {
+                    let published = Arc::clone(&published);
+                    thread::spawn(move || {
+                        published.store(ptr::from_ref(slot(7)).cast_mut(), Relaxed);
+                    })
+                };
+                // SAFETY: none for the slot's contents: the model exists to report this race.
+                #[expect(unsafe_code, reason = "the race the model must report")]
+                let seen = read(unsafe { &*published.load(Relaxed) });
+                assert!(seen == 1 || seen == 7, "the first slot, or the one published");
+                writer.join().expect("the writer does not panic");
+            });
+        }
+
+        /// The type of a hook, which doubles its argument.
+        type Hook = fn(u64) -> u64;
+
+        /// `Relaxed` publishes a function pointer: it points to code, which no write changes.
+        #[test]
+        fn a_function_pointer_stored_relaxed_is_called_whole() {
+            check(|| {
+                let hook: Arc<Atomic<Option<Hook>>> = Arc::new(Atomic::new(None));
+                let writer = {
+                    let hook = Arc::clone(&hook);
+                    thread::spawn(move || hook.store(Some(|value| value.wrapping_mul(2)), Relaxed))
+                };
+                if let Some(hook) = hook.load(Relaxed) {
+                    assert_eq!(hook(21), 42, "the function stored, called");
+                }
+                writer.join().expect("the writer does not panic");
+            });
+        }
+    }
+
     /// A double word: two pointers, or a slice's pointer and length, in one 16-byte atomic.
     #[cfg(wide)]
     mod double {
@@ -364,7 +499,7 @@ mod tests {
         }
 
         /// A value published behind a pair of pointers an exchange of `order` writes.
-        fn publish<O: RmwOrdering + Send + Sync + 'static>(order: O) {
+        fn publish<O: RmwOrdering<(NonNull<u64>, NonNull<u64>)> + Send + Sync + 'static>(order: O) {
             check(move || {
                 let shared = Arc::new((AtomicU64::new(0), Atomic::new((node(0), node(0)))));
                 let writer = {

@@ -40,6 +40,38 @@
 //! `vmovdqa` with AVX; its read without them, and its exchange, are `casp` and `cmpxchg16b`, on
 //! `x86_64` `u128`'s instructions exactly, with no branch or `cmov` to join the words found. Where
 //! `x86_64` has no `cmpxchg16b`, two words are refused as 128 bits are, naming the CPU they need.
+//!
+//! An array's every operation is its repr's, four bytes' a `u32`'s instruction for instruction.
+//! Its element's, at an index known at run time, is a field's after a test of the index, whose
+//! one cold refusal saves no frame record on the fast path, and a shift of its slot's offset in the
+//! repr's own width: a `bool`'s test-and-set is `lock bts` with the index in a register, or
+//! `ldsetal`; unchecked it is the atomic's `bit_set` without its `and`, and at a constant index
+//! the field's, the position an immediate. The last element of an array whose slots fill the repr
+//! adds in place, `lock xadd` or `ldaddal`. A `Packed` element's is the same at its own width: a
+//! shift by twice the index, and a mask of its two bits. An array of `bool`s decodes eight from a
+//! byte by one multiply, and 64 from a word by a vector, `tbl; ushl; and` or `vpshufb; vpand`, and
+//! encodes them alike, by one multiply, or by `ushl; addp` or `vpsllw; vpmovmskb`: no loop over its
+//! bits.
+//!
+//! A tuple's every operation is its repr's after its fields are joined, a shift and an or, and its
+//! field's a derived struct field's: `(u32, u32)`'s `or` is `lock orq` or `ldsetl`, its second
+//! field's load a shift, `(u32, bool)`'s flag `lock bts` at bit 32, and `(u8, u8, u16)`'s last
+//! field, at the top, adds in place. Beside a reference, a flag's `Relaxed` load and set and a
+//! count's `Relaxed` read are its twin's beside a `NonNull`, instruction for instruction, raised by
+//! no floor; and a hook beside a flag takes two words, its flag read from the second.
+//!
+//! A reference's and a function pointer's every operation is a raw pointer's, instruction for
+//! instruction, and a wide reference's a `u128`'s: a reference's load acquires and its store
+//! releases, as its floor asks, its `store_rmw` reading with `Relaxed`'s `ldr` as a raw pointer's
+//! does, and a function pointer's load is `Relaxed`'s `ldr`, or `mov`.
+//!
+//! Core's small values lower as their reprs do: an `Ipv4Addr`'s load is a `u32`'s, its octets kept
+//! in order with no byte swap, and so is a nonzero `char`'s; an `Ipv6Addr`'s is a `u128`'s, stored
+//! to the return slot an array of bytes takes, and a socket address's a `u64`'s; a netmask's `and`
+//! is one `lock and` or `ldclral`; an ordering's maximum is one `ldsmaxalb`; and a duration's load
+//! moves its words as they are, seconds and nanoseconds, with no shift, as a layout's does its size
+//! and alignment. A loaded `Result`'s `is_ok` is one compare of its tag, and a range loads as the
+//! array of its bounds does.
 
 // Miri cannot run the compiler, and loom's atomics are not what ships.
 #![cfg(on_hardware)]
@@ -49,17 +81,33 @@ mod testing;
 
 #[cfg(test)]
 mod tests {
-    use crate::testing::codegen::Lowering::{self, InOrder, Only, Refuses, Retry, RetryOnly};
+    use crate::testing::codegen::Lowering::{
+        self, InOrder, Only, Refuses, Retry, RetryOnly, SameAs,
+    };
     use crate::testing::codegen::{
         AARCH64_ANDROID, AARCH64_LINUX, AARCH64_MACOS, X86_64_LINUX, X86_64_MACOS, X86_64_WINDOWS,
         lowers_as_expected, refused,
     };
 
     /// Each function of the fixture on `aarch64` that lowers the same at every CPU: a store, a
-    /// fence, a ranged integer's comparison and conversions, and a tagged pointer's store, whose
-    /// test's cold refusal saves the frame record off the fast path.
+    /// reference's and a function pointer's operations, each a raw pointer's, a fence, a ranged
+    /// integer's comparison and conversions, and a tagged pointer's store, whose test's cold
+    /// refusal saves the frame record off the fast path.
     const AARCH64: &[(&str, Lowering)] = &[
         ("u64_store", InOrder(&["stlr"])),
+        ("pointer_load_relaxed", Only(&["ldr", "ret"])),
+        ("pointer_store", Only(&["stlr", "ret"])),
+        ("config_load", SameAs("pointer_load")),
+        ("config_store", SameAs("pointer_store")),
+        ("config_store_rmw", SameAs("pointer_store_rmw")),
+        ("option_config_load", SameAs("pointer_load")),
+        ("hook_load", SameAs("pointer_load_relaxed")),
+        ("hook_load_acquire", SameAs("pointer_load")),
+        ("hook_store", SameAs("pointer_store")),
+        ("config_swap", SameAs("pointer_swap")),
+        ("config_compare_exchange", SameAs("pointer_compare_exchange")),
+        ("hook_compare_exchange", SameAs("pointer_compare_exchange")),
+        ("name_load_rmw", SameAs("u128_load_rmw")),
         ("store_store_fence", InOrder(&["str", "dmb ishst", "str"])),
         ("seq_cst_compiler_fence", Only(&["ret"])),
         ("acquire_fence", Only(&["dmb ishld", "ret"])),
@@ -68,8 +116,28 @@ mod tests {
         ("ranged_below_min", Only(&["mov", "ret"])),
         ("ranged_to_deranged", Only(&["ret"])),
         ("ranged_from_deranged", Only(&["ret"])),
+        ("u32_store", Only(&["stlr", "ret"])),
+        ("bytes_load", SameAs("u32_load")),
+        ("bytes_store", SameAs("u32_store")),
+        ("bytes_swap", SameAs("u32_swap")),
+        ("bytes_or", SameAs("u32_or")),
+        ("byte_place_load", SameAs("byte_load_literal")),
+        ("flag_load", Refuses(&["cmp", "b.hs", "ldr", "lsr", "and", "ret"])),
+        ("flag_test_and_set_unchecked", SameAs("u64_bit_set")),
+        ("flag_place_test_and_set", SameAs("u64_bit_set_5")),
         ("word_store", Refuses(&["tbnz", "add", "stlr", "ret"])),
         ("nested_store", Refuses(&["tst", "b.ne", "add", "stlr", "ret"])),
+        ("eight_bools_store", Only(&["mov", "movk", "movk", "movk", "mul", "lsr", "stlrb", "ret"])),
+        ("halves_store", Only(&["mov", "orr", "stlr", "ret"])),
+        ("marked_pointer_load_flag", Only(&["ldr", "and", "ret"])),
+        ("marked_reference_load_flag", SameAs("marked_pointer_load_flag")),
+        ("marked_reference_set_flag", SameAs("marked_pointer_set_flag")),
+        ("counted_reference_load_count", SameAs("counted_pointer_load_count")),
+        ("ipv4_load", SameAs("u32_load")),
+        ("nonzero_char_load", SameAs("u32_load")),
+        ("socket_address_load", SameAs("u64_load")),
+        ("result_load", InOrder(&["cmp", "csinc", "ret"])),
+        ("bound_load", InOrder(&["lsr", "cmp", "ret"])),
     ];
 
     /// Each read-modify-write on `aarch64` with LSE, the same at the floor, with LSE2 and on macOS:
@@ -106,6 +174,8 @@ mod tests {
         ("pair_load_rmw", Only(&["mov", "mov", "caspa", "mov", "mov", "ret"])),
         ("pair_compare_exchange", InOrder(&["caspal", "cmp", "ccmp", "cset"])),
         ("slice_compare_exchange", InOrder(&["caspal", "cmp", "ccmp", "cset"])),
+        ("pointer_swap", Only(&["swpal", "ret"])),
+        ("pointer_compare_exchange", InOrder(&["casal", "cmp", "cset"])),
         ("field_set", Only(&["mov", "ldsetl", "ret"])),
         ("field_clear", Only(&["mov", "ldclrl", "ret"])),
         ("field_toggle", Only(&["mov", "ldeorl", "ret"])),
@@ -191,6 +261,57 @@ mod tests {
         ("tag_fetch_or", Only(&["mov", "ldsetal", "and", "and", "ret"])),
         ("word_compare_exchange", Refuses(&["orr", "tst", "b.ne", "casal", "ret"])),
         ("nested_compare_exchange", Refuses(&["orr", "tst", "b.ne", "casal", "ret"])),
+        ("pointer_store_rmw", Retry(&["ldr", "casl"])),
+        ("u32_swap", Only(&["swpal", "ret"])),
+        ("u32_compare_exchange", InOrder(&["casal", "cmp", "cset"])),
+        ("u32_or", Only(&["ldsetl", "ret"])),
+        ("bytes_compare_exchange", InOrder(&["casal", "cmp", "cset"])),
+        ("byte_or", Refuses(&["cmp", "b.hs", "lsl", "and", "lsl", "ldsetl", "ret"])),
+        ("byte_and", Refuses(&["cmp", "b.hs", "lsl", "and", "lsl", "orn", "mvn", "ldclrl", "ret"])),
+        ("flag_set", Refuses(&["cmp", "b.hs", "mov", "lsl", "ldsetl", "ret"])),
+        ("flag_clear", Refuses(&["cmp", "b.hs", "mov", "lsl", "ldclrl", "ret"])),
+        (
+            "flag_test_and_set",
+            Refuses(&["cmp", "b.hs", "mov", "lsl", "ldsetal", "tst", "cset", "ret"]),
+        ),
+        (
+            "flag_test_and_set_checked",
+            Only(&["cmp", "b.hi", "mov", "lsl", "ldsetal", "tst", "cset", "ret", "mov", "ret"]),
+        ),
+        ("halves_last_fetch_add", Only(&["mov", "ldaddal", "ret"])),
+        ("halves_last_fetch_add_discarded", Only(&["mov", "ldaddal", "ret"])),
+        ("byte_fetch_or", Refuses(&["cmp", "b.hs", "lsl", "and", "lsl", "ldsetal", "ret"])),
+        (
+            "grid_test_and_set",
+            Only(&[
+                "stp", "mov", "cmp", "b.hs", "cmp", "b.hs", "orr", "mov", "lsl", "ldsetal", "tst",
+                "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl", "adrp", "add", "mov",
+                "mov", "mov", "bl",
+            ]),
+        ),
+        (
+            "grid_place_test_and_set",
+            Only(&[
+                "cmp", "b.hs", "lsl", "mov", "lsl", "ldsetal", "tst", "cset", "ret", "stp", "mov",
+                "adrp", "add", "mov", "mov", "bl",
+            ]),
+        ),
+        ("halves_or", Only(&["mov", "orr", "ldsetl", "ret"])),
+        ("counted_bytes_fetch_add", Only(&["mov", "ldaddal", "ret"])),
+        ("live_quote_test_and_set", Only(&["mov", "ldsetal", "ubfx", "ret"])),
+        ("marked_pointer_set_flag", Only(&["mov", "ldset", "ret"])),
+        ("counted_pointer_load_count", Only(&["mov", "mov", "casp", "mov", "ret"])),
+        ("armed_load_flag", Only(&["mov", "mov", "casp", "and", "ret"])),
+        (
+            "slot_test_and_set_written",
+            Only(&[
+                "cmp", "b.hs", "lsl", "mov", "lsl", "ldsetal", "tst", "cset", "ret", "stp", "mov",
+                "adrp", "add", "mov", "mov", "bl",
+            ]),
+        ),
+        ("ipv4_and", Only(&["mvn", "ldclral", "ret"])),
+        ("cmp_ordering_fetch_max", Only(&["ldsmaxalb", "ret"])),
+        ("duration_load_rmw", Only(&["mov", "mov", "caspa", "mov", "mov", "ret"])),
     ];
 
     /// Each load on `aarch64` without LSE2, at the `+lse` floor and at Android's default CPU,
@@ -198,6 +319,8 @@ mod tests {
     /// `Option` or a ranged integer, as every load, decodes without a check.
     const AARCH64_WITHOUT_LSE2: &[(&str, Lowering)] = &[
         ("u64_load", InOrder(&["ldar"])),
+        ("pointer_load", Only(&["ldar", "ret"])),
+        ("config_depth", Only(&["ldar", "ldr", "ret"])),
         ("char_load", Only(&["ldar", "ret"])),
         ("option_load", Only(&["ldar", "ret"])),
         ("ranged_load", Only(&["ldar", "ret"])),
@@ -209,6 +332,25 @@ mod tests {
         ("option_word_load", Only(&["ldar", "mov", "and", "cmp", "and", "csel", "ret"])),
         ("tag_load", Only(&["ldar", "and", "ret"])),
         ("pointer_place_load", Only(&["ldar", "and", "and", "ret"])),
+        ("u32_load", Only(&["ldar", "ret"])),
+        ("byte_load", Refuses(&["cmp", "b.hs", "lsl", "ldar", "lsr", "ret"])),
+        ("byte_load_unchecked", Only(&["lsl", "ldar", "lsr", "ret"])),
+        ("byte_load_literal", Only(&["ldar", "lsr", "ret"])),
+        ("quarter_load", Refuses(&["cmp", "b.hs", "lsl", "ldar", "lsr", "and", "ret"])),
+        ("quarter_place_load", Only(&["ldar", "ubfx", "ret"])),
+        ("halves_load_second", Only(&["ldar", "lsr", "ret"])),
+        ("bools_load", InOrder(&["ldar", "dup", "tbl", "ushl", "and", "stp", "ret"])),
+        ("bools_store", InOrder(&["ldp", "ushl", "addp", "fmov", "stlr", "ret"])),
+        (
+            "eight_bools_load",
+            Only(&["mov", "ldarb", "movk", "movk", "and", "mul", "orr", "and", "ret"]),
+        ),
+        ("sixteen_bools_load", InOrder(&["ldarh", "tbl", "ushl", "and", "str", "ret"])),
+        ("sixteen_bools_store", InOrder(&["ushl", "add", "add", "addp", "stlrh", "ret"])),
+        ("cmp_ordering_load", Only(&["ldarb", "ret"])),
+        ("result_is_ok", Only(&["ldar", "cmp", "cset", "ret"])),
+        ("range_load", Only(&["ldar", "lsr", "ret"])),
+        ("alignment_load", Only(&["ldarb", "mov", "lsl", "ret"])),
     ];
 
     /// Each update on `aarch64` at the `+lse` floor, which has no LSE2: with no 128-bit load,
@@ -218,6 +360,7 @@ mod tests {
         ("pair_update", Retry(&["caspa", "caspal"])),
         ("quantity_update", Retry(&["ldar", "casal"])),
         ("tag_update", Retry(&["ldar", "casal"])),
+        ("byte_update", Retry(&["cmp", "b.hs", "ldar", "casal", "bl"])),
         (
             "word_update",
             RetryOnly(&[
@@ -241,6 +384,9 @@ mod tests {
     /// Acquire load is `ldapr`.
     const AARCH64_LSE2: &[(&str, Lowering)] = &[
         ("u64_load", InOrder(&["ldapr"])),
+        ("pointer_load", Only(&["ldapr", "ret"])),
+        ("config_depth", Only(&["ldapr", "ldr", "ret"])),
+        ("name_load", SameAs("u128_load")),
         ("char_load", Only(&["ldapr", "ret"])),
         ("option_load", Only(&["ldapr", "ret"])),
         ("ranged_load", Only(&["ldapr", "ret"])),
@@ -261,11 +407,34 @@ mod tests {
         ("tag_load", Only(&["ldapr", "and", "ret"])),
         ("tag_update", Retry(&["ldapr", "casal"])),
         ("pointer_place_load", Only(&["ldapr", "and", "and", "ret"])),
+        ("u32_load", Only(&["ldapr", "ret"])),
+        ("byte_load_literal", Only(&["ldapr", "lsr", "ret"])),
+        ("byte_update", Retry(&["cmp", "b.hs", "ldapr", "casal", "bl"])),
+        ("quarter_load", Refuses(&["cmp", "b.hs", "ldapr", "lsr", "and", "ret"])),
+        ("quarter_place_load", Only(&["ldapr", "ubfx", "ret"])),
+        ("halves_load_second", Only(&["ldapr", "lsr", "ret"])),
+        ("cmp_ordering_load", Only(&["ldaprb", "ret"])),
+        ("duration_load", Only(&["ldp", "dmb ishld", "ret"])),
+        ("ipv6_load", Only(&["ldp", "dmb ishld", "stp", "ret"])),
+        ("result_is_ok", Only(&["ldapr", "cmp", "cset", "ret"])),
+        ("range_load", Only(&["ldapr", "lsr", "ret"])),
+        ("alignment_load", Only(&["ldaprb", "mov", "lsl", "ret"])),
+        ("layout_load", Only(&["ldp", "dmb ishld", "ret"])),
     ];
 
     /// The rest on `aarch64` Linux with LSE2, `neoverse-v1`, which puts a word's instructions
-    /// in the floor's order.
+    /// in the floor's order, and an element's load before its shift.
     const AARCH64_LINUX_LSE2: &[(&str, Lowering)] = &[
+        ("byte_load", Refuses(&["cmp", "b.hs", "ldapr", "lsl", "lsr", "ret"])),
+        ("byte_load_unchecked", Only(&["ldapr", "lsl", "lsr", "ret"])),
+        ("bools_load", InOrder(&["ldapr", "dup", "tbl", "ushl", "and", "stp", "ret"])),
+        ("bools_store", InOrder(&["ldp", "ushl", "addp", "fmov", "stlr", "ret"])),
+        (
+            "eight_bools_load",
+            Only(&["ldaprb", "mov", "movk", "movk", "and", "mul", "orr", "and", "ret"]),
+        ),
+        ("sixteen_bools_load", InOrder(&["ldaprh", "tbl", "ushl", "and", "str", "ret"])),
+        ("sixteen_bools_store", InOrder(&["ushl", "add", "add", "addp", "stlrh", "ret"])),
         ("word_load", Only(&["ldapr", "and", "and", "ubfx", "str", "strb", "strb", "ret"])),
         ("option_word_load", Only(&["ldapr", "mov", "and", "cmp", "and", "csel", "ret"])),
         (
@@ -287,6 +456,25 @@ mod tests {
 
     /// The rest on `aarch64` macOS, whose `apple-m1` puts a word's instructions in its own order.
     const AARCH64_MACOS_LSE2: &[(&str, Lowering)] = &[
+        ("byte_load", Refuses(&["cmp", "b.hs", "lsl", "ldapr", "lsr", "ret"])),
+        ("byte_load_unchecked", Only(&["lsl", "ldapr", "lsr", "ret"])),
+        (
+            "bools_load",
+            InOrder(&["ldapr", "dup.2d", "tbl.16b", "ushl.16b", "and.16b", "stp", "ret"]),
+        ),
+        ("bools_store", InOrder(&["ldp", "ushl.16b", "addp.16b", "fmov", "stlr", "ret"])),
+        (
+            "eight_bools_load",
+            Only(&["ldaprb", "and", "mov", "movk", "movk", "mul", "orr", "and", "ret"]),
+        ),
+        (
+            "sixteen_bools_load",
+            InOrder(&["ldaprh", "tbl.16b", "ushl.16b", "and.16b", "str", "ret"]),
+        ),
+        (
+            "sixteen_bools_store",
+            InOrder(&["ushl.16b", "add.16b", "add.16b", "addp.16b", "stlrh", "ret"]),
+        ),
         ("word_load", Only(&["ldapr", "and", "and", "str", "strb", "ubfx", "strb", "ret"])),
         ("option_word_load", Only(&["ldapr", "and", "cmp", "mov", "csel", "and", "ret"])),
         (
@@ -310,7 +498,8 @@ mod tests {
     /// LL/SC loop, its load-linked Acquire and its store-conditional Release as the ordering asks,
     /// which retries by its store-conditional's branch back. A compare-exchange is an LL/SC loop
     /// that compares too, so `update` retries one. A word's compare-exchange saves its frame
-    /// record on the fast path.
+    /// record on the fast path, as does an element's operation at a run-time index, whose loop
+    /// sits beside its refusal.
     const AARCH64_WITHOUT_LSE: &[(&str, Lowering)] = &[
         ("u64_swap", InOrder(&["ldaxr", "stlxr"])),
         ("u64_fetch_add", InOrder(&["ldaxr", "add", "stlxr"])),
@@ -338,6 +527,8 @@ mod tests {
         ("pointer_and", InOrder(&["ldxr", "and", "stlxr"])),
         ("pointer_xor", InOrder(&["ldxr", "eor", "stlxr"])),
         ("pointer_fetch_or", InOrder(&["ldaxr", "orr", "stlxr"])),
+        ("pointer_swap", InOrder(&["ldaxr", "stlxr"])),
+        ("pointer_compare_exchange", InOrder(&["ldaxr", "cmp", "stlxr"])),
         ("u128_compare_exchange", InOrder(&["ldaxp", "cmp", "stlxp", "stlxp"])),
         ("u128_load_rmw", InOrder(&["ldaxp", "cmp", "stxp", "stxp"])),
         (
@@ -511,6 +702,61 @@ mod tests {
                 "adrp", "add", "bl",
             ]),
         ),
+        ("pointer_store_rmw", Retry(&["ldr", "ldxr", "cmp", "stlxr"])),
+        ("u32_swap", InOrder(&["ldaxr", "stlxr"])),
+        ("u32_compare_exchange", InOrder(&["ldaxr", "cmp", "stlxr"])),
+        ("u32_or", InOrder(&["ldxr", "orr", "stlxr"])),
+        ("bytes_compare_exchange", InOrder(&["ldaxr", "cmp", "stlxr"])),
+        ("byte_or", InOrder(&["cmp", "b.hs", "ldxr", "orr", "stlxr", "bl"])),
+        ("byte_and", InOrder(&["cmp", "b.hs", "orn", "ldxr", "and", "stlxr", "bl"])),
+        ("byte_fetch_or", InOrder(&["cmp", "b.hs", "ldaxr", "orr", "stlxr", "bl"])),
+        ("byte_update", Retry(&["cmp", "b.hs", "ldar", "ldaxr", "cmp", "stlxr", "bl"])),
+        ("flag_set", InOrder(&["cmp", "b.hs", "ldxr", "orr", "stlxr", "bl"])),
+        ("flag_clear", InOrder(&["cmp", "b.hs", "ldxr", "bic", "stlxr", "bl"])),
+        (
+            "flag_test_and_set",
+            InOrder(&["cmp", "b.hs", "ldaxr", "orr", "stlxr", "tst", "cset", "bl"]),
+        ),
+        (
+            "flag_test_and_set_checked",
+            Only(&[
+                "cmp", "b.hi", "mov", "lsl", "ldaxr", "orr", "stlxr", "cbnz", "tst", "cset", "ret",
+                "mov", "ret",
+            ]),
+        ),
+        ("halves_last_fetch_add", InOrder(&["ldaxr", "add", "stlxr"])),
+        ("halves_last_fetch_add_discarded", Only(&["ldaxr", "add", "stlxr", "cbnz", "ret"])),
+        (
+            "grid_test_and_set",
+            Only(&[
+                "stp", "mov", "cmp", "b.hs", "cmp", "b.hs", "orr", "mov", "lsl", "ldaxr", "orr",
+                "stlxr", "cbnz", "tst", "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl",
+                "adrp", "add", "mov", "mov", "mov", "bl",
+            ]),
+        ),
+        (
+            "grid_place_test_and_set",
+            Only(&[
+                "stp", "mov", "cmp", "b.hs", "lsl", "mov", "lsl", "ldaxr", "orr", "stlxr", "cbnz",
+                "tst", "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl",
+            ]),
+        ),
+        ("halves_or", Only(&["mov", "orr", "ldxr", "orr", "stlxr", "cbnz", "ret"])),
+        ("counted_bytes_fetch_add", Only(&["ldaxr", "add", "stlxr", "cbnz", "mov", "ret"])),
+        ("live_quote_test_and_set", Only(&["ldaxr", "orr", "stlxr", "cbnz", "ubfx", "ret"])),
+        ("marked_pointer_set_flag", Only(&["ldxr", "orr", "stxr", "cbnz", "ret"])),
+        ("counted_pointer_load_count", InOrder(&["ldxp", "cmp", "stxp", "stxp"])),
+        ("armed_load_flag", InOrder(&["ldxp", "cmp", "stxp", "stxp", "and"])),
+        (
+            "slot_test_and_set_written",
+            Only(&[
+                "stp", "mov", "cmp", "b.hs", "lsl", "mov", "lsl", "ldaxr", "orr", "stlxr", "cbnz",
+                "tst", "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl",
+            ]),
+        ),
+        ("ipv4_and", InOrder(&["ldaxr", "and", "stlxr"])),
+        ("cmp_ordering_fetch_max", InOrder(&["ldaxrb", "cmp", "stlxrb"])),
+        ("duration_load_rmw", InOrder(&["ldaxp", "cmp", "stxp", "stxp"])),
     ];
 
     /// Each function of the fixture on `x86_64` with `cmpxchg16b`: at the `x86-64-v3` floor on
@@ -522,6 +768,24 @@ mod tests {
     /// 32 of 64. An atomic's bit goes through a register at every position, after an `and`.
     const X86_64: &[(&str, Lowering)] = &[
         ("u64_load", Only(&["movq", "retq"])),
+        ("pointer_load", Only(&["movq", "retq"])),
+        ("pointer_load_relaxed", Only(&["movq", "retq"])),
+        ("pointer_store", Only(&["movq", "retq"])),
+        ("pointer_store_rmw", Retry(&["movq", "lock cmpxchgq"])),
+        ("pointer_swap", Only(&["movq", "xchgq", "retq"])),
+        ("pointer_compare_exchange", InOrder(&["lock cmpxchgq", "setne"])),
+        ("config_load", SameAs("pointer_load")),
+        ("config_depth", Only(&["movq", "movl", "retq"])),
+        ("config_store", SameAs("pointer_store")),
+        ("config_store_rmw", SameAs("pointer_store_rmw")),
+        ("config_swap", SameAs("pointer_swap")),
+        ("config_compare_exchange", SameAs("pointer_compare_exchange")),
+        ("option_config_load", SameAs("pointer_load")),
+        ("hook_load", SameAs("pointer_load_relaxed")),
+        ("hook_load_acquire", SameAs("pointer_load")),
+        ("hook_store", SameAs("pointer_store")),
+        ("hook_compare_exchange", SameAs("pointer_compare_exchange")),
+        ("name_load_rmw", SameAs("u128_load_rmw")),
         ("u64_store", Only(&["movq", "retq"])),
         ("u64_swap", InOrder(&["xchgq"])),
         ("u64_fetch_add", InOrder(&["lock xaddq"])),
@@ -639,6 +903,41 @@ mod tests {
         ("tag_flags_not", Only(&["lock xorq", "retq"])),
         ("nested_tag_set", Only(&["lock orq", "retq"])),
         ("pointer_place_load", Only(&["movq", "movl", "andl", "andq", "retq"])),
+        ("u32_load", Only(&["movl", "retq"])),
+        ("u32_store", Only(&["movl", "retq"])),
+        ("u32_swap", Only(&["movl", "xchgl", "retq"])),
+        ("u32_compare_exchange", InOrder(&["lock cmpxchgl", "setne"])),
+        ("u32_or", Only(&["lock orl", "retq"])),
+        ("bytes_load", SameAs("u32_load")),
+        ("bytes_store", SameAs("u32_store")),
+        ("bytes_swap", SameAs("u32_swap")),
+        ("bytes_compare_exchange", InOrder(&["lock cmpxchgl", "setne"])),
+        ("bytes_or", SameAs("u32_or")),
+        ("byte_load_literal", Only(&["movl", "shrl", "retq"])),
+        ("byte_place_load", SameAs("byte_load_literal")),
+        ("byte_update", Retry(&["cmpq", "jae", "lock cmpxchgl", "callq"])),
+        ("flag_test_and_set_unchecked", Only(&["lock btsq", "setb", "retq"])),
+        (
+            "flag_test_and_set_checked",
+            Only(&["cmpq", "ja", "lock btsq", "setb", "andb", "retq", "xorl", "andb", "retq"]),
+        ),
+        ("flag_place_test_and_set", Only(&["lock btsq", "setb", "retq"])),
+        ("halves_last_fetch_add", Only(&["movl", "lock xaddl", "retq"])),
+        ("quarter_place_load", Only(&["movl", "shrl", "andb", "retq"])),
+        (
+            "eight_bools_load",
+            Only(&[
+                "movzbl", "movzbl", "movl", "andl", "movabsq", "imulq", "shlq", "orq", "movabsq",
+                "andq", "retq",
+            ]),
+        ),
+        ("eight_bools_store", Only(&["movabsq", "imulq", "shrq", "movb", "retq"])),
+        ("halves_or", Only(&["movl", "shlq", "orq", "lock orq", "retq"])),
+        ("halves_store", Only(&["movl", "shlq", "orq", "movq", "retq"])),
+        ("halves_load_second", Only(&["movq", "shrq", "retq"])),
+        ("counted_bytes_fetch_add", Only(&["movl", "lock xaddl", "retq"])),
+        ("live_quote_test_and_set", Only(&["lock btsq", "setb", "retq"])),
+        ("halves_last_fetch_add_discarded", Only(&["lock addl", "retq"])),
         (
             "word_update",
             RetryOnly(&[
@@ -664,12 +963,31 @@ mod tests {
                 "retq",
             ]),
         ),
+        ("marked_pointer_load_flag", Only(&["movq", "andb", "retq"])),
+        ("marked_pointer_set_flag", Only(&["lock orq", "retq"])),
+        ("counted_pointer_load_count", InOrder(&["lock cmpxchg16b"])),
+        ("armed_load_flag", InOrder(&["lock cmpxchg16b", "andb"])),
+        ("marked_reference_load_flag", SameAs("marked_pointer_load_flag")),
+        ("marked_reference_set_flag", SameAs("marked_pointer_set_flag")),
+        ("counted_reference_load_count", SameAs("counted_pointer_load_count")),
+        ("ipv4_load", SameAs("u32_load")),
+        ("nonzero_char_load", SameAs("u32_load")),
+        ("socket_address_load", SameAs("u64_load")),
+        ("cmp_ordering_load", Only(&["movzbl", "retq"])),
+        ("ipv4_and", Only(&["lock andl", "retq"])),
+        ("duration_load_rmw", InOrder(&["lock cmpxchg16b", "movq", "movq", "movl", "retq"])),
+        ("result_load", InOrder(&["movq", "shrq", "testq", "cmoveq", "retq"])),
+        ("result_is_ok", Only(&["movq", "shrq", "sete", "retq"])),
+        ("bound_load", InOrder(&["movl", "shrl", "cmpl", "retq"])),
+        ("range_load", Only(&["movq", "movq", "shrq", "retq"])),
     ];
 
     /// The rest on `x86_64` with AVX, at the `x86-64-v3` floor: a 128-bit load or store is
-    /// `vmovdqa`, and an update's first read too.
+    /// `vmovdqa`, and an update's first read too; an array of more than eight `bool`s decodes and
+    /// encodes with AVX2.
     const X86_64_AVX: &[(&str, Lowering)] = &[
         ("u128_load", InOrder(&["vmovdqa"])),
+        ("name_load", SameAs("u128_load")),
         ("u128_load_relaxed", InOrder(&["vmovdqa"])),
         ("u128_load_seq_cst", InOrder(&["vmovdqa"])),
         ("u128_store", InOrder(&["vmovdqa"])),
@@ -678,10 +996,50 @@ mod tests {
         ("pair_load", Only(&["vmovdqa", "vmovq", "vpextrq", "retq"])),
         ("pair_store", Only(&["vmovq", "vmovq", "vpunpcklqdq", "vmovdqa", "retq"])),
         ("pair_update", Retry(&["vmovdqa", "lock cmpxchg16b"])),
+        (
+            "bools_load",
+            InOrder(&["vpbroadcastq", "vpshufb", "vpand", "vpshufb", "vpand", "vmovdqu", "retq"]),
+        ),
+        (
+            "bools_store",
+            Only(&[
+                "vmovdqu",
+                "vmovdqu",
+                "vpsllw",
+                "vpsllw",
+                "vpmovmskb",
+                "shlq",
+                "vpmovmskb",
+                "orq",
+                "movq",
+                "vzeroupper",
+                "retq",
+            ]),
+        ),
+        (
+            "sixteen_bools_load",
+            Only(&[
+                "movzwl",
+                "vmovd",
+                "vpshufb",
+                "movq",
+                "vpbroadcastq",
+                "vpand",
+                "vpcmpeqb",
+                "vpand",
+                "vmovdqu",
+                "retq",
+            ]),
+        ),
+        ("sixteen_bools_store", Only(&["vmovdqu", "vpsllw", "vpmovmskb", "movw", "retq"])),
+        ("duration_load", Only(&["vmovdqa", "vpextrq", "vmovd", "retq"])),
+        ("ipv6_load", Only(&["movq", "vmovaps", "vmovups", "retq"])),
+        ("layout_load", Only(&["vmovdqa", "vpextrq", "vmovq", "retq"])),
     ];
 
     /// The rest on `x86_64` Linux and macOS: the System V calling convention passes the arguments
-    /// these move, and a tagged pointer's store or exchange reserves no stack on its fast path.
+    /// these move, and a tagged pointer's store or exchange reserves no stack on its fast path. An
+    /// element's shift by its slot is BMI2's `shlx` or `shrx`, which the `x86-64-v3` floor has.
     const X86_64_SYSTEM_V: &[(&str, Lowering)] = &[
         (
             "pair_load_rmw",
@@ -735,76 +1093,215 @@ mod tests {
         ("nested_store", Refuses(&["testb", "jne", "addq", "movq", "retq"])),
         ("word_compare_exchange", Refuses(&["orl", "testb", "jne", "lock cmpxchgq", "retq"])),
         ("nested_compare_exchange", Refuses(&["orl", "testb", "jne", "lock cmpxchgq", "retq"])),
+        ("byte_load", Refuses(&["cmpq", "jae", "shll", "movl", "shrxq", "retq"])),
+        ("byte_load_unchecked", Only(&["shll", "movl", "shrxq", "retq"])),
+        ("byte_or", Refuses(&["cmpq", "jae", "shll", "movzbl", "shlxq", "lock orl", "retq"])),
+        (
+            "byte_and",
+            Refuses(&[
+                "cmpq",
+                "jae",
+                "shll",
+                "movzbl",
+                "shlxq",
+                "movl",
+                "shlxq",
+                "notl",
+                "orl",
+                "lock andl",
+                "retq",
+            ]),
+        ),
+        ("flag_load", Refuses(&["cmpq", "jae", "movq", "btq", "setb", "retq"])),
+        ("flag_set", Refuses(&["cmpq", "jae", "movl", "shlxq", "lock orq", "retq"])),
+        ("flag_clear", Refuses(&["cmpq", "jae", "movq", "rolq", "lock andq", "retq"])),
+        ("flag_test_and_set", Refuses(&["cmpq", "jae", "lock btsq", "setb", "retq"])),
+        ("quarter_load", Refuses(&["cmpq", "jae", "addl", "movl", "shrxq", "andb", "retq"])),
+        ("alignment_load", Only(&["movzbl", "movl", "shlxq", "retq"])),
     ];
 
     /// The rest on `x86_64` Linux, where a function that calls aligns the stack with a push.
-    const X86_64_LINUX_PUSH: &[(&str, Lowering)] = &[(
-        "word_pop",
-        RetryOnly(&[
-            "pushq",
-            "movq",
-            "movq",
-            "andq",
-            "je",
-            "movq",
-            "testb",
-            "jne",
-            "movl",
-            "andl",
-            "leal",
-            "andl",
-            "addq",
-            "addq",
-            "andl",
-            "addq",
-            "lock cmpxchgq",
-            "jne",
-            "movq",
-            "popq",
-            "retq",
-            "xorl",
-            "movq",
-            "popq",
-            "retq",
-            "leaq",
-            "callq",
-        ]),
-    )];
+    const X86_64_LINUX_PUSH: &[(&str, Lowering)] = &[
+        (
+            "word_pop",
+            RetryOnly(&[
+                "pushq",
+                "movq",
+                "movq",
+                "andq",
+                "je",
+                "movq",
+                "testb",
+                "jne",
+                "movl",
+                "andl",
+                "leal",
+                "andl",
+                "addq",
+                "addq",
+                "andl",
+                "addq",
+                "lock cmpxchgq",
+                "jne",
+                "movq",
+                "popq",
+                "retq",
+                "xorl",
+                "movq",
+                "popq",
+                "retq",
+                "leaq",
+                "callq",
+            ]),
+        ),
+        (
+            "grid_test_and_set",
+            Only(&[
+                "pushq",
+                "cmpq",
+                "jae",
+                "cmpq",
+                "jae",
+                "leaq",
+                "lock btsq",
+                "setb",
+                "popq",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+                "leaq",
+                "movl",
+                "movq",
+                "movq",
+                "callq",
+            ]),
+        ),
+        (
+            "grid_place_test_and_set",
+            Only(&[
+                "cmpq",
+                "jae",
+                "leaq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "pushq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "slot_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "pushq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+    ];
 
     /// The rest on `x86_64` macOS, where every function's frame record aligns the stack.
-    const X86_64_MACOS_FRAME: &[(&str, Lowering)] = &[(
-        "word_pop",
-        RetryOnly(&[
-            "movq",
-            "movq",
-            "andq",
-            "je",
-            "movq",
-            "testb",
-            "jne",
-            "movl",
-            "andl",
-            "leal",
-            "andl",
-            "addq",
-            "addq",
-            "andl",
-            "addq",
-            "lock cmpxchgq",
-            "jne",
-            "movq",
-            "retq",
-            "xorl",
-            "movq",
-            "retq",
-            "leaq",
-            "callq",
-        ]),
-    )];
+    const X86_64_MACOS_FRAME: &[(&str, Lowering)] = &[
+        (
+            "word_pop",
+            RetryOnly(&[
+                "movq",
+                "movq",
+                "andq",
+                "je",
+                "movq",
+                "testb",
+                "jne",
+                "movl",
+                "andl",
+                "leal",
+                "andl",
+                "addq",
+                "addq",
+                "andl",
+                "addq",
+                "lock cmpxchgq",
+                "jne",
+                "movq",
+                "retq",
+                "xorl",
+                "movq",
+                "retq",
+                "leaq",
+                "callq",
+            ]),
+        ),
+        (
+            "grid_test_and_set",
+            Only(&[
+                "cmpq",
+                "jae",
+                "cmpq",
+                "jae",
+                "leaq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+                "leaq",
+                "movl",
+                "movq",
+                "movq",
+                "callq",
+            ]),
+        ),
+        (
+            "grid_place_test_and_set",
+            Only(&[
+                "cmpq",
+                "jae",
+                "leaq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "slot_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+    ];
 
     /// The rest on `x86_64` Windows at its default CPU, which has `cmpxchg16b` but no AVX: a
     /// 128-bit atomic has no load or store, and its update reads with a compare-exchange. A
-    /// function that calls the refusal reserves its stack on the fast path, a `subq` and an `addq`.
+    /// function that calls the refusal reserves its stack on the fast path, a `subq` and an `addq`;
+    /// an element's shift by its slot goes through `cl`, with no BMI2; and an array of `bool`s
+    /// decodes and encodes by multiplies alone, eight `bool`s to each, with no AVX2.
     const X86_64_WINDOWS_DEFAULT: &[(&str, Lowering)] = &[
         ("u128_update", Retry(&["lock cmpxchg16b", "lock cmpxchg16b"])),
         ("pair_update", Retry(&["lock cmpxchg16b", "lock cmpxchg16b"])),
@@ -913,6 +1410,160 @@ mod tests {
                 "ud2",
             ]),
         ),
+        (
+            "byte_load",
+            Refuses(&[
+                "subq", "movq", "cmpq", "jae", "shll", "movl", "movl", "shrq", "addq", "retq",
+            ]),
+        ),
+        ("byte_load_unchecked", Only(&["leal", "movl", "movl", "shrq", "retq"])),
+        (
+            "byte_or",
+            Refuses(&[
+                "subq", "movq", "cmpq", "jae", "movq", "shll", "movzbl", "movl", "shlq",
+                "lock orl", "addq", "retq",
+            ]),
+        ),
+        (
+            "byte_and",
+            Refuses(&[
+                "subq",
+                "movq",
+                "cmpq",
+                "jae",
+                "movq",
+                "shll",
+                "movzbl",
+                "movl",
+                "shlq",
+                "movl",
+                "shlq",
+                "notl",
+                "orl",
+                "lock andl",
+                "addq",
+                "retq",
+            ]),
+        ),
+        ("flag_load", Refuses(&["subq", "cmpq", "jae", "movq", "btq", "setb", "addq", "retq"])),
+        (
+            "flag_set",
+            Refuses(&[
+                "subq", "movq", "cmpq", "jae", "movq", "movl", "movl", "shlq", "lock orq", "addq",
+                "retq",
+            ]),
+        ),
+        (
+            "flag_clear",
+            Refuses(&[
+                "subq",
+                "movq",
+                "cmpq",
+                "jae",
+                "movq",
+                "movq",
+                "movl",
+                "rolq",
+                "lock andq",
+                "addq",
+                "retq",
+            ]),
+        ),
+        (
+            "flag_test_and_set",
+            Refuses(&["subq", "cmpq", "jae", "lock btsq", "setb", "addq", "retq"]),
+        ),
+        (
+            "grid_test_and_set",
+            Only(&[
+                "subq",
+                "cmpq",
+                "jae",
+                "cmpq",
+                "jae",
+                "leaq",
+                "lock btsq",
+                "setb",
+                "addq",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+                "ud2",
+                "leaq",
+                "movl",
+                "movq",
+                "movq",
+                "callq",
+                "ud2",
+            ]),
+        ),
+        (
+            "grid_place_test_and_set",
+            Only(&[
+                "subq",
+                "cmpq",
+                "jae",
+                "leaq",
+                "lock btsq",
+                "setb",
+                "addq",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+                "ud2",
+            ]),
+        ),
+        (
+            "quarter_load",
+            Refuses(&[
+                "subq", "movq", "cmpq", "jae", "addl", "movl", "movl", "shrq", "andb", "addq",
+                "retq",
+            ]),
+        ),
+        (
+            "bools_load",
+            InOrder(&[
+                "imulq", "imulq", "movdqu", "imulq", "imulq", "movdqu", "imulq", "imulq", "movdqu",
+                "imulq", "imulq", "movdqu", "retq",
+            ]),
+        ),
+        (
+            "bools_store",
+            InOrder(&[
+                "imulq", "imulq", "imulq", "imulq", "imulq", "imulq", "imulq", "imulq", "movq",
+                "retq",
+            ]),
+        ),
+        ("sixteen_bools_load", InOrder(&["imulq", "imulq", "movdqu", "retq"])),
+        (
+            "sixteen_bools_store",
+            Only(&[
+                "movabsq", "movq", "imulq", "shrq", "imulq", "andl", "shrq", "orl", "movw", "retq",
+            ]),
+        ),
+        (
+            "slot_test_and_set_written",
+            Only(&[
+                "subq",
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "addq",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+                "ud2",
+            ]),
+        ),
+        ("alignment_load", Only(&["movzbl", "movl", "shlq", "retq"])),
     ];
 
     #[test]
@@ -1078,12 +1729,13 @@ mod tests {
                 "error[E0277]: `(NonNull<without_cmpxchg16b::Node>, \
                  NonNull<without_cmpxchg16b::Node>)` cannot be stored in an atomic",
                 "error[E0277]: `NonNull<[u64]>` cannot be stored in an atomic",
+                "error[E0277]: `(Option<fn(u64) -> u64>, bool)` cannot be stored in an atomic",
             ],
-            "the pair and the slice's pointer, each refused as no `Atom`:\n{stderr}"
+            "the pair, the slice's pointer and the armed hook, each refused as no `Atom`:\n{stderr}"
         );
         let advice = "= note: a 128-bit value needs `cmpxchg16b` on x86_64: build with `-C \
                       target-cpu=x86-64-v2` or newer";
-        assert_eq!(stderr.matches(advice).count(), 2, "each names the CPU it needs:\n{stderr}");
+        assert_eq!(stderr.matches(advice).count(), 3, "each names the CPU it needs:\n{stderr}");
         assert!(!stderr.contains("PointerMetadata"), "and no hidden trait:\n{stderr}");
     }
 

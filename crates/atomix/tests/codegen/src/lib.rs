@@ -3,7 +3,9 @@
 //! operation through a packed struct's projection, a pointer word's tag operations, the load of a
 //! word through its pointer's place, a word's store and exchange, the store of a word over a word
 //! or a pointer enum, the load and match of each pointer enum and the store of each of its kinds of
-//! variant, an update of a pointer enum that keeps its pointer, and of a word over one; and, where
+//! variant, an update of a pointer enum that keeps its pointer, and of a word over one; a word over
+//! a reference's tag test, its tag's `Relaxed` load and set and `Acquire` update, its pointer's
+//! load, its exchange and its store, beside its twin over a `NonNull`; and, where
 //! the target has a 16-byte atomic, a struct of two words' load, exchange and counter's update,
 //! and a pair of pointers' store and exchange. The `x86-64-refused` feature adds each shape of two
 //! words, for the test that `x86_64` without `cmpxchg16b` refuses each once.
@@ -18,7 +20,7 @@ pub mod without_cmpxchg16b;
 
 use core::ptr::NonNull;
 
-use atomix::ordering::{AcqRel, Acquire, Release};
+use atomix::ordering::{AcqRel, Acquire, Relaxed, Release};
 use atomix::{Atom, AtomBitwise, Atomic, RangedU8, RangedU32};
 
 /// The side of the book an order rests on: one bit, its discriminant.
@@ -164,6 +166,51 @@ pub fn top_fetch_add(atomic: &Atomic<Counted>, delta: u32) -> u32 {
     atomic.fields().count.fetch_add(delta, AcqRel).count
 }
 
+/// A record of a ring: whether it is written, and its length, 9 bits, in a 16-bit slot of an array.
+#[derive(Clone, Copy, Atom)]
+pub struct Record {
+    /// Whether it is written, at bit 0 of its slot.
+    pub written: bool,
+    /// How long it is, at bits 1 to 8 of its slot.
+    pub length: u8,
+}
+
+/// Three records, a 16-bit slot each, then the index of the head, at bit 48.
+#[derive(Clone, Copy, Atom)]
+pub struct Ring {
+    /// The records.
+    pub records: [Record; 3],
+    /// Which record is the head.
+    pub head: u8,
+}
+
+#[unsafe(no_mangle)]
+pub fn record_test_and_set_written(atomic: &Atomic<[Record; 4]>, index: usize) -> bool {
+    atomic.element(index).fields().written.test_and_set(AcqRel)
+}
+
+#[unsafe(no_mangle)]
+pub fn record_set_written(atomic: &Atomic<[Record; 4]>, index: usize) {
+    atomic.element(index).fields().written.set(Release);
+}
+
+#[unsafe(no_mangle)]
+pub fn record_load_length(atomic: &Atomic<[Record; 4]>, index: usize) -> u8 {
+    atomic.element(index).fields().length.load(Acquire)
+}
+
+#[unsafe(no_mangle)]
+pub fn ring_test_and_set_written(atomic: &Atomic<Ring>, index: usize) -> bool {
+    atomic.fields().records.element(index).fields().written.test_and_set(AcqRel)
+}
+
+#[unsafe(no_mangle)]
+pub fn grid_test_and_set_written(
+    atomic: &Atomic<[[Record; 2]; 2]>, row: usize, column: usize,
+) -> bool {
+    atomic.element(row).element(column).fields().written.test_and_set(AcqRel)
+}
+
 /// A node, aligned to 8: three low bits clear.
 #[repr(align(8))]
 pub struct Node {
@@ -268,9 +315,81 @@ pub struct Guarded {
     pub locked: bool,
 }
 
+/// A Treiber stack's head over a reference: `Head`'s twin, the top node a `&'static`.
+#[derive(Clone, Copy, Atom)]
+pub struct ReferenceHead {
+    /// The top node.
+    pub top: Option<&'static Node>,
+    /// The version.
+    pub version: RangedU8<0, 3>,
+    /// Whether a pop is under way.
+    pub marked: bool,
+}
+
+/// A node by reference and a mark at bit 0: `Marked`'s twin.
+#[derive(Clone, Copy, Atom)]
+pub struct ReferenceMarked {
+    /// The node.
+    pub node: &'static Node,
+    /// The mark.
+    pub marked: bool,
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_head_test_and_set_marked(atomic: &Atomic<ReferenceHead>) -> bool {
+    atomic.fields().marked.test_and_set(AcqRel)
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_head_load_top(atomic: &Atomic<ReferenceHead>) -> Option<&'static Node> {
+    atomic.fields().top.load(Acquire)
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_head_compare_exchange(
+    atomic: &Atomic<ReferenceHead>, current: ReferenceHead, new: ReferenceHead,
+) -> bool {
+    atomic.compare_exchange(current, new, AcqRel, Acquire).is_ok()
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_marked_store(atomic: &Atomic<ReferenceMarked>, node: &'static Node) {
+    atomic.store(ReferenceMarked { node, marked: true }, Release);
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_head_load_marked(atomic: &Atomic<ReferenceHead>) -> bool {
+    atomic.fields().marked.load(Relaxed)
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_head_set_marked(atomic: &Atomic<ReferenceHead>) {
+    atomic.fields().marked.set(Relaxed);
+}
+
+#[unsafe(no_mangle)]
+pub fn reference_head_update_marked(atomic: &Atomic<ReferenceHead>) -> ReferenceHead {
+    atomic.fields().marked.update(Acquire, Acquire, |marked| !marked)
+}
+
 #[unsafe(no_mangle)]
 pub fn head_test_and_set_marked(atomic: &Atomic<Head>) -> bool {
     atomic.fields().marked.test_and_set(AcqRel)
+}
+
+#[unsafe(no_mangle)]
+pub fn head_load_marked(atomic: &Atomic<Head>) -> bool {
+    atomic.fields().marked.load(Relaxed)
+}
+
+#[unsafe(no_mangle)]
+pub fn head_set_marked(atomic: &Atomic<Head>) {
+    atomic.fields().marked.set(Relaxed);
+}
+
+#[unsafe(no_mangle)]
+pub fn head_update_marked(atomic: &Atomic<Head>) -> Head {
+    atomic.fields().marked.update(Acquire, Acquire, |marked| !marked)
 }
 
 #[unsafe(no_mangle)]
@@ -514,4 +633,32 @@ pub fn marked_pair_compare_exchange(
     atomic: &Atomic<MarkedPair>, current: MarkedPair, new: MarkedPair,
 ) -> Result<MarkedPair, MarkedPair> {
     atomic.compare_exchange(current, new, AcqRel, Acquire)
+}
+
+/// A node and a mark at bit 0, as a tuple: `Marked`'s twin.
+pub type TupleMarked = (NonNull<Node>, bool);
+
+#[unsafe(no_mangle)]
+pub fn tuple_marked_store(atomic: &Atomic<TupleMarked>, node: NonNull<Node>) {
+    atomic.store((node, true), Release);
+}
+
+#[unsafe(no_mangle)]
+pub fn marked_test_and_set(atomic: &Atomic<Marked>) -> bool {
+    atomic.fields().marked.test_and_set(AcqRel)
+}
+
+#[unsafe(no_mangle)]
+pub fn tuple_marked_test_and_set(atomic: &Atomic<TupleMarked>) -> bool {
+    atomic.fields().1.test_and_set(AcqRel)
+}
+
+#[unsafe(no_mangle)]
+pub fn marked_load_node(atomic: &Atomic<Marked>) -> NonNull<Node> {
+    atomic.fields().node.load(Acquire)
+}
+
+#[unsafe(no_mangle)]
+pub fn tuple_marked_load_node(atomic: &Atomic<TupleMarked>) -> NonNull<Node> {
+    atomic.fields().0.load(Acquire)
 }

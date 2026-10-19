@@ -15,8 +15,8 @@ use core::sync::atomic::Ordering as CoreOrdering;
 use loom::sync::atomic;
 
 use super::{
-    BitTest, Bitwise, CellAccess, CompareExchange, ExactBits, FetchAdd, Load, MaskBitwise,
-    PointerOffset, Primitive, RawAccess, Store, Swap,
+    BitTest, Bitwise, CellAccess, CompareExchange, Data, ExactBits, FetchAdd, Load, MaskBitwise,
+    PointerOffset, PointerRepr, Primitive, RawAccess, Store, Swap,
 };
 #[cfg(aarch64_code)]
 use super::{FetchBitwise, MinMax};
@@ -638,6 +638,22 @@ fn subtract_tags_at_run_time<T>(pointer: *mut T, tag_mask: usize) -> *mut T {
         assert_unchecked(cleared.addr() & tag_mask == 0);
     }
     cleared
+}
+
+// SAFETY: `into_raw` and `from_raw` are casts between pointer types, which keep the address and
+// the provenance, so the one undoes the other.
+#[expect(unsafe_code, reason = "a sealed repr's rebuild trusts the round trip")]
+const unsafe impl<T> PointerRepr for *mut T {
+    type Pointee = Data;
+    #[inline]
+    fn into_raw(self) -> *mut () {
+        self.cast()
+    }
+    #[expect(unsafe_code, reason = "the trait's contract, which a raw pointer needs none of")]
+    #[inline]
+    unsafe fn from_raw(pointer: *mut ()) -> Self {
+        pointer.cast()
+    }
 }
 
 // Each operation keeps the pointer's provenance, as core's do.

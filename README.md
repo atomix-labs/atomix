@@ -21,12 +21,13 @@
 
 atomix gives each value that fits one atomic an atomic of its own type:
 integers, plain or held to a range, `NonZero`s, `char`s, floats, pointers,
-`Option`s that spend a spare bit pattern on `None`, and the structs and enums
-`#[derive(Atom)]` packs into one word or two. Its orderings are types, checked
-as it compiles, and each operation is the instruction its name promises: where a
-target has none, the operation does not exist, and a compare-exchange loop is
-`update`, by name. The locks built on these atomics are yet to come, in
-`atomix-lock`.
+shared references, function pointers, arrays, tuples, core's IP addresses,
+durations, `Ordering`s, `Result`s and ranges, `Option`s that spend a spare bit
+pattern on `None`, and the structs and enums `#[derive(Atom)]` packs into one
+word or two. Its orderings are types, checked as it compiles, and each operation
+is the instruction its name promises: where a target has none, the operation
+does not exist, and a compare-exchange loop is `update`, by name. The locks
+built on these atomics are yet to come, in `atomix-lock`.
 
 | Crate           | What it holds                                                                    |
 | --------------- | -------------------------------------------------------------------------------- |
@@ -262,7 +263,12 @@ has them.
 | `arbitrary`     | `Arbitrary` for an atomic, and a ranged integer, held to its range         |
 | `arbitrary-int` | `Atom`, `AtomOrd`, `FieldBitwise` and `FieldAdd` for `UInt` and `Int`      |
 | `deranged-05`   | `Atom`, `AtomOrd` and `From` with atomix's own for deranged 0.5's integers |
+| `std`           | `Atom` for `ExitStatus`, Unix's `BorrowedFd`, and `SystemTime` in 16 bytes |
 | `loom`          | loom's types under `--cfg loom`; nothing without the cfg                   |
+
+`serde`, `zerocopy-08` and `arbitrary` each give a `Packed` what its array has
+of that crate's traits, and `bytemuck` the array's `Zeroable`, `NoUninit` and
+`AnyBitPattern`.
 
 None is on by default: `cargo add --git https://github.com/atomix-labs/atomix
 atomix-rs --features derive,serde`.

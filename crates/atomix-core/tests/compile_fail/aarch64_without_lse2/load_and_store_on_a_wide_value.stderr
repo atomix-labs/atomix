@@ -22,7 +22,7 @@ note: required by a bound in `atomix_core::Atomic::<T>::store`
   |
   | impl<T: Atom> Atomic<T> {
 ...
-  |     pub const fn store<O: StoreOrdering>(&self, value: T, order: O)
+  |     pub const fn store<O: StoreOrdering<T>>(&self, value: T, order: O)
 ...
   |         T::Repr: [const] Store,
   |                  ^^^^^^^^^^^^^ required by this bound in `Atomic::<T>::store`
@@ -51,7 +51,7 @@ note: required by a bound in `atomix_core::Atomic::<T>::load`
    |
    | impl<T: Atom> Atomic<T> {
 ...
-   |     pub const fn load<O: LoadOrdering>(&self, order: O) -> T
+   |     pub const fn load<O: LoadOrdering<T>>(&self, order: O) -> T
 ...
    |         T::Repr: [const] Load,
    |                  ^^^^^^^^^^^^ required by this bound in `Atomic::<T>::load`

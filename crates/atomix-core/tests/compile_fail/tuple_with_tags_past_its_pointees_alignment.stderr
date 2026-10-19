@@ -1,0 +1,32 @@
+error[E0080]: evaluation panicked: `(core::ptr::non_null::NonNull<$CRATE::Node>, u8)`: its fields stored as bits share its first pointer's word, and need more low bits than the pointer leaves clear, as its pointee's alignment says, a function's none: align the pointee more, put a pointer to data first, or derive a struct of the same fields with `#[atom(repr = u128)]`
+ --> src/atom/tuple/mod.rs
+  |
+  |                 const { assert_tags_fit::<Self>(Self::TAG_WIDTH, Self::POINTEE_ALIGNMENT) };
+  |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `atomix_core::atom::tuple::<impl atomix_core::Atom for (std::ptr::NonNull<Node>, u8)>::to_tagged_repr::{constant#0}` failed here
+...
+  | tuple!((A 0) (B 1) last 1);
+  | -------------------------- in this macro invocation
+  |
+  = note: this error originates in the macro `tuple` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+note: erroneous constant encountered
+ --> src/atom/tuple/mod.rs
+  |
+  |                 const { assert_tags_fit::<Self>(Self::TAG_WIDTH, Self::POINTEE_ALIGNMENT) };
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+  | tuple!((A 0) (B 1) last 1);
+  | -------------------------- in this macro invocation
+  |
+  = note: this note originates in the macro `tuple` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+note: the above error was encountered while instantiating `fn atomix_core::atom::tuple::<impl Atom for (NonNull<Node>, u8)>::to_tagged_repr`
+ --> src/atom/tuple/mod.rs
+  |
+  |                 let (repr, misaligned) = self.to_tagged_repr(Tags::EMPTY);
+  |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+  | tuple!((A 0) (B 1) last 1);
+  | -------------------------- in this macro invocation
+  |
+  = note: this note originates in the macro `tuple` (in Nightly builds, run with -Z macro-backtrace for more info)

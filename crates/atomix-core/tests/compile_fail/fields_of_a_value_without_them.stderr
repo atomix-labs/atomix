@@ -15,3 +15,7 @@ note: required by a bound in `atomix_core::atomic::field::<impl atomix_core::Ato
   |     where
   |         C: [const] ProjectFields<Fields<'a, Whole<C>> = F>,
   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `atomix_core::atomic::field::<impl Atomic<C>>::fields`
+help: use a unary tuple instead
+  |
+7 |     let _ = (Atomic::new(5_u32),).fields();
+  |             +                  ++

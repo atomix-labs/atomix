@@ -1,6 +1,6 @@
 //! What the code `#[derive(Atom)]` writes calls, and the bounds rustc's messages name by this path:
-//! `NotAnAtomic`, of `Atomic`'s impl of `Atom` that never applies, and `RawValue`, of `get_mut`,
-//! `from_mut` and the slice conversions. Hidden, since nothing else should name them.
+//! `RawValue`, of `get_mut`, `from_mut` and the slice conversions. Hidden, since nothing else
+//! should name them.
 //!
 //! A derived impl for a type with no parameters calls the codecs here rather than `Atom`'s methods:
 //! their bound is `const`, never `[const]`, so the call needs no `const_trait_impl` in the crate
@@ -10,8 +10,14 @@ use core::any::type_name;
 use core::ptr;
 
 use crate::atom::{Atom, AtomAdd, AtomBitwise, AtomOrd, PointerAtom};
-pub use crate::atomic::{HasPackedField, NotAnAtomic, RawValue, Reach, project_field};
+pub use crate::atom::{
+    EnumShape, FieldPatternsDecode, Fill, Fold, Integer, IntegerWord, Integers, IntegersBeside,
+    LastField, LastReach, Padding, Pointer, PointerReprAtom, Pointers, Push, ReachOf, Shape, Slots,
+    Tagged, TupleFieldRepr, TwoPointers, Wider,
+};
+pub use crate::atomic::{Array, HasPackedField, PlaceTail, RawValue, Reach, project_field};
 use crate::message::{Message, refuse};
+pub use crate::primitive::{Code, Data};
 use crate::primitive::{CompareExchange, ExactBits, Primitive};
 #[cfg(wide)]
 use crate::primitive::{DoubleWord, Word};
@@ -139,7 +145,7 @@ pub const fn assert_send_and_sync<T: Send + Sync>() {}
 /// Compiles only where `F` is stored as a pointer, which a newtype claims of its field where it is
 /// written as one or marked `#[atom(pointer)]`.
 #[inline]
-pub const fn assert_pointer<F: PointerAtom>() {}
+pub const fn assert_pointer<F: PointerReprAtom>() {}
 
 /// Compiles only where `T` is an atom of a `const` impl, as a derived newtype's concrete field must
 /// be: the one check of the field, since the newtype's impl assumes it.

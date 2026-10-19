@@ -7,7 +7,9 @@ use quote::{ToTokens, format_ident, quote};
 use syn::ext::IdentExt;
 use syn::{GenericParam, Ident, Lifetime, Member, Type};
 
-use super::bound::{BoundSite, field_bounds, own_where_clause, thread_bounds, where_clause};
+use super::bound::{
+    BoundSite, PointerBound, field_bounds, own_where_clause, thread_bounds, where_clause,
+};
 use super::member_in_expansion;
 use crate::model::{Field, Implementor};
 
@@ -268,7 +270,8 @@ impl<'a> ProjectionCode<'a> {
     /// it, so the struct is an `Atom` wherever the impl applies.
     fn where_clause(&self) -> Option<TokenStream> {
         let atomix = &self.implementor.atomix;
-        let field_bounds = field_bounds(atomix, self.fields.iter().copied(), BoundSite::Projection);
+        let fields = self.fields.iter().copied();
+        let field_bounds = field_bounds(atomix, fields, BoundSite::Projection, PointerBound::Word);
         let thread_bounds = thread_bounds(self.implementor, self.fields.iter().copied());
         where_clause(self.implementor, field_bounds.chain(thread_bounds))
     }

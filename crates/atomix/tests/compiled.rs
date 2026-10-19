@@ -57,8 +57,19 @@ mod codegen {
     //! and two pointers, a mark in the first's low bits, are tested in one test before their one
     //! exchange or store. Where `x86_64` has no `cmpxchg16b`, each shape of two words is refused
     //! once, at its derive.
+    //!
+    //! A word over a reference lowers as its twin over a `NonNull` does, instruction for
+    //! instruction: its tag's test, its tag's `Relaxed` load and set, which no floor raises, its
+    //! tag's `Acquire` update, whose write puts the reference back and needs no `Release`, and its
+    //! pointer's load. Its store and exchange test no tag bit, since a reference is aligned, so
+    //! they have no refusal at all.
+    //!
+    //! A tuple lowers as the struct of its fields does: `(NonNull<Node>, bool)`'s store, its flag's
+    //! test-and-set and its pointer's load are `Marked`'s, instruction for instruction.
 
-    use crate::testing::codegen::Lowering::{self, InOrder, Only, Refuses, Retry, RetryOnly};
+    use crate::testing::codegen::Lowering::{
+        self, InOrder, Only, Refuses, Retry, RetryOnly, SameAs,
+    };
     use crate::testing::codegen::{
         AARCH64_LINUX, AARCH64_MACOS, X86_64_LINUX, X86_64_MACOS, lowers_as_expected, refused,
     };
@@ -87,16 +98,57 @@ mod codegen {
         ("locked_slot_test_and_set_locked", Only(&["mov", "ldsetal", "ubfx", "ret"])),
         ("guarded_set_locked", Only(&["mov", "ldsetl", "ret"])),
         ("guarded_test_and_set_marked", Only(&["mov", "ldsetal", "and", "ret"])),
+        ("reference_head_test_and_set_marked", SameAs("head_test_and_set_marked")),
+        ("reference_head_load_top", SameAs("head_load_top")),
+        ("reference_marked_store", Only(&["add", "stlr", "ret"])),
+        ("marked_test_and_set", Only(&["mov", "ldsetal", "and", "ret"])),
+        ("tuple_marked_store", SameAs("marked_store")),
+        ("tuple_marked_test_and_set", SameAs("marked_test_and_set")),
+        ("tuple_marked_load_node", SameAs("marked_load_node")),
+        ("reference_head_compare_exchange", InOrder(&["add", "add", "casal", "cmp", "cset"])),
+        ("head_load_marked", Only(&["ldr", "ubfx", "ret"])),
+        ("head_set_marked", Only(&["mov", "ldset", "ret"])),
+        ("reference_head_load_marked", SameAs("head_load_marked")),
+        ("reference_head_set_marked", SameAs("head_set_marked")),
+        ("reference_head_update_marked", SameAs("head_update_marked")),
+        (
+            "record_test_and_set_written",
+            Only(&[
+                "cmp", "b.hs", "lsl", "mov", "lsl", "ldsetal", "tst", "cset", "ret", "stp", "mov",
+                "adrp", "add", "mov", "mov", "bl",
+            ]),
+        ),
+        (
+            "record_set_written",
+            Only(&[
+                "cmp", "b.hs", "lsl", "mov", "lsl", "ldsetl", "ret", "stp", "mov", "adrp", "add",
+                "mov", "mov", "bl",
+            ]),
+        ),
+        (
+            "ring_test_and_set_written",
+            Only(&[
+                "cmp", "b.hs", "lsl", "mov", "lsl", "ldsetal", "tst", "cset", "ret", "stp", "mov",
+                "adrp", "add", "mov", "mov", "bl",
+            ]),
+        ),
     ];
 
     /// Each load and update on `aarch64` with the `+lse` floor, which reads with `ldar`.
     const AARCH64_FLOOR: &[(&str, Lowering)] = &[
-        ("counted_head_update_version", Retry(&["caspa", "add", "caspal"])),
+        (
+            "counted_head_update_version",
+            RetryOnly(&[
+                "mov", "mov", "caspa", "mov", "add", "mov", "mov", "mov", "caspal", "cmp", "ccmp",
+                "b.ne", "mov", "mov", "ret",
+            ]),
+        ),
         ("packed_struct_load", Only(&["ldar", "lsr", "and", "bfi", "ret"])),
         ("fieldless_enum_load", Only(&["ldarb", "ret"])),
         ("niche_filling_enum_load", InOrder(&["ldarb"])),
         ("field_load", Only(&["ldar", "ubfx", "ret"])),
         ("head_load_top", Only(&["ldar", "and", "ret"])),
+        ("marked_load_node", Only(&["ldar", "and", "ret"])),
         ("next_load_match", Only(&["ldar", "cbz", "ldr", "ret", "mov", "ret"])),
         ("child_load_match", Only(&["ldar", "ubfiz", "and", "ldr", "ret"])),
         ("child_load_leaf", Only(&["ldar", "tbz", "mov", "ret", "ldr", "ret"])),
@@ -135,19 +187,54 @@ mod codegen {
                 "b.ne", "and", "and", "ubfx", "stp", "strb", "ldp", "ret",
             ]),
         ),
+        ("head_update_marked", Retry(&["ldar", "casa"])),
+        (
+            "record_load_length",
+            Only(&[
+                "cmp", "b.hs", "mov", "ldar", "orr", "lsr", "ret", "stp", "mov", "adrp", "add",
+                "mov", "mov", "bl",
+            ]),
+        ),
+        (
+            "grid_test_and_set_written",
+            Only(&[
+                "stp", "mov", "cmp", "b.hs", "cmp", "b.hs", "lsl", "mov", "orr", "lsl", "ldsetal",
+                "tst", "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl", "adrp", "add",
+                "mov", "mov", "mov", "bl",
+            ]),
+        ),
     ];
 
     /// Each load and update on `aarch64` with LSE2, `neoverse-v1` on Linux and macOS's floor,
     /// `apple-m1`, which reads with `ldapr`.
     const AARCH64_LSE2: &[(&str, Lowering)] = &[
         ("counted_head_load", Only(&["ldp", "dmb ishld", "ret"])),
-        ("counted_head_update_version", Retry(&["ldp", "dmb ishld", "add", "caspal"])),
+        (
+            "counted_head_update_version",
+            RetryOnly(&[
+                "ldp",
+                "dmb ishld",
+                "mov",
+                "mov",
+                "add",
+                "mov",
+                "mov",
+                "caspal",
+                "cmp",
+                "ccmp",
+                "b.ne",
+                "mov",
+                "mov",
+                "ret",
+            ]),
+        ),
         ("marked_pair_store", InOrder(&["tbnz", "add", "dmb ish", "stp", "bl"])),
         ("packed_struct_load", Only(&["ldapr", "lsr", "and", "bfi", "ret"])),
         ("fieldless_enum_load", Only(&["ldaprb", "ret"])),
         ("niche_filling_enum_load", InOrder(&["ldaprb"])),
         ("field_load", Only(&["ldapr", "ubfx", "ret"])),
         ("head_load_top", Only(&["ldapr", "and", "ret"])),
+        ("marked_load_node", Only(&["ldapr", "and", "ret"])),
         ("next_load_match", Only(&["ldapr", "cbz", "ldr", "ret", "mov", "ret"])),
         ("child_load_match", Only(&["ldapr", "and", "ubfiz", "ldr", "ret"])),
         ("child_load_leaf", Only(&["ldapr", "tbz", "mov", "ret", "ldr", "ret"])),
@@ -172,6 +259,7 @@ mod codegen {
             "child_update",
             RetryOnly(&["ldapr", "mov", "casal", "cmp", "mov", "b.ne", "and", "and", "ret"]),
         ),
+        ("head_update_marked", Retry(&["ldapr", "casa"])),
     ];
 
     /// The rest on `aarch64` Linux with LSE2, `neoverse-v1`, which puts an update's
@@ -191,6 +279,21 @@ mod codegen {
                 "b.ne", "and", "and", "stp", "ubfx", "strb", "ldp", "ret",
             ]),
         ),
+        (
+            "record_load_length",
+            Only(&[
+                "cmp", "b.hs", "ldapr", "mov", "orr", "lsr", "ret", "stp", "mov", "adrp", "add",
+                "mov", "mov", "bl",
+            ]),
+        ),
+        (
+            "grid_test_and_set_written",
+            Only(&[
+                "stp", "mov", "cmp", "b.hs", "cmp", "b.hs", "lsl", "mov", "orr", "lsl", "ldsetal",
+                "tst", "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl", "adrp", "add",
+                "mov", "mov", "mov", "bl",
+            ]),
+        ),
     ];
 
     /// The rest on `aarch64` macOS, whose `apple-m1` puts an update's instructions
@@ -208,6 +311,21 @@ mod codegen {
             RetryOnly(&[
                 "stp", "mov", "ldapr", "and", "mvn", "and", "add", "mov", "casal", "cmp", "mov",
                 "b.ne", "and", "and", "stp", "ubfx", "strb", "ldp", "ret",
+            ]),
+        ),
+        (
+            "record_load_length",
+            Only(&[
+                "cmp", "b.hs", "mov", "orr", "ldapr", "lsr", "ret", "stp", "mov", "adrp", "add",
+                "mov", "mov", "bl",
+            ]),
+        ),
+        (
+            "grid_test_and_set_written",
+            Only(&[
+                "stp", "mov", "cmp", "b.hs", "cmp", "b.hs", "lsl", "orr", "mov", "lsl", "ldsetal",
+                "tst", "cset", "ldp", "ret", "adrp", "add", "mov", "mov", "bl", "adrp", "add",
+                "mov", "mov", "mov", "bl",
             ]),
         ),
     ];
@@ -240,7 +358,21 @@ mod codegen {
                 "retq",
             ]),
         ),
-        ("counted_head_update_version", Retry(&["vmovdqa", "leaq", "lock cmpxchg16b"])),
+        (
+            "counted_head_update_version",
+            RetryOnly(&[
+                "pushq",
+                "vmovdqa",
+                "vmovq",
+                "vpextrq",
+                "leaq",
+                "movq",
+                "lock cmpxchg16b",
+                "jne",
+                "popq",
+                "retq",
+            ]),
+        ),
         ("marked_pair_store", Refuses(&["testb", "jne", "addq", "vmovdqa", "retq"])),
         (
             "marked_pair_compare_exchange",
@@ -261,6 +393,15 @@ mod codegen {
         ("top_fetch_add", Only(&["movl", "shlq", "lock xaddq", "shrq", "retq"])),
         ("head_test_and_set_marked", Only(&["lock btsq", "setb", "retq"])),
         ("head_load_top", Only(&["movq", "andq", "retq"])),
+        ("reference_head_test_and_set_marked", SameAs("head_test_and_set_marked")),
+        ("reference_head_load_top", SameAs("head_load_top")),
+        ("reference_marked_store", Only(&["incq", "movq", "retq"])),
+        ("marked_test_and_set", Only(&["lock btsq", "setb", "retq"])),
+        ("marked_load_node", Only(&["movq", "andq", "retq"])),
+        ("tuple_marked_store", SameAs("marked_store")),
+        ("tuple_marked_test_and_set", SameAs("marked_test_and_set")),
+        ("tuple_marked_load_node", SameAs("marked_load_node")),
+        ("reference_head_compare_exchange", InOrder(&["leaq", "addq", "lock cmpxchgq", "sete"])),
         ("next_load_match", Only(&["movq", "testq", "je", "movq", "retq", "movl", "retq"])),
         ("child_load_match", Only(&["movq", "movq", "andq", "andl", "movq", "retq"])),
         ("child_load_leaf", Only(&["movq", "testb", "je", "xorl", "retq", "movq", "retq"])),
@@ -375,72 +516,222 @@ mod codegen {
         ("locked_slot_test_and_set_locked", Only(&["lock btsq", "setb", "retq"])),
         ("guarded_set_locked", Only(&["lock orq", "retq"])),
         ("guarded_test_and_set_marked", Only(&["lock btsq", "setb", "retq"])),
+        ("head_load_marked", Only(&["movq", "andl", "shrl", "retq"])),
+        ("head_set_marked", Only(&["lock orq", "retq"])),
+        ("head_update_marked", Retry(&["movq", "lock cmpxchgq"])),
+        ("reference_head_load_marked", SameAs("head_load_marked")),
+        ("reference_head_set_marked", SameAs("head_set_marked")),
+        ("reference_head_update_marked", SameAs("head_update_marked")),
     ];
 
     /// The rest on `x86_64` Linux, where a function that calls aligns the stack with a push.
-    const X86_64_LINUX_PUSH: &[(&str, Lowering)] = &[(
-        "locked_child_update",
-        RetryOnly(&[
-            "movq",
-            "movb",
-            "testb",
-            "je",
-            "movl",
-            "movq",
-            "andq",
-            "notl",
-            "andl",
-            "addq",
-            "lock cmpxchgq",
-            "jne",
-            "movl",
-            "andl",
-            "movq",
-            "andq",
-            "shrb",
-            "andb",
-            "movq",
-            "movq",
-            "movb",
-            "movq",
-            "retq",
-            "pushq",
-            "leaq",
-            "callq",
-        ]),
-    )];
+    const X86_64_LINUX_PUSH: &[(&str, Lowering)] = &[
+        (
+            "locked_child_update",
+            RetryOnly(&[
+                "movq",
+                "movb",
+                "testb",
+                "je",
+                "movl",
+                "movq",
+                "andq",
+                "notl",
+                "andl",
+                "addq",
+                "lock cmpxchgq",
+                "jne",
+                "movl",
+                "andl",
+                "movq",
+                "andq",
+                "shrb",
+                "andb",
+                "movq",
+                "movq",
+                "movb",
+                "movq",
+                "retq",
+                "pushq",
+                "leaq",
+                "callq",
+            ]),
+        ),
+        (
+            "record_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "pushq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "record_set_written",
+            Only(&[
+                "cmpq", "jae", "shll", "movl", "shlxq", "lock orq", "retq", "pushq", "leaq",
+                "movq", "movl", "callq",
+            ]),
+        ),
+        (
+            "record_load_length",
+            Only(&[
+                "cmpq", "jae", "shll", "movq", "incb", "shrxq", "retq", "pushq", "leaq", "movq",
+                "movl", "callq",
+            ]),
+        ),
+        (
+            "ring_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "pushq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "grid_test_and_set_written",
+            Only(&[
+                "pushq",
+                "cmpq",
+                "jae",
+                "cmpq",
+                "jae",
+                "shlq",
+                "shlq",
+                "orq",
+                "lock btsq",
+                "setb",
+                "popq",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+                "leaq",
+                "movl",
+                "movq",
+                "movq",
+                "callq",
+            ]),
+        ),
+    ];
 
     /// The rest on `x86_64` macOS, where every function's frame record aligns the stack.
-    const X86_64_MACOS_FRAME: &[(&str, Lowering)] = &[(
-        "locked_child_update",
-        RetryOnly(&[
-            "movq",
-            "movb",
-            "testb",
-            "je",
-            "movl",
-            "movq",
-            "andq",
-            "notl",
-            "andl",
-            "addq",
-            "lock cmpxchgq",
-            "jne",
-            "movl",
-            "andl",
-            "movq",
-            "andq",
-            "shrb",
-            "andb",
-            "movq",
-            "movq",
-            "movb",
-            "movq",
-            "retq",
-            "leaq",
-            "callq",
-        ]),
-    )];
+    const X86_64_MACOS_FRAME: &[(&str, Lowering)] = &[
+        (
+            "locked_child_update",
+            RetryOnly(&[
+                "movq",
+                "movb",
+                "testb",
+                "je",
+                "movl",
+                "movq",
+                "andq",
+                "notl",
+                "andl",
+                "addq",
+                "lock cmpxchgq",
+                "jne",
+                "movl",
+                "andl",
+                "movq",
+                "andq",
+                "shrb",
+                "andb",
+                "movq",
+                "movq",
+                "movb",
+                "movq",
+                "retq",
+                "leaq",
+                "callq",
+            ]),
+        ),
+        (
+            "record_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "record_set_written",
+            Only(&[
+                "cmpq", "jae", "shll", "movl", "shlxq", "lock orq", "retq", "leaq", "movq", "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "record_load_length",
+            Only(&[
+                "cmpq", "jae", "shll", "movq", "incb", "shrxq", "retq", "leaq", "movq", "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "ring_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "shlq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+            ]),
+        ),
+        (
+            "grid_test_and_set_written",
+            Only(&[
+                "cmpq",
+                "jae",
+                "cmpq",
+                "jae",
+                "shlq",
+                "shlq",
+                "orq",
+                "lock btsq",
+                "setb",
+                "retq",
+                "leaq",
+                "movq",
+                "movl",
+                "callq",
+                "leaq",
+                "movl",
+                "movq",
+                "movq",
+                "callq",
+            ]),
+        ),
+    ];
 
     #[test]
     fn aarch64_linux_lowers_each_derived_operation_to_its_instructions() {

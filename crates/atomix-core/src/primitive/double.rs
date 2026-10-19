@@ -17,6 +17,7 @@ use core::mem::transmute;
 use core::ptr;
 
 use super::Primitive;
+use crate::ordering::{OrderingFloor, Relaxed};
 use crate::range::mask;
 
 /// How many bits the first word takes, at the low end of a double word's bits.
@@ -38,6 +39,9 @@ const WORD_BITS: u32 = u64::BITS;
 pub impl(crate) const trait Word: Copy + Unpin + const Destruct {
     /// Whether `is_bits` decides every `bits`: an integer's, whose bits are its whole value.
     const IS_BITS_EXACT: bool;
+    /// The weakest ordering an operation on a double word of it takes, beside the other word's:
+    /// `Relaxed`, but a reference's `AcqRel`.
+    type OrderingFloor: const OrderingFloor = Relaxed;
     /// The word of the low 64 bits of `bits`.
     fn from_bits(bits: u128) -> Self;
     /// Whether the word's bits are `bits`: an integer's exactly, a pointer's only as null, since a
@@ -57,7 +61,13 @@ pub impl(crate) const trait Word: Copy + Unpin + const Destruct {
     /// null pointer's, as no constant exposes a provenance.
     fn exposed_bits(self) -> u64;
     /// The word whose bits are `bits`, a pointer taking back a provenance `exposed_bits` exposed.
-    fn from_exposed_bits(bits: u64) -> Self;
+    ///
+    /// # Safety
+    /// `bits` are what `exposed_bits` gave of a `Self`, as a double word's cell holds them: a word
+    /// whose value carries a promise of its own, a vtable pointer or a reference's repr, is built
+    /// of no other bits.
+    #[expect(unsafe_code, reason = "a vtable pointer or a reference's repr trusts the bits")]
+    unsafe fn from_exposed_bits(bits: u64) -> Self;
 }
 
 /// Implements `Word` for a primitive, its bits as its own `Primitive` impl reads and writes them.
@@ -94,8 +104,9 @@ macro_rules! primitive_word {
                 let $word_value = self;
                 $exposed_bits
             }
+            #[expect(unsafe_code, reason = "a word of no promise of its own, built of any bits")]
             #[inline]
-            fn from_exposed_bits(bits: u64) -> Self {
+            unsafe fn from_exposed_bits(bits: u64) -> Self {
                 let $bits = bits;
                 $from_exposed_bits
             }
@@ -216,6 +227,7 @@ pub struct DoubleWord<A, B> {
 const impl<A: [const] Word, B: [const] Word> Primitive for DoubleWord<A, B> {
     const BITS: u32 = u128::BITS;
     const IS_BITS_EXACT: bool = A::IS_BITS_EXACT && B::IS_BITS_EXACT;
+    type OrderingFloor = <A::OrderingFloor as OrderingFloor>::Stronger<B::OrderingFloor>;
     #[inline]
     fn from_bits(bits: u128) -> Self {
         Self { first: A::from_bits(bits), second: B::from_bits(bits.unbounded_shr(WORD_BITS)) }
@@ -254,7 +266,8 @@ mod exposed {
     use core::sync::atomic::Ordering as CoreOrdering;
 
     use super::{DoubleWord, WORD_BITS, Word};
-    use crate::primitive::{CellAccess, CompareExchange};
+    use crate::ordering::OrderingFloor;
+    use crate::primitive::{CellAccess, CompareExchange, ReadByExchange};
     #[cfg(wide_load_store)]
     use crate::primitive::{Load, Store};
 
@@ -262,9 +275,16 @@ mod exposed {
     /// they are, as `Atom` declares a value may cross threads.
     type Invariant<A, B> = PhantomData<fn(A, B) -> (A, B)>;
 
+    /// The floor of a double word of an `A` and a `B`: the stronger of the two words'.
+    type Floor<A, B> =
+        <<A as Word>::OrderingFloor as OrderingFloor>::Stronger<<B as Word>::OrderingFloor>;
+
     /// A 16-byte atomic cell holding a [`DoubleWord`]'s bits as `u128`'s cell holds its own.
     #[repr(transparent)]
     pub struct DoubleCell<A, B> {
+        // INVARIANT: the bits `exposed_bits` gave of a `DoubleWord<A, B>`. Its writers are
+        // `into_cell`, `set`, the exchanges and `store`, each of which writes such bits of the
+        // words it takes, and nothing else reaches the private field.
         /// The words' bits, `first`'s low, each pointer's provenance exposed.
         bits: <u128 as CellAccess>::Cell,
         /// The words' types.
@@ -285,30 +305,63 @@ mod exposed {
     }
 
     /// The words of `exposed_bits`'s bits, each pointer taking back an exposed provenance.
+    ///
+    /// # Safety
+    /// `bits` are what `exposed_bits` gave of a `DoubleWord<A, B>`, as a cell's are, by its field
+    /// INVARIANT.
+    #[expect(unsafe_code, reason = "takes each word back from the bits a word exposed")]
     #[inline]
-    const fn from_exposed_bits<A: [const] Word, B: [const] Word>(bits: u128) -> DoubleWord<A, B> {
-        DoubleWord {
-            first: A::from_exposed_bits(bits.wrapping_cast()),
-            second: B::from_exposed_bits(bits.unbounded_shr(WORD_BITS).wrapping_cast()),
+    const unsafe fn from_exposed_bits<A: [const] Word, B: [const] Word>(
+        bits: u128,
+    ) -> DoubleWord<A, B> {
+        // SAFETY: the caller's bits are a double word's exposed bits, so their low 64 are what
+        // `exposed_bits` gave of its first word.
+        let first = unsafe { A::from_exposed_bits(bits.wrapping_cast()) };
+        // SAFETY: and their high 64 of its second.
+        let second = unsafe { B::from_exposed_bits(bits.unbounded_shr(WORD_BITS).wrapping_cast()) };
+        DoubleWord { first, second }
+    }
+
+    /// `success`, an exchange's that writes the words whose exposed bits are `new`, raised to their
+    /// floor: as a load's where `new` is zero, as `load_rmw`'s exchange of zero for zero writes,
+    /// which publishes nothing, else as an exchange's.
+    #[inline]
+    const fn raised_success<A: [const] Word, B: [const] Word>(
+        new: u128, success: CoreOrdering,
+    ) -> CoreOrdering {
+        if new == 0 {
+            Floor::<A, B>::raise_for_load(success)
+        } else {
+            Floor::<A, B>::raise_for_exchange(success)
         }
     }
 
     /// The words a weak exchange of `exposed_bits`'s bits found, `Ok` where it wrote: decoded
     /// once, whichever the result, as the strong exchange decodes them. The result says which, as
     /// no comparison can: a weak exchange may fail where it finds `current`.
+    ///
+    /// # Safety
+    /// The bits found are what `exposed_bits` gave of a `DoubleWord<A, B>`, as a cell's are.
+    #[expect(unsafe_code, reason = "takes each word back from the bits a word exposed")]
     #[inline]
-    const fn from_exposed_result<A: [const] Word, B: [const] Word>(
+    const unsafe fn from_exposed_result<A: [const] Word, B: [const] Word>(
         result: Result<u128, u128>,
     ) -> Result<DoubleWord<A, B>, DoubleWord<A, B>> {
         let (Ok(bits) | Err(bits)) = result;
-        let words = from_exposed_bits(bits);
+        // SAFETY: the caller's bits are a double word's exposed bits.
+        let words = unsafe { from_exposed_bits(bits) };
         if result.is_ok() { Ok(words) } else { Err(words) }
     }
 
     /// Implements `CellAccess`, `CompareExchange`, `Load` and `Store` over `u128`'s, `const` where
     /// `u128`'s are: off loom.
+    ///
+    /// Each takes words back from the bits the cell holds, which its field INVARIANT says a double
+    /// word exposed; each operation raises its ordering to the words' floor, as a reference's repr
+    /// raises its own, so a double word that holds a reference reads and writes it as one.
     macro_rules! cells {
         ($($constness:ident)?) => {
+            #[expect(unsafe_code, reason = "takes words back from the bits the cell holds")]
             $($constness)? impl<A: $([$constness])? Word, B: $([$constness])? Word> CellAccess
                 for DoubleWord<A, B>
             {
@@ -319,11 +372,13 @@ mod exposed {
                 }
                 #[inline]
                 fn from_cell(cell: DoubleCell<A, B>) -> Self {
-                    from_exposed_bits(u128::from_cell(cell.bits))
+                    // SAFETY: by the field INVARIANT, the bits are a double word's exposed bits.
+                    unsafe { from_exposed_bits(u128::from_cell(cell.bits)) }
                 }
                 #[inline]
                 fn get(cell: &mut DoubleCell<A, B>) -> Self {
-                    from_exposed_bits(u128::get(&mut cell.bits))
+                    // SAFETY: as in `from_cell`.
+                    unsafe { from_exposed_bits(u128::get(&mut cell.bits)) }
                 }
                 #[inline]
                 fn set(cell: &mut DoubleCell<A, B>, value: Self) {
@@ -331,12 +386,15 @@ mod exposed {
                 }
             }
 
+            #[expect(unsafe_code, reason = "takes words back from the bits the cell holds")]
             $($constness)? impl<A: $([$constness])? Word, B: $([$constness])? Word> CompareExchange
                 for DoubleWord<A, B>
             {
                 #[inline]
                 fn read_for_rmw(cell: &DoubleCell<A, B>, order: CoreOrdering) -> Self {
-                    from_exposed_bits(u128::read_for_rmw(&cell.bits, order))
+                    let order = Floor::<A, B>::raise_for_load(order);
+                    // SAFETY: by the field INVARIANT, the bits are a double word's exposed bits.
+                    unsafe { from_exposed_bits(u128::read_for_rmw(&cell.bits, order)) }
                 }
                 #[inline]
                 fn compare_exchange(
@@ -344,6 +402,8 @@ mod exposed {
                     failure: CoreOrdering,
                 ) -> Result<Self, Self> {
                     let (current, new) = (exposed_bits(current), exposed_bits(new));
+                    let success = raised_success::<A, B>(new, success);
+                    let failure = Floor::<A, B>::raise_for_load(failure);
                     // The bits found are decoded once, whichever the result: decoded in each arm,
                     // LLVM writes `current` for them in the `Ok` arm, and joins the two decodes
                     // with a branch or a `cmov` that `u128`'s exchange has no need of. A strong
@@ -351,7 +411,8 @@ mod exposed {
                     // bits says which arm.
                     let (Ok(bits) | Err(bits)) =
                         u128::compare_exchange(&cell.bits, current, new, success, failure);
-                    let words = from_exposed_bits(bits);
+                    // SAFETY: by the field INVARIANT, the bits are a double word's exposed bits.
+                    let words = unsafe { from_exposed_bits(bits) };
                     if bits == current { Ok(words) } else { Err(words) }
                 }
                 #[inline]
@@ -360,19 +421,66 @@ mod exposed {
                     failure: CoreOrdering,
                 ) -> Result<Self, Self> {
                     let (current, new) = (exposed_bits(current), exposed_bits(new));
-                    from_exposed_result(u128::compare_exchange_weak(
-                        &cell.bits, current, new, success, failure,
-                    ))
+                    let success = raised_success::<A, B>(new, success);
+                    let failure = Floor::<A, B>::raise_for_load(failure);
+                    let result =
+                        u128::compare_exchange_weak(&cell.bits, current, new, success, failure);
+                    // SAFETY: by the field INVARIANT, the bits found are a double word's exposed
+                    // bits.
+                    unsafe { from_exposed_result(result) }
+                }
+                // The reads take no word back, and the write is `new`'s, raised as a store's.
+                #[inline]
+                fn store_by_exchange(cell: &DoubleCell<A, B>, new: Self, order: CoreOrdering) {
+                    let order = Floor::<A, B>::raise_for_store(order);
+                    u128::store_by_exchange(&cell.bits, exposed_bits(new), order);
+                }
+                // The write keeps `current`'s pointers, their tags alone changed, or makes a
+                // reference's null, as the caller promises, so it publishes none, and a reference's
+                // read acquires.
+                #[expect(unsafe_code, reason = "the raise trusts `new` to keep `current`'s pointers")]
+                #[inline]
+                unsafe fn compare_exchange_write_back_weak(
+                    cell: &DoubleCell<A, B>, current: Self, new: Self, success: CoreOrdering,
+                    failure: CoreOrdering,
+                ) -> Result<Self, Self> {
+                    let (current, new) = (exposed_bits(current), exposed_bits(new));
+                    let success = Floor::<A, B>::raise_for_write_back(success);
+                    let failure = Floor::<A, B>::raise_for_load(failure);
+                    let result =
+                        u128::compare_exchange_weak(&cell.bits, current, new, success, failure);
+                    // SAFETY: by the field INVARIANT, the bits found are a double word's exposed
+                    // bits.
+                    unsafe { from_exposed_result(result) }
+                }
+            }
+
+            // The cell's bits are each word's packed bits: a pointer's address, as it exposed it.
+            #[diagnostic::do_not_recommend]
+            $($constness)? impl<A: $([$constness])? Word, B: $([$constness])? Word> ReadByExchange
+                for DoubleWord<A, B>
+            {
+                #[inline]
+                fn load_bits_by_exchange(cell: &DoubleCell<A, B>, order: CoreOrdering) -> u128 {
+                    u128::load_bits_by_exchange(&cell.bits, order)
                 }
             }
 
             #[cfg(wide_load_store)]
+            #[expect(unsafe_code, reason = "takes words back from the bits the cell holds")]
             $($constness)? impl<A: $([$constness])? Word, B: $([$constness])? Word> Load
                 for DoubleWord<A, B>
             {
                 #[inline]
                 fn load(cell: &DoubleCell<A, B>, order: CoreOrdering) -> Self {
-                    from_exposed_bits(u128::load(&cell.bits, order))
+                    let order = Floor::<A, B>::raise_for_load(order);
+                    // SAFETY: by the field INVARIANT, the bits are a double word's exposed bits.
+                    unsafe { from_exposed_bits(u128::load(&cell.bits, order)) }
+                }
+                // The cell's bits are each word's packed bits, and take no word back.
+                #[inline]
+                fn load_bits(cell: &DoubleCell<A, B>, order: CoreOrdering) -> u128 {
+                    u128::load_bits(&cell.bits, order)
                 }
             }
 
@@ -382,7 +490,7 @@ mod exposed {
             {
                 #[inline]
                 fn store(cell: &DoubleCell<A, B>, value: Self, order: CoreOrdering) {
-                    u128::store(&cell.bits, exposed_bits(value), order);
+                    u128::store(&cell.bits, exposed_bits(value), Floor::<A, B>::raise_for_store(order));
                 }
             }
         };
@@ -412,7 +520,7 @@ mod lock {
     use core::{fmt, hint};
 
     use super::{DoubleWord, Word};
-    use crate::primitive::{CellAccess, CompareExchange, Primitive};
+    use crate::primitive::{CellAccess, CompareExchange, Primitive, ReadByExchange};
     #[cfg(wide_load_store)]
     use crate::primitive::{Load, Store};
 
@@ -540,6 +648,10 @@ mod lock {
         }
     }
 
+    // `do_not_recommend`, so a pointer's refusal lists no double word's impl as a fix.
+    #[diagnostic::do_not_recommend]
+    const impl<A: [const] Word, B: [const] Word> ReadByExchange for DoubleWord<A, B> {}
+
     #[cfg(wide_load_store)]
     const impl<A: [const] Word, B: [const] Word> Load for DoubleWord<A, B> {
         fn load(cell: &DoubleCell<A, B>, _: CoreOrdering) -> Self {
@@ -609,7 +721,13 @@ mod tests {
     fn a_word_round_trips_a_pointers_address_and_an_integers_bits() {
         let mut value = 7_u64;
         let pointer = ptr::from_mut(&mut value);
-        assert_eq!(<*mut u64>::from_exposed_bits(pointer.exposed_bits()), pointer, "the address");
-        assert_eq!(usize::from_exposed_bits(9_usize.exposed_bits()), 9, "an integer's bits");
+        // SAFETY: the bits `exposed_bits` gave of a pointer.
+        #[expect(unsafe_code, reason = "takes a pointer back from the bits it exposed")]
+        let address = unsafe { <*mut u64>::from_exposed_bits(pointer.exposed_bits()) };
+        // SAFETY: the bits `exposed_bits` gave of an integer.
+        #[expect(unsafe_code, reason = "takes an integer back from its bits")]
+        let integer = unsafe { usize::from_exposed_bits(9_usize.exposed_bits()) };
+        assert_eq!(address, pointer, "the address");
+        assert_eq!(integer, 9, "an integer's bits");
     }
 }

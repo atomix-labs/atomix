@@ -1,8 +1,9 @@
-//! arbitrary's `Arbitrary`: an atomic as its value, and a ranged integer inside its range.
+//! arbitrary's `Arbitrary`: an atomic as its value, a ranged integer inside its range, and a
+//! `Packed` as its array.
 
 use arbitrary::{Arbitrary, MaxRecursionReached, Result, Unstructured};
 
-use crate::atom::Atom;
+use crate::atom::{Atom, Packed};
 use crate::atomic::Atomic;
 use crate::ranged::{self, each_ranged_integer};
 
@@ -28,6 +29,31 @@ impl<'a, T: Atom + Arbitrary<'a>> Arbitrary<'a> for Atomic<T> {
     #[inline]
     fn try_size_hint(depth: usize) -> Result<(usize, Option<usize>), MaxRecursionReached> {
         T::try_size_hint(depth)
+    }
+}
+
+/// Generates an array, and packs it.
+///
+/// Each method is the array's, so a `Packed` reads the bytes its array reads, and hints as many.
+impl<'a, A: Arbitrary<'a>, R> Arbitrary<'a> for Packed<A, R> {
+    #[inline]
+    fn arbitrary(input: &mut Unstructured<'a>) -> Result<Self> {
+        A::arbitrary(input).map(Self::new)
+    }
+
+    #[inline]
+    fn arbitrary_take_rest(input: Unstructured<'a>) -> Result<Self> {
+        A::arbitrary_take_rest(input).map(Self::new)
+    }
+
+    #[inline]
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        A::size_hint(depth)
+    }
+
+    #[inline]
+    fn try_size_hint(depth: usize) -> Result<(usize, Option<usize>), MaxRecursionReached> {
+        A::try_size_hint(depth)
     }
 }
 

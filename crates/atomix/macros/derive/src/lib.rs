@@ -39,19 +39,25 @@ use proc_macro::{Diagnostic, Level, Span, TokenStream};
 ///   instead, unless that is wider: the unit variants take the reprs beside that variant's range,
 ///   as `Option`'s `None` takes one.
 /// - **Pointer word**, a struct of several fields, one or two of them pointers, each written as a
-///   `NonNull`, an `Option` of one or a raw pointer, or marked: the pointer's repr, each other
-///   field a tag packed above the pointer's own tags into the low bits its pointee's alignment
-///   leaves clear, which the build checks, a generic word's in each instance. Its `to_repr` panics
-///   on a pointer with a bit set where the tags go. Two words, a `DoubleWord`, hold two pointers,
-///   the tags in the first one's low bits; a pointer to a slice or a `str`, the tags in its data
-///   pointer's, or to a trait object, beside no tag; or one pointer beside tags no alignment holds,
-///   more than 29 bits, since Rust's largest alignment is 2^29, in an integer word of their own. A
-///   pointer past those two words is refused. A pointer's width is read from its type as written:
-///   one to a slice, a `str` or a trait object behind an alias, or to a struct whose tail is a
-///   slice, is taken for one word, and refused beside tags, so write such a pointer out. Two words
-///   need a 16-byte atomic: where `x86_64` has no `cmpxchg16b`, the type is refused once, naming
-///   the CPU it needs.
-/// - **Pointer enum**, one variant or more holding a pointer: a `*mut ()`, each variant's tag its
+///   `NonNull`, a shared reference, a function pointer, an `Option` of one or a raw pointer, or
+///   marked: the pointer's repr, each other field a tag packed above the pointer's own tags into
+///   the low bits its pointee's alignment leaves clear, which the build checks, a generic word's in
+///   each instance. A word over a reference keeps the reference's sealed repr and its orderings'
+///   floor, an `Acquire` read and a `Release` write, which its pointer field's place keeps too; its
+///   tag fields take every ordering where they hand out no more than themselves, and an `Acquire`
+///   read where they return the word. A function pointer's code leaves no bit clear, so a tag
+///   beside one is refused but in a word of its own, as `#[atom(repr = u128)]` states. Its
+///   `to_repr` panics on a pointer with a bit set where the tags go. Two words, a `DoubleWord`,
+///   hold two pointers, the tags in the first one's low bits; a pointer to a slice or a `str`, the
+///   tags in its data pointer's, or to a trait object, beside no tag; or one pointer beside tags no
+///   alignment holds, more than 29 bits, since Rust's largest alignment is 2^29, in an integer word
+///   of their own. A pointer past those two words is refused. A pointer's width is read from its
+///   type as written: one to a slice, a `str` or a trait object behind an alias, or to a struct
+///   whose tail is a slice, is taken for one word, and refused beside tags, so write such a pointer
+///   out. Two words need a 16-byte atomic: where `x86_64` has no `cmpxchg16b`, the type is refused
+///   once, naming the CPU it needs.
+/// - **Pointer enum**, one variant or more holding a pointer, a raw one or a `NonNull`, never a
+///   reference or a function pointer, which no bits forge: a `*mut ()`, each variant's tag its
 ///   discriminant, above its pointers' own tags; a pointer variant's tag fields above the tag, a
 ///   data variant's fields above the bits every pointer's alignment leaves clear; one unit beside
 ///   one pointer that is never null takes null, and no tag, unless a variant states its
@@ -141,10 +147,11 @@ use proc_macro::{Diagnostic, Level, Span, TokenStream};
 /// An `Atomic` may cross threads, so the type must be `Send` and `Sync`: checked beside the impl,
 /// or bounded where it has parameters, so `Wrap<*mut u8>` has no impl, nor a type whose negative
 /// impl says it is neither. A newtype whose field is written as a raw pointer, a `NonNull` or an
-/// `Option` of one is neither, yet may cross, as a pointer's `Atom` impl promises: its markers
-/// alone are checked, and a pointer word's or a variant's pointer field is exempt alike. A packed
-/// struct refuses a field stored as a pointer that its type does not show, an alias or a parameter
-/// left unmarked, whose bits would lose its provenance.
+/// `Option` of one is neither, yet may cross, as a pointer's `Atom` impl promises, and so may one
+/// over a reference to a `Sync` value or a function pointer: its markers alone are checked, and a
+/// pointer word's or a variant's pointer field is exempt alike. A packed struct refuses a field
+/// stored as a pointer that its type does not show, an alias or a parameter left unmarked, whose
+/// bits would lose its provenance.
 ///
 /// # Examples
 /// ## Wrapping a Value

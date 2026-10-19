@@ -1,5 +1,6 @@
 //! bytemuck's `Zeroable` on an atomic whose zero repr decodes, and its byte traits on a ranged
-//! integer: its bytes, bytes checked against its range, and its integers as a contiguous range.
+//! integer: its bytes, bytes checked against its range, and its integers as a contiguous range;
+//! and on a `Packed`, its array's.
 
 #![cfg(feature = "bytemuck")]
 
@@ -7,13 +8,16 @@
 // `check-loom` builds this.
 #[cfg(loom)]
 const _: () = {
-    use atomix_core::RangedU16;
-    use bytemuck::{CheckedBitPattern, Contiguous, NoUninit};
+    use atomix_core::{Packed, RangedU16};
+    use bytemuck::{AnyBitPattern, CheckedBitPattern, Contiguous, NoUninit, Zeroable};
 
     /// Compiles only where `T` has each of a ranged integer's byte traits.
     const fn has_byte_traits<T: NoUninit + CheckedBitPattern + Contiguous>() {}
+    /// Compiles only where `T` has each of a `Packed`'s byte traits.
+    const fn has_packed_byte_traits<T: Zeroable + NoUninit + AnyBitPattern>() {}
 
     has_byte_traits::<RangedU16<1, 10>>();
+    has_packed_byte_traits::<Packed<[u16; 3], u64>>();
 };
 
 // Loom's cells exist only inside a model; `model.rs` holds the loom tests.
@@ -23,7 +27,7 @@ mod tests {
     use core::num::NonZero;
     use core::ptr::{self, NonNull};
 
-    use atomix_core::{Atomic, AtomicBool, AtomicU64, RangedI16, RangedU16};
+    use atomix_core::{Atomic, AtomicBool, AtomicU64, Packed, RangedI16, RangedU16};
     use bytemuck::checked::{self, CheckedCastError};
     use bytemuck::{Contiguous, Zeroable, bytes_of};
 
@@ -71,6 +75,22 @@ mod tests {
             checked::try_pod_read_unaligned::<RangedI16<-5, 5>>(&(-6_i16).to_ne_bytes()),
             Err(CheckedCastError::InvalidBitPattern),
             "and -6, below a signed range"
+        );
+    }
+
+    #[test]
+    fn a_packed_array_has_its_arrays_bytes() {
+        assert_eq!(Packed::<[bool; 3], u8>::zeroed(), Packed::new([false; 3]), "zeros: `false`s");
+        // bytemuck gives an array of `bool`s its `NoUninit` with `min_const_generics`, which this
+        // crate's tests turn on.
+        let flags = Packed::<_, u8>::new([true, false]);
+        assert_eq!(bytes_of(&flags), [1, 0], "a `bool` array's bytes, though no `Pod`");
+        let depths = Packed::<_, u64>::new([1_u16, 2, 3]);
+        assert_eq!(bytes_of(&depths), bytes_of(&[1_u16, 2, 3]), "the array's bytes");
+        assert_eq!(
+            checked::try_from_bytes::<Packed<[u16; 3], u64>>(bytes_of(&[1_u16, 2, 3])),
+            Ok(&depths),
+            "read back from any bytes, as the array is"
         );
     }
 
