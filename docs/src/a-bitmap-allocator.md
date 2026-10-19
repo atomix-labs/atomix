@@ -24,6 +24,15 @@ test written by hand over core's `fetch_or` can be a compare-exchange loop, as
 [What Each Operation Costs](what-each-operation-costs.md#a-bit-chosen-at-run-time)
 shows.
 
+An `Atomic<[bool; 64]>` holds the same bits, an element for each slot, whose
+place claims the slot with `element(bit).test_and_set(Acquire)` and frees it
+with `element(bit).clear(Release)`, each the same instruction after the index's
+check, as [Arrays and Element Places](arrays-and-element-places.md) shows. The
+bitmap keeps `u64` words for its search: a word's `trailing_ones` finds a clear
+bit in two instructions on `x86_64`, `notq; tzcntq`, or three on `aarch64`,
+`mvn; rbit; clz`, where a `[bool; 64]`'s load decodes 64 `bool`s, 18
+instructions on `x86_64`.
+
 ## What a Claim Costs
 
 The `contention` bench has 1 to 8 threads, each on a core of its own, claim one

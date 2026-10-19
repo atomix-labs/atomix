@@ -21,6 +21,13 @@ rules of each:
 | an enum with fields                     | the same, its fields below a tag, or a niche in place of one                   |
 | a pointer word, a pointer enum          | its pointer's, the other fields as tags: [Tagged Pointers](tagged-pointers.md) |
 
+A pointer word's pointer may be a shared reference or a function pointer, as
+[References and Function Pointers](references-and-function-pointers.md) shows; a
+pointer enum's is a raw pointer or a `NonNull`, never a reference or a function
+pointer, which no bits forge. A tuple needs no derive: it is laid out as the
+struct of its fields, where each field fills its repr
+([Tuples and Core's Values](tuples-and-core-values.md)).
+
 A packed struct or an enum with fields takes up to 128 bits, in a `u128` past
 64, which needs the target's 16-byte atomic, as [Two Words](two-words.md) says;
 and no field is an atomic, a cell or a lock, as

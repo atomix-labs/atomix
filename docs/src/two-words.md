@@ -2,9 +2,10 @@
 
 A [`DoubleWord`] is two words in one 16-byte atomic, each a pointer or an
 integer: two pointers, a pointer beside a counter or beside tags no alignment
-holds, or a pointer to a slice, a `str` or a trait object, its length or its
-vtable beside it. An atomic of such a value changes both words in one
-instruction.
+holds, a function pointer beside any field, or a pointer to a slice, a `str` or
+a trait object, its length or its vtable beside it, whether a derived struct, a
+tuple or a wide reference holds them. An atomic of such a value changes both
+words in one instruction.
 
 A Treiber stack's version shows why. Two bits of version beside the top pointer
 in one word, as in [Tagged Pointers](tagged-pointers.md), wrap after four

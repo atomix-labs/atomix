@@ -10,8 +10,9 @@ under its feature.
 ## `serde`
 
 An atomic serializes as its value, read `Relaxed` as serde reads core's atomics,
-and deserializes into a new atomic; a ranged integer serializes as its integer,
-and refuses one outside its range on the way in, in serde's words:
+or `Acquire` where the value holds a reference, and deserializes into a new
+atomic; a ranged integer serializes as its integer, and refuses one outside its
+range on the way in, in serde's words:
 
 ```rs
 {{#include ../../crates/atomix/tests/book/working_with_other_crates.rs:serde}}
@@ -83,10 +84,24 @@ the integer, and compiles to a move at most:
 atomix keeps its own ranged integers beside deranged's for what a plain value
 gains from them, as [Ranged Integers](ranged-integers.md) says.
 
+## `std`
+
+`std` makes three of std's values atomic values, on Unix and Windows:
+`SystemTime` where 128 bits are atomic, `ExitStatus`, and Unix's `BorrowedFd`,
+as [Tuples and Core's Values](tuples-and-core-values.md#values-from-std) shows.
+It adds nothing else, and the crates stay `no_std` without it.
+
 ## `loom`
 
 `loom` brings loom's types under `--cfg loom`, and nothing without it:
 [Testing with Loom and Miri](testing-with-loom-and-miri.md).
+
+## A `Packed` Array
+
+A [`Packed`] array has each feature's traits as its array does, serde's,
+zerocopy's and arbitrary's, and bytemuck's `Zeroable`, `NoUninit` and
+`AnyBitPattern`; each reads an element by its own impl, so no input makes a
+`Packed` of a value no element is.
 
 ## Crates That Need No Feature
 
@@ -97,4 +112,5 @@ another, since atomix reclaims nothing.
 
 [`Atomic::from_ptr`]: api/atomix/struct.Atomic.html#method.from_ptr
 [`Atomic`]: api/atomix/struct.Atomic.html
+[`Packed`]: api/atomix/struct.Packed.html
 [facade-crate-features]: api/atomix/index.html#crate-features

@@ -2,11 +2,12 @@
 
 atomix gives each value that fits one atomic an atomic of its own type:
 integers, plain or held to a range, `NonZero`s, `char`s, floats, pointers,
-`Option`s that spend a spare bit pattern on `None`, and the structs and enums
-`#[derive(Atom)]` packs into one word or two. Its orderings are types, checked
-as it compiles, and each operation is the instruction its name promises: where a
-target has none, the operation does not exist, and a compare-exchange loop is
-`update`, by name.
+shared references and function pointers, arrays and tuples, core's small values
+from an IP address to a `Result`, `Option`s that spend a spare bit pattern on
+`None`, and the structs and enums `#[derive(Atom)]` packs into one word or two.
+Its orderings are types, checked as it compiles, and each operation is the
+instruction its name promises: where a target has none, the operation does not
+exist, and a compare-exchange loop is `update`, by name.
 
 It is for code that shares state between threads, or between processes through
 shared memory, and builds lock-free structures on it: a queue's head, a slot's
@@ -21,13 +22,15 @@ name.
   instruction reads and writes, and decodes it on the way out; the integer,
   `bool` and pointer atomics are its aliases, such as [`AtomicU64`]. An atomic
   packed struct lends each field as an [`AtomicField`], a place one instruction
-  on the whole word changes alone.
+  on the whole word changes alone, and an atomic array lends each element so, at
+  an index known as it compiles or at run time.
 - [`Atom`] is what a value implements to be held: the built-in impls, the ranged
   integers such as [`RangedU64`], and the structs and enums the derive lays out,
   a pointer word that keeps tags in its pointer's low bits among them, or two
   words in one 16-byte atomic.
-- The [`ordering`] types, each accepted only where it means something, and the
-  fences they order.
+- The [`ordering`] types, each accepted only where it means something, and no
+  weaker than `Acquire` and `Release` for a value that holds a reference, and
+  the fences they order.
 - The pieces a structure builds on: a loom-shaped [`cell`], the spin [`hint`],
   and, under loom, the `model` that checks it.
 

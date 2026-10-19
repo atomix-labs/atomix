@@ -6,9 +6,11 @@
 //! where it does not. `packed`: what a struct costs whole, held in one instruction or behind a
 //! lock. `fields`: what one field costs, against its mask by hand and against a compare-exchange
 //! loop on the whole word. `tagged_pointer`: what a pointer's tags cost, against `AtomicPtr` and
-//! masks. `two_words`: what 16 bytes cost, against portable-atomic's `u128` and crossbeam's lock. A
-//! group's rows run one generic closure over a type named for each crate, so each row times the
-//! same harness around its operation. What contention costs is `contention`'s.
+//! masks. `two_words`: what 16 bytes cost, against portable-atomic's `u128` and crossbeam's lock.
+//! `arrays`: what an element at a run-time index costs, against its mask by hand and `bit_set`, and
+//! what four bytes cost against a `u32`. `references`: what a shared reference costs against
+//! `AtomicPtr`. A group's rows run one generic closure over a type named for each crate, so each
+//! row times the same harness around its operation. What contention costs is `contention`'s.
 //!
 //! ```text
 //! cargo bench -p atomix-rs --features derive --bench operations --no-run
@@ -1151,5 +1153,371 @@ mod two_words {
         let node = Node { value: 7 };
         let atomic = Atomic::new(head(&node, 1));
         bencher.bench_local(|| black_box(&atomic).store(black_box(head(&node, 2)), Release));
+    }
+}
+
+/// An array's elements at an index known at run time: 64 workers' busy bits, four slots of a ring,
+/// and four levels' depths whole.
+///
+/// atomix holds each as an array, `[bool; 64]`, `[Slot; 4]` and `[u8; 4]`, and changes one element
+/// through its place, which checks the index; core's atomics hold the same bits, changed by hand
+/// with the same instruction after the same check; and atomix's `AtomicU64` claims a busy bit with
+/// `bit_set`, which masks its index rather than checking it. Each row is an `#[inline(never)]`
+/// function, as `fields`' are.
+#[cfg(not(loom))]
+mod arrays {
+    use core::hint::black_box;
+    use core::sync::atomic::{AtomicU32 as CoreU32, AtomicU64 as CoreU64, Ordering};
+
+    use atomix::ordering::{AcqRel, Acquire, Release};
+    use atomix::{Atom, Atomic, AtomicU64};
+    use divan::{Bencher, bench};
+
+    /// A slot of a ring: whether it holds a message, and the message's length, 16 bits in all.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Atom)]
+    struct Slot {
+        /// Whether the slot holds a message.
+        written: bool,
+        /// The message's length.
+        length: u8,
+    }
+
+    /// An empty slot.
+    const EMPTY: Slot = Slot { written: false, length: 0 };
+    /// The worker each claim takes.
+    const WORKER: usize = 17;
+    /// The slot each claim takes.
+    const SLOT: usize = 2;
+    /// A slot's width in bits, by hand.
+    const SLOT_BITS: usize = 16;
+
+    /// The workers' busy bits in one form.
+    trait Workers {
+        /// No worker busy.
+        fn new() -> Self;
+        /// Marks worker `index` busy, with `AcqRel`, and says whether it was.
+        fn claim(&self, index: usize) -> bool;
+        /// Marks worker `index` free, with `Release`.
+        fn free(&self, index: usize);
+    }
+
+    /// atomix's `Atomic<[bool; 64]>`, through its elements.
+    struct Atomix(Atomic<[bool; 64]>);
+
+    impl Workers for Atomix {
+        fn new() -> Self {
+            Self(Atomic::new([false; 64]))
+        }
+
+        #[inline(never)]
+        fn claim(&self, index: usize) -> bool {
+            self.0.element(index).test_and_set(AcqRel)
+        }
+
+        #[inline(never)]
+        fn free(&self, index: usize) {
+            self.0.element(index).clear(Release);
+        }
+    }
+
+    /// core's `AtomicU64`, each worker's bit masked by hand after the index's check.
+    struct ByHand(CoreU64);
+
+    impl Workers for ByHand {
+        fn new() -> Self {
+            Self(CoreU64::new(0))
+        }
+
+        #[inline(never)]
+        fn claim(&self, index: usize) -> bool {
+            assert!(index < 64, "a worker's index lies below 64");
+            let bit = 1 << index;
+            self.0.fetch_or(bit, Ordering::AcqRel) & bit != 0
+        }
+
+        #[inline(never)]
+        fn free(&self, index: usize) {
+            assert!(index < 64, "a worker's index lies below 64");
+            self.0.fetch_and(!(1 << index), Ordering::Release);
+        }
+    }
+
+    /// atomix's `AtomicU64`, each worker's bit claimed with `bit_set`, its index masked.
+    struct BitSet(AtomicU64);
+
+    impl Workers for BitSet {
+        fn new() -> Self {
+            Self(AtomicU64::new(0))
+        }
+
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_possible_truncation,
+            reason = "`bit_set` reads the bit's low six bits, which the cast keeps"
+        )]
+        #[inline(never)]
+        fn claim(&self, index: usize) -> bool {
+            self.0.bit_set(index as u32, AcqRel)
+        }
+
+        #[inline(never)]
+        fn free(&self, index: usize) {
+            self.0.and(!(1 << (index & 63)), Release);
+        }
+    }
+
+    /// The ring's slots in one form.
+    trait Ring {
+        /// Every slot empty.
+        fn new() -> Self;
+        /// Marks slot `index` written, with `AcqRel`, and says whether it was.
+        fn claim(&self, index: usize) -> bool;
+        /// Reads slot `index`'s length, with `Acquire`.
+        fn length(&self, index: usize) -> u8;
+    }
+
+    /// atomix's `Atomic<[Slot; 4]>`, through an element's fields.
+    struct AtomixRing(Atomic<[Slot; 4]>);
+
+    impl Ring for AtomixRing {
+        fn new() -> Self {
+            Self(Atomic::new([EMPTY; 4]))
+        }
+
+        #[inline(never)]
+        fn claim(&self, index: usize) -> bool {
+            self.0.element(index).fields().written.test_and_set(AcqRel)
+        }
+
+        #[inline(never)]
+        fn length(&self, index: usize) -> u8 {
+            self.0.element(index).fields().length.load(Acquire)
+        }
+    }
+
+    /// core's `AtomicU64`, each slot's field masked by hand after the index's check.
+    struct ByHandRing(CoreU64);
+
+    impl Ring for ByHandRing {
+        fn new() -> Self {
+            Self(CoreU64::new(0))
+        }
+
+        #[inline(never)]
+        fn claim(&self, index: usize) -> bool {
+            assert!(index < 4, "a slot's index lies below 4");
+            let written = 1 << index.wrapping_mul(SLOT_BITS);
+            self.0.fetch_or(written, Ordering::AcqRel) & written != 0
+        }
+
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_possible_truncation,
+            reason = "the length's 8 bits, as code by hand takes them"
+        )]
+        #[inline(never)]
+        fn length(&self, index: usize) -> u8 {
+            assert!(index < 4, "a slot's index lies below 4");
+            (self.0.load(Ordering::Acquire) >> index.wrapping_mul(SLOT_BITS).wrapping_add(1)) as u8
+        }
+    }
+
+    /// Four levels' depths, whole, in one form.
+    trait Depths {
+        /// Every level empty.
+        fn new() -> Self;
+        /// Reads every depth, with `Acquire`.
+        fn load(&self) -> [u8; 4];
+        /// Writes every depth, with `Release`.
+        fn store(&self, depths: [u8; 4]);
+    }
+
+    /// atomix's `Atomic<[u8; 4]>`.
+    struct AtomixDepths(Atomic<[u8; 4]>);
+
+    impl Depths for AtomixDepths {
+        fn new() -> Self {
+            Self(Atomic::new([0; 4]))
+        }
+
+        #[inline(never)]
+        fn load(&self) -> [u8; 4] {
+            self.0.load(Acquire)
+        }
+
+        #[inline(never)]
+        fn store(&self, depths: [u8; 4]) {
+            self.0.store(depths, Release);
+        }
+    }
+
+    /// core's `AtomicU32` of the depths' bytes.
+    struct CoreDepths(CoreU32);
+
+    impl Depths for CoreDepths {
+        fn new() -> Self {
+            Self(CoreU32::new(0))
+        }
+
+        #[inline(never)]
+        fn load(&self) -> [u8; 4] {
+            self.0.load(Ordering::Acquire).to_ne_bytes()
+        }
+
+        #[inline(never)]
+        fn store(&self, depths: [u8; 4]) {
+            self.0.store(u32::from_ne_bytes(depths), Ordering::Release);
+        }
+    }
+
+    /// A worker claimed, and whether it was busy.
+    #[bench(types = [ByHand, Atomix, BitSet])]
+    fn claim<W: Workers>(bencher: Bencher<'_, '_>) {
+        let workers = W::new();
+        bencher.bench_local(|| black_box(&workers).claim(black_box(WORKER)));
+    }
+
+    /// A worker freed.
+    #[bench(types = [ByHand, Atomix, BitSet])]
+    fn free<W: Workers>(bencher: Bencher<'_, '_>) {
+        let workers = W::new();
+        bencher.bench_local(|| black_box(&workers).free(black_box(WORKER)));
+    }
+
+    /// A slot's `written` claimed, and whether it was set.
+    #[bench(types = [ByHandRing, AtomixRing])]
+    fn slot_claim<R: Ring>(bencher: Bencher<'_, '_>) {
+        let ring = R::new();
+        bencher.bench_local(|| black_box(&ring).claim(black_box(SLOT)));
+    }
+
+    /// A slot's length read.
+    #[bench(types = [ByHandRing, AtomixRing])]
+    fn slot_length<R: Ring>(bencher: Bencher<'_, '_>) {
+        let ring = R::new();
+        bencher.bench_local(|| black_box(&ring).length(black_box(SLOT)));
+    }
+
+    /// Every depth read.
+    #[bench(types = [CoreDepths, AtomixDepths])]
+    fn load<D: Depths>(bencher: Bencher<'_, '_>) {
+        let depths = D::new();
+        bencher.bench_local(|| black_box(&depths).load());
+    }
+
+    /// Every depth written.
+    #[bench(types = [CoreDepths, AtomixDepths])]
+    fn store<D: Depths>(bencher: Bencher<'_, '_>) {
+        let depths = D::new();
+        bencher.bench_local(|| black_box(&depths).store(black_box([1, 2, 3, 4])));
+    }
+}
+
+/// A config threads read on every order and one replaces whole.
+///
+/// atomix holds it as an `Atomic<&'static Config>`, whose type asks `Acquire` and `Release`; core's
+/// `AtomicPtr<Config>` holds the same pointer, in the same orderings. Each row is an
+/// `#[inline(never)]` function, as `fields`' are.
+#[cfg(not(loom))]
+mod references {
+    use core::hint::black_box;
+    use core::ptr;
+    use core::sync::atomic::{AtomicPtr, Ordering};
+
+    use atomix::Atomic;
+    use atomix::ordering::{AcqRel, Acquire, Release};
+    use divan::{Bencher, bench};
+
+    /// What a service reads on every order.
+    struct Config {
+        /// The book's depth, which gives each config an address of its own.
+        #[expect(dead_code, reason = "a config is only pointed to")]
+        depth: u32,
+    }
+
+    /// The config in force at first.
+    static FIRST: Config = Config { depth: 10 };
+    /// The config each store and swap puts in force.
+    static NEXT: Config = Config { depth: 20 };
+
+    /// The config in force, in one form.
+    trait Shared {
+        /// `FIRST` in force.
+        fn new() -> Self;
+        /// Reads the config's address, with `Acquire`.
+        fn load(&self) -> *const Config;
+        /// Puts `config` in force, with `Release`.
+        fn store(&self, config: &'static Config);
+        /// Puts `config` in force, with `AcqRel`, and returns the address before.
+        fn swap(&self, config: &'static Config) -> *const Config;
+    }
+
+    /// atomix's `Atomic<&'static Config>`.
+    struct Atomix(Atomic<&'static Config>);
+
+    impl Shared for Atomix {
+        fn new() -> Self {
+            Self(Atomic::new(&FIRST))
+        }
+
+        #[inline(never)]
+        fn load(&self) -> *const Config {
+            ptr::from_ref(self.0.load(Acquire))
+        }
+
+        #[inline(never)]
+        fn store(&self, config: &'static Config) {
+            self.0.store(config, Release);
+        }
+
+        #[inline(never)]
+        fn swap(&self, config: &'static Config) -> *const Config {
+            ptr::from_ref(self.0.swap(config, AcqRel))
+        }
+    }
+
+    /// core's `AtomicPtr<Config>`.
+    struct Core(AtomicPtr<Config>);
+
+    impl Shared for Core {
+        fn new() -> Self {
+            Self(AtomicPtr::new(ptr::from_ref(&FIRST).cast_mut()))
+        }
+
+        #[inline(never)]
+        fn load(&self) -> *const Config {
+            self.0.load(Ordering::Acquire)
+        }
+
+        #[inline(never)]
+        fn store(&self, config: &'static Config) {
+            self.0.store(ptr::from_ref(config).cast_mut(), Ordering::Release);
+        }
+
+        #[inline(never)]
+        fn swap(&self, config: &'static Config) -> *const Config {
+            self.0.swap(ptr::from_ref(config).cast_mut(), Ordering::AcqRel)
+        }
+    }
+
+    /// The config read.
+    #[bench(types = [Core, Atomix])]
+    fn load<S: Shared>(bencher: Bencher<'_, '_>) {
+        let shared = S::new();
+        bencher.bench_local(|| black_box(&shared).load());
+    }
+
+    /// A config put in force.
+    #[bench(types = [Core, Atomix])]
+    fn store<S: Shared>(bencher: Bencher<'_, '_>) {
+        let shared = S::new();
+        bencher.bench_local(|| black_box(&shared).store(black_box(&NEXT)));
+    }
+
+    /// A config put in force, and the one before returned.
+    #[bench(types = [Core, Atomix])]
+    fn swap<S: Shared>(bencher: Bencher<'_, '_>) {
+        let shared = S::new();
+        bencher.bench_local(|| black_box(&shared).swap(black_box(&NEXT)));
     }
 }

@@ -32,6 +32,23 @@ What each holds:
 | crossbeam-epoch's `Atomic`    | any `T`, behind a heap pointer                  | no: null is its own                  | the tag's bits           | yes: untyped, truncated to fit     | no                                 | no                                    |
 | tagptr                        | a pointer and a tag                             | no                                   | the tag's bits           | yes: untyped, unchecked            | no                                 | no                                    |
 
+What each holds of the values beyond integers and structs:
+
+|                                              | A shared reference                                  | A function pointer | An array                                                         | A tuple                                                 | An element or a field at a run-time index |
+| -------------------------------------------- | --------------------------------------------------- | ------------------ | ---------------------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------- |
+| atomix                                       | yes, ordered no weaker than `Acquire` and `Release` | yes                | up to 128 bits, a slot each, or `Packed`                         | of 1 to 12, as a struct where each field fills its repr | yes, one instruction after the check      |
+| std                                          | no: `AtomicPtr`, any ordering                       | no                 | no                                                               | no                                                      | an untyped mask                           |
+| portable-atomic                              | no: `AtomicPtr`, any ordering                       | no                 | no                                                               | no                                                      | an untyped mask, `bit_set`                |
+| crossbeam-utils' `AtomicCell`                | through `AtomicU64`, its provenance lost            | yes                | behind a lock unless aligned as an atomic: `[u8; 4]` takes it    | behind a lock unless aligned as an atomic               | no                                        |
+| atomic                                       | no                                                  | no                 | of `NoUninit` elements, behind a lock unless aligned to its size | no                                                      | no                                        |
+| atomig                                       | no                                                  | no                 | of integers, up to 64 bits                                       | no                                                      | no                                        |
+| radium, atomic_enum, crossbeam-epoch, tagptr | no                                                  | no                 | no                                                               | no                                                      | no                                        |
+
+An element of an atomix array is a place as a field is: its index checked, then
+the one instruction a mask by hand would be, as
+[Performance](performance.md#against-core-and-its-peers) measures. No other
+crate here lends one.
+
 What each promises:
 
 |                               | No hidden compare-exchange loop or lock  | Orderings                               | `const` `new` | loom              | Strict-provenance Miri                 | `no_std`       | Builds on                                                      |
@@ -73,7 +90,7 @@ deprecated in their favour. Orderings are the `Ordering` enum: a
 most.
 
 atomix's `AtomicU64` is `Atomic<u64>`, and where both have an operation, it is
-core's code, but in the two places
+core's code, but in the places
 [The Same Code as Core](what-each-operation-costs.md#the-same-code-as-core)
 names: `tests/codegen.rs` holds each of atomix's operations to its twin over
 core's atomics, instruction for instruction, and on one thread, measured on a

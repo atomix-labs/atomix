@@ -38,6 +38,12 @@ and a tag's place has a `bool`'s or an integer's operations on the pointer
 itself. Closing the stack is one `lock bts`, or `ldsetal`, on the top pointer,
 with no loop, and the one thread that finds the bit clear closes it.
 
+The pointer may be a shared reference or a function pointer too: a word over a
+reference keeps the reference's ordering floor, and its tags theirs, as
+[References and Function Pointers](references-and-function-pointers.md#tags-beside-a-reference)
+shows, and a tuple of a pointer and small values is the same word, as
+[Tuples and Core's Values](tuples-and-core-values.md#beside-a-pointer) shows.
+
 ## Provenance, Kept
 
 A pointer read back from a word may be used as the pointer stored, since atomix

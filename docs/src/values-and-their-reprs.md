@@ -73,11 +73,16 @@ atomix implements `Atom` for `bool`, every integer, each `NonZero`, `char`,
 `f16`, `f32` and `f64`, `()`, `PhantomData`, `Wrapping` and `Saturating` of a
 value, `Option` of a value with a spare repr, the
 [ranged integers](ranged-integers.md), and the pointers, `*mut`, `*const` and
-`NonNull`, whose [tags](tagged-pointers.md) a pointer word keeps. The 128-bit
-integers and `f128`, and a pair of pointers, take [two words](two-words.md),
-where the target has a 16-byte compare-exchange. With a feature, deranged's
-integers and arbitrary-int's do too, as
-[Working with Other Crates](working-with-other-crates.md) shows. The
+`NonNull`, whose [tags](tagged-pointers.md) a pointer word keeps. A shared
+reference and a function pointer are
+[values too](references-and-function-pointers.md), and so are an
+[array](arrays-and-element-places.md) and a [tuple](tuples-and-core-values.md)
+of values, and core's small values, from an `Ipv4Addr` to a `Result`; with a
+feature, std's `SystemTime`, `ExitStatus` and `BorrowedFd`, deranged's integers
+and arbitrary-int's are values too, as
+[Working with Other Crates](working-with-other-crates.md) shows. The 128-bit
+integers and `f128`, and a tuple of two pointers, take
+[two words](two-words.md), where the target has a 16-byte compare-exchange. The
 [implementors of `Atom`][atom-implementors] list each.
 
 ## Implementing `Atom` by Hand

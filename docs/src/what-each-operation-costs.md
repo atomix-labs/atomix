@@ -47,13 +47,23 @@ own bits.
 
 Where core has an operation too, atomix's compiles to core's own code.
 `tests/codegen.rs` writes a twin of each probe over core's atomics: core's
-operation of the same name, its ordering written as a literal, or a field's or a
-tag's bits masked by hand. It holds each twin to its probe, instruction for
+operation of the same name, its ordering written as a literal, or a field's, a
+tag's or an element's bits masked by hand, an element's after the check of its
+index a slice's index makes. It holds each twin to its probe, instruction for
 instruction and operand for operand, on every target it builds for: `aarch64`
-Linux, macOS and Android, and `x86_64` Linux, macOS and Windows. The two part in
-two places alone: a bit's test on `x86_64`, [below](#a-bit-chosen-at-run-time),
-and a 128-bit update at Android's default CPU, without LSE, whose first read is
-a compare-exchange of zero for zero in atomix and one compare shorter in core.
+Linux, macOS and Android, and `x86_64` Linux, macOS and Windows. The two part
+only where its tables pin how:
+
+- a bit's test on `x86_64`, [below](#a-bit-chosen-at-run-time), where LLVM's own
+  is a compare-exchange loop at some bits, and masks a run-time element's bit
+  again after its check, an `andl` atomix's place spares;
+- a 128-bit update at Android's default CPU, without LSE, whose first read is a
+  compare-exchange of zero for zero in atomix and one compare shorter in core.
+
+Two more differ in little: a checked element's test on `aarch64` ends in as many
+other instructions, and an unchecked element's load schedules its shift
+otherwise, atomix's a `movl` longer at Windows' default CPU.
+
 [Performance](performance.md) has what each costs, measured.
 
 ## Discarding the Value Before

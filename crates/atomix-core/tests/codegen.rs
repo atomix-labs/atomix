@@ -78,10 +78,13 @@
 //!
 //! Each probe whose operation core has, or whose bits code over core's atomics would mask by hand,
 //! has a twin written so, `core_` before its name, and each twin is its probe's code, instruction
-//! for instruction, but in two places, whose tables say how each differs: a bit's test on
-//! `x86_64`, which LLVM writes over core's `fetch_or` and its kin as a compare-exchange loop at the
-//! lowest bit, at the top one and wherever the test lands in an `Option`, where atomix's `asm!` is
-//! one `lock bts`; and a 128-bit update at Android's default CPU, without LSE.
+//! for instruction, but where its tables say how the two differ: a bit's test on `x86_64`, which
+//! LLVM writes over core's `fetch_or` and its kin as a compare-exchange loop at the lowest bit, at
+//! the top one and wherever the test lands in an `Option`, and masks a run-time element's bit again
+//! after its check, where atomix's `asm!` is one `lock bts`; a checked element's test on
+//! `aarch64`, which by hand shifts its bit back where atomix's tests it, as long; an unchecked
+//! element's load, the same instructions in another order; and a 128-bit update at Android's
+//! default CPU, without LSE.
 
 // Miri cannot run the compiler, and loom's atomics are not what ships.
 #![cfg(on_hardware)]
@@ -134,6 +137,7 @@ mod tests {
         ("byte_place_load", SameAs("byte_load_literal")),
         ("flag_load", Refuses(&["cmp", "b.hs", "ldr", "lsr", "and", "ret"])),
         ("flag_test_and_set_unchecked", SameAs("u64_bit_set")),
+        ("flag_test_and_set_ranged", SameAs("flag_test_and_set_unchecked")),
         ("flag_place_test_and_set", SameAs("u64_bit_set_5")),
         ("word_store", Refuses(&["tbnz", "add", "stlr", "ret"])),
         ("nested_store", Refuses(&["tst", "b.ne", "add", "stlr", "ret"])),
@@ -348,6 +352,8 @@ mod tests {
         ("u32_load", Only(&["ldar", "ret"])),
         ("byte_load", Refuses(&["cmp", "b.hs", "lsl", "ldar", "lsr", "ret"])),
         ("byte_load_unchecked", Only(&["lsl", "ldar", "lsr", "ret"])),
+        // Its twin by hand: the same instructions, the shift scheduled after the load.
+        ("core_byte_load_unchecked", Only(&["ldar", "lsl", "lsr", "ret"])),
         ("byte_load_literal", Only(&["ldar", "lsr", "ret"])),
         ("quarter_load", Refuses(&["cmp", "b.hs", "lsl", "ldar", "lsr", "and", "ret"])),
         ("quarter_place_load", Only(&["ldar", "ubfx", "ret"])),
@@ -440,6 +446,8 @@ mod tests {
     const AARCH64_LINUX_LSE2: &[(&str, Lowering)] = &[
         ("byte_load", Refuses(&["cmp", "b.hs", "ldapr", "lsl", "lsr", "ret"])),
         ("byte_load_unchecked", Only(&["ldapr", "lsl", "lsr", "ret"])),
+        // Its twin by hand: the same instructions, the shift scheduled after the load.
+        ("core_byte_load_unchecked", Only(&["ldapr", "lsl", "lsr", "ret"])),
         ("bools_load", InOrder(&["ldapr", "dup", "tbl", "ushl", "and", "stp", "ret"])),
         ("bools_store", InOrder(&["ldp", "ushl", "addp", "fmov", "stlr", "ret"])),
         (
@@ -471,6 +479,8 @@ mod tests {
     const AARCH64_MACOS_LSE2: &[(&str, Lowering)] = &[
         ("byte_load", Refuses(&["cmp", "b.hs", "lsl", "ldapr", "lsr", "ret"])),
         ("byte_load_unchecked", Only(&["lsl", "ldapr", "lsr", "ret"])),
+        // Its twin by hand: the same instructions, the shift scheduled after the load.
+        ("core_byte_load_unchecked", Only(&["ldapr", "lsl", "lsr", "ret"])),
         (
             "bools_load",
             InOrder(&["ldapr", "dup.2d", "tbl.16b", "ushl.16b", "and.16b", "stp", "ret"]),
@@ -935,6 +945,7 @@ mod tests {
         ("byte_place_load", SameAs("byte_load_literal")),
         ("byte_update", Retry(&["cmpq", "jae", "lock cmpxchgl", "callq"])),
         ("flag_test_and_set_unchecked", Only(&["lock btsq", "setb", "retq"])),
+        ("flag_test_and_set_ranged", SameAs("flag_test_and_set_unchecked")),
         (
             "flag_test_and_set_checked",
             Only(&["cmpq", "ja", "lock btsq", "setb", "andb", "retq", "xorl", "andb", "retq"]),
@@ -1113,6 +1124,8 @@ mod tests {
         ("nested_compare_exchange", Refuses(&["orl", "testb", "jne", "lock cmpxchgq", "retq"])),
         ("byte_load", Refuses(&["cmpq", "jae", "shll", "movl", "shrxq", "retq"])),
         ("byte_load_unchecked", Only(&["shll", "movl", "shrxq", "retq"])),
+        // Its twin by hand: the same instructions, the shift scheduled after the load.
+        ("core_byte_load_unchecked", Only(&["movl", "shll", "shrxq", "retq"])),
         ("byte_or", Refuses(&["cmpq", "jae", "shll", "movzbl", "shlxq", "lock orl", "retq"])),
         (
             "byte_and",
@@ -1434,6 +1447,8 @@ mod tests {
             ]),
         ),
         ("byte_load_unchecked", Only(&["leal", "movl", "movl", "shrq", "retq"])),
+        // Its twin by hand: one `movl` shorter, the shift scheduled after the load.
+        ("core_byte_load_unchecked", Only(&["movl", "leal", "shrq", "retq"])),
         (
             "byte_or",
             Refuses(&[
@@ -1670,10 +1685,44 @@ mod tests {
         ("core_tag_flags_xor", SameAs("tag_flags_xor")),
         ("core_tag_flags_not", SameAs("tag_flags_not")),
         ("core_nested_tag_set", SameAs("nested_tag_set")),
+        ("core_u32_load", SameAs("u32_load")),
+        ("core_u32_store", SameAs("u32_store")),
+        ("core_u32_swap", SameAs("u32_swap")),
+        ("core_u32_compare_exchange", SameAs("u32_compare_exchange")),
+        ("core_u32_or", SameAs("u32_or")),
+        ("core_byte_load", SameAs("byte_load")),
+        ("core_byte_load_literal", SameAs("byte_load_literal")),
+        ("core_byte_or", SameAs("byte_or")),
+        ("core_flag_place_test_and_set", SameAs("flag_place_test_and_set")),
+        ("core_flag_set", SameAs("flag_set")),
+        ("core_flag_clear", SameAs("flag_clear")),
+        ("core_flag_load", SameAs("flag_load")),
+        ("core_halves_last_fetch_add", SameAs("halves_last_fetch_add")),
+        ("core_halves_last_fetch_add_discarded", SameAs("halves_last_fetch_add_discarded")),
+        ("core_quarter_load", SameAs("quarter_load")),
+        ("core_quarter_place_load", SameAs("quarter_place_load")),
+        ("core_pointer_load", SameAs("pointer_load")),
+        ("core_pointer_load_relaxed", SameAs("pointer_load_relaxed")),
+        ("core_pointer_store", SameAs("pointer_store")),
+        ("core_pointer_store_rmw", SameAs("pointer_store_rmw")),
+        ("core_pointer_swap", SameAs("pointer_swap")),
+        ("core_pointer_compare_exchange", SameAs("pointer_compare_exchange")),
+        ("core_halves_or", SameAs("halves_or")),
+        ("core_halves_store", SameAs("halves_store")),
+        ("core_halves_load_second", SameAs("halves_load_second")),
+        ("core_counted_bytes_fetch_add", SameAs("counted_bytes_fetch_add")),
+        ("core_marked_pointer_load_flag", SameAs("marked_pointer_load_flag")),
+        ("core_marked_pointer_set_flag", SameAs("marked_pointer_set_flag")),
+        ("core_ipv4_load", SameAs("ipv4_load")),
+        ("core_ipv4_and", SameAs("ipv4_and")),
+        ("core_socket_address_load", SameAs("socket_address_load")),
+        ("core_result_is_ok", SameAs("result_is_ok")),
+        ("core_range_load", SameAs("range_load")),
     ];
 
     /// The twins on `aarch64`, each its probe's code: of what only `aarch64` runs in one
-    /// instruction, and of each bit's test, which `x86_64` writes otherwise.
+    /// instruction, and of each bit's test, which `x86_64` writes otherwise, an element's among
+    /// them.
     const AARCH64_TWINS: &[(&str, Lowering)] = &[
         ("core_byte_fetch_and", SameAs("byte_fetch_and")),
         ("core_byte_fetch_not", SameAs("byte_fetch_not")),
@@ -1723,6 +1772,13 @@ mod tests {
         ("core_u64_bit_set_in_some", SameAs("u64_bit_set_in_some")),
         ("core_u64_bit_set_through_map", SameAs("u64_bit_set_through_map")),
         ("core_u64_bit_toggle_in_some", SameAs("u64_bit_toggle_in_some")),
+        ("core_byte_fetch_or", SameAs("byte_fetch_or")),
+        ("core_cmp_ordering_fetch_max", SameAs("cmp_ordering_fetch_max")),
+        ("core_flag_test_and_set", SameAs("flag_test_and_set")),
+        ("core_grid_test_and_set", SameAs("grid_test_and_set")),
+        ("core_grid_place_test_and_set", SameAs("grid_place_test_and_set")),
+        ("core_slot_test_and_set_written", SameAs("slot_test_and_set_written")),
+        ("core_live_quote_test_and_set", SameAs("live_quote_test_and_set")),
     ];
 
     /// The twins on `x86_64` of a bit's test, which LLVM writes over core's `fetch_or`, `fetch_and`
@@ -1732,6 +1788,8 @@ mod tests {
     /// toggle the top bit. atomix's `asm!` is one `lock bts` wherever the bit is, which costs a
     /// `movl` more than LLVM's own for a constant bit of `bit_set`, taken there as an immediate,
     /// and keeps its `setb` where `bit_set`'s result is discarded, which LLVM writes as `lock or`.
+    /// At a run-time element, LLVM masks the bit's position again after the index's check, an
+    /// `andl` atomix's place spares, and tests a checked element or a grid's row by a loop.
     const X86_64_TWINS: &[(&str, Lowering)] = &[
         ("core_bit0_test_and_clear", Retry(&["lock cmpxchgq"])),
         ("core_bit0_test_and_set", Retry(&["lock cmpxchgq"])),
@@ -1766,6 +1824,15 @@ mod tests {
         ("core_u64_bit_set_in_some", Retry(&["lock cmpxchgq"])),
         ("core_u64_bit_set_through_map", Retry(&["lock cmpxchgq"])),
         ("core_u64_bit_toggle_in_some", Retry(&["lock cmpxchgq"])),
+        ("core_flag_test_and_set", Refuses(&["cmpq", "jae", "andl", "lock btsq", "setb"])),
+        ("core_flag_test_and_set_checked", Retry(&["lock cmpxchgq"])),
+        (
+            "core_grid_test_and_set",
+            InOrder(&["cmpq", "jae", "cmpq", "jae", "andl", "lock btsq", "setb", "callq", "callq"]),
+        ),
+        ("core_grid_place_test_and_set", Retry(&["cmpq", "jae", "lock cmpxchgq", "callq"])),
+        ("core_slot_test_and_set_written", Refuses(&["cmpq", "jae", "andl", "lock btsq", "setb"])),
+        ("core_live_quote_test_and_set", InOrder(&["lock btsq", "setb", "shlq", "setne"])),
     ];
 
     /// The twins of a 128-bit exchange and read, each its probe's code, where core has a 128-bit
@@ -1773,17 +1840,33 @@ mod tests {
     const WIDE_TWINS: &[(&str, Lowering)] = &[
         ("core_u128_compare_exchange", SameAs("u128_compare_exchange")),
         ("core_u128_load_rmw", SameAs("u128_load_rmw")),
+        ("core_counted_pointer_load_count", SameAs("counted_pointer_load_count")),
+        ("core_armed_load_flag", SameAs("armed_load_flag")),
     ];
 
     /// The twin of a 128-bit update, its probe's code where the target has a 16-byte
     /// compare-exchange instruction: LSE's `casp`, or `cmpxchg16b`.
     const WIDE_UPDATE_TWINS: &[(&str, Lowering)] = &[("core_u128_update", SameAs("u128_update"))];
 
-    /// The twin on `aarch64` without LSE of a 128-bit update: core's first read is an LL/SC pair
-    /// that stores back what it loaded, one compare short of atomix's, which reads as `load_rmw`
-    /// does, with the LL/SC compare-exchange of zero for zero.
-    const AARCH64_WITHOUT_LSE_TWINS: &[(&str, Lowering)] =
-        &[("core_u128_update", Retry(&["ldaxp", "stxp", "ldaxp", "cmp", "stlxp", "stlxp"]))];
+    /// The twins on `aarch64` without LSE where the two differ: core's 128-bit update first reads
+    /// with an LL/SC pair that stores back what it loaded, one compare short of atomix's, which
+    /// reads as `load_rmw` does, with the LL/SC compare-exchange of zero for zero; and a checked
+    /// element's test, as with LSE.
+    const AARCH64_WITHOUT_LSE_TWINS: &[(&str, Lowering)] = &[
+        ("core_u128_update", Retry(&["ldaxp", "stxp", "ldaxp", "cmp", "stlxp", "stlxp"])),
+        (
+            "core_flag_test_and_set_checked",
+            InOrder(&["cmp", "b.hi", "ldaxr", "orr", "stlxr", "lsr"]),
+        ),
+    ];
+
+    /// The twin on `aarch64` with LSE that LSE parts from Android's default CPU: a checked
+    /// element's test written over `fetch_or` shifts its bit back where atomix's tests it, as long,
+    /// and returns `false` through an `and`.
+    const AARCH64_LSE_TWINS: &[(&str, Lowering)] = &[(
+        "core_flag_test_and_set_checked",
+        Only(&["cmp", "b.hi", "mov", "lsl", "ldsetal", "lsr", "and", "ret", "mov", "and", "ret"]),
+    )];
 
     /// The twins of a 128-bit load and store, each its probe's code, with LSE2 or AVX.
     const WIDE_LOAD_STORE_TWINS: &[(&str, Lowering)] = &[
@@ -1792,6 +1875,7 @@ mod tests {
         ("core_u128_load_seq_cst", SameAs("u128_load_seq_cst")),
         ("core_u128_store", SameAs("u128_store")),
         ("core_u128_store_seq_cst", SameAs("u128_store_seq_cst")),
+        ("core_ipv6_load", SameAs("ipv6_load")),
     ];
 
     #[test]
@@ -1803,6 +1887,7 @@ mod tests {
             AARCH64_FLOOR,
             TWINS,
             AARCH64_TWINS,
+            AARCH64_LSE_TWINS,
             WIDE_TWINS,
             WIDE_UPDATE_TWINS,
         ];
@@ -1818,6 +1903,7 @@ mod tests {
             AARCH64_LINUX_LSE2,
             TWINS,
             AARCH64_TWINS,
+            AARCH64_LSE_TWINS,
             WIDE_TWINS,
             WIDE_UPDATE_TWINS,
             WIDE_LOAD_STORE_TWINS,
@@ -1834,6 +1920,7 @@ mod tests {
             AARCH64_MACOS_LSE2,
             TWINS,
             AARCH64_TWINS,
+            AARCH64_LSE_TWINS,
             WIDE_TWINS,
             WIDE_UPDATE_TWINS,
             WIDE_LOAD_STORE_TWINS,

@@ -107,7 +107,9 @@ is kept; the derive's [Projections][derive-projections] section holds the rules.
 Code generic over a place takes an `&AtomicField<P>` and states what it asks of
 the container's repr, as the derive's example
 [Changing a Field Through Generic Code][derive-changing-a-field-through-generic-code]
-does.
+does. An array's element is a place of the same kind, its fields too, at an
+index known as the crate compiles or only at run time, as
+[Arrays and Element Places](arrays-and-element-places.md) shows.
 
 ## What It Costs
 

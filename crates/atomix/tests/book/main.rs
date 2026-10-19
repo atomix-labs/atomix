@@ -9,6 +9,9 @@
 
 #[cfg(test)]
 #[cfg(all(not(loom), feature = "derive"))]
+mod arrays_and_element_places;
+#[cfg(test)]
+#[cfg(all(not(loom), feature = "derive"))]
 mod cookbook;
 #[cfg(test)]
 #[cfg(all(not(loom), feature = "derive"))]
@@ -27,7 +30,13 @@ mod orderings;
 mod ranged_integers;
 #[cfg(test)]
 #[cfg(all(not(loom), feature = "derive"))]
+mod references_and_function_pointers;
+#[cfg(test)]
+#[cfg(all(not(loom), feature = "derive"))]
 mod tagged_pointers;
+#[cfg(test)]
+#[cfg(all(not(loom), feature = "derive"))]
+mod tuples_and_core_values;
 #[cfg(test)]
 #[cfg(all(not(loom), feature = "derive"))]
 #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]

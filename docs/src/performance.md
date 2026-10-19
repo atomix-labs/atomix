@@ -24,6 +24,7 @@ median of 5,000 rounds, as [Under Contention](#under-contention) says.
 | -------------------------------------- | ------------------------------------------------------------------------------- |
 | `2026-10-12T17-47Z-4b25246-operations` | one operation on one thread, against core, its peers, and the same bits by hand |
 | `2026-10-12T17-47Z-4b25246-contention` | one operation on 1, 2, 4 and 8 threads, each pinned to a core of its own        |
+| `2026-10-19T08-41Z-423b1e5-values`     | an array's elements, four bytes and a shared reference, on one thread           |
 
 The name is the time the run was taken, in UTC, the commit it measured, and what
 it measured. No `x86_64` run is committed yet: one waits for an `x86_64` host,
@@ -35,10 +36,11 @@ and the figures below are `aarch64`'s alone.
 target
 [The Same Code as Core](what-each-operation-costs.md#the-same-code-as-core)
 names, and reads its assembly: each function must be the instructions its row
-names, with no loop but `update`'s, and no call but a tagged pointer's, off its
-fast path, to the cold refusal of a misaligned pointer. Where core has the
-operation too, a twin written over core's atomics must be the same code, but in
-the two places that section names. For the operations a hot path takes:
+names, with no loop but `update`'s, and no call but to a cold refusal off its
+fast path: a tagged pointer's of a misaligned pointer, or an element's of an
+index past the end. Where core has the operation too, a twin written over core's
+atomics must be the same code, but in the places that section names. For the
+operations a hot path takes:
 
 | Operation, ordering                     | `aarch64`, `+lse` | `aarch64`, LSE2    | `x86_64`, `x86-64-v3`     |
 | --------------------------------------- | ----------------- | ------------------ | ------------------------- |
@@ -149,6 +151,32 @@ what portable-atomic's do, and the bench's timed loop of its write is
 portable-atomic's, byte for byte, `dmb ish` then `stp`, so the 0.5 ns between
 the two columns is the harness's, not the code's. On one thread, the `ldp` read
 is no faster than `load_rmw`'s `caspa`; under contention it is.
+
+An array's element at an index known at run time, against core's `AtomicU64`
+masked by hand after the same check, and atomix's `bit_set`, which masks its
+index rather than checking it; four levels' depths, `[u8; 4]`, against
+`AtomicU32`; and a shared reference against `AtomicPtr`, from the values' run,
+at the floor:
+
+| Operation                                      | by hand, or core | atomix       | `bit_set`    |
+| ---------------------------------------------- | ---------------- | ------------ | ------------ |
+| a `[bool; 64]` element's `test_and_set`        | 7.524, 7.334     | 7.477, 7.295 | 7.314, 7.001 |
+| its `clear`                                    | 6.792, 6.794     | 6.796, 6.795 | 6.729, 6.744 |
+| a `[Slot; 4]` element's field's `test_and_set` | 7.647, 7.265     | 7.463, 7.351 |              |
+| its other field's `load`                       | 0.985, 0.985     | 0.983, 0.988 |              |
+| `[u8; 4]`'s `load`                             | 0.779, 0.780     | 0.780, 0.780 |              |
+| its `store`                                    | 2.053, 2.036     | 1.978, 1.997 |              |
+| a reference's `load`                           | 0.778, 0.779     | 0.778, 0.780 |              |
+| its `store`                                    | 3.205, 1.979     | 2.081, 1.995 |              |
+| its `swap`                                     | 7.737, 7.754     | 7.933, 8.339 |              |
+
+An element's fast path is the mask by hand's, instruction for instruction: `cmp;
+b.hs`, then `mov; lsl; ldsetal; tst; cset`, the two parting only in the cold
+call. `bit_set` checks nothing, a compare and a branch shorter, which the
+medians do not tell apart. LLVM merged `[u8; 4]`'s functions with `AtomicU32`'s,
+and a reference's store with `AtomicPtr`'s, so those rows call one function and
+differ by the harness alone; a store is 2.0 or 3.2 ns, and a swap moves by up to
+0.4 ns from run to run in either, and 0.6 between them.
 
 ## Under Contention
 

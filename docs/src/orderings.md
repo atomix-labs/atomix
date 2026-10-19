@@ -8,12 +8,18 @@ through a trait, so one that means nothing for the operation does not compile.
 
 ## Which Operation Takes Which
 
-| Operation                                                                   | Bound             | Orderings                                              |
-| --------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------ |
-| a load, `load_rmw`; a compare-exchange's `failure`, an `update`'s reads     | [`LoadOrdering`]  | `Relaxed`, `Acquire`, `SeqCst`                         |
-| a store, `store_rmw`                                                        | [`StoreOrdering`] | `Relaxed`, `Release`, `SeqCst`                         |
-| a read-modify-write; a compare-exchange's `success`, an `update`'s exchange | [`RmwOrdering`]   | `Relaxed`, `Acquire`, `Release`, `AcqRel`, `SeqCst`    |
-| [`fence`], [`compiler_fence`]                                               | [`FenceOrdering`] | `Acquire`, `Release`, `AcqRel`, `SeqCst`, `StoreStore` |
+| Operation                                                                   | Bound                                 | Orderings                                              |
+| --------------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------ |
+| a load, `load_rmw`; a compare-exchange's `failure`, an `update`'s reads     | [`LoadOrdering<T>`][`LoadOrdering`]   | `Relaxed`, `Acquire`, `SeqCst`                         |
+| a store, `store_rmw`                                                        | [`StoreOrdering<T>`][`StoreOrdering`] | `Relaxed`, `Release`, `SeqCst`                         |
+| a read-modify-write; a compare-exchange's `success`, an `update`'s exchange | [`RmwOrdering<T>`][`RmwOrdering`]     | `Relaxed`, `Acquire`, `Release`, `AcqRel`, `SeqCst`    |
+| [`fence`], [`compiler_fence`]                                               | [`FenceOrdering`]                     | `Acquire`, `Release`, `AcqRel`, `SeqCst`, `StoreStore` |
+
+Each bound but a fence's takes the value, `T`, and a value that holds a shared
+reference raises its floor: no `Relaxed`, and no `Acquire` or `Release` alone in
+a read-modify-write, as
+[References and Function Pointers](references-and-function-pointers.md#a-reference)
+says.
 
 core takes its [`Ordering`][core-ordering] as a value. Its lint
 `invalid_atomic_ordering` refuses a wrong one written as a literal, and one that
