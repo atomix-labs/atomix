@@ -71,10 +71,10 @@
 //! Core's small values lower as their reprs do: an `Ipv4Addr`'s load is a `u32`'s, its octets kept
 //! in order with no byte swap, and so is a nonzero `char`'s; an `Ipv6Addr`'s is a `u128`'s, stored
 //! to the return slot an array of bytes takes, and a socket address's a `u64`'s; a netmask's `and`
-//! is one `lock and` or `ldclral`; an ordering's maximum is one `ldsmaxalb`; and a duration's load
-//! moves its words as they are, seconds and nanoseconds, with no shift, as a layout's does its size
-//! and alignment. A loaded `Result`'s `is_ok` is one compare of its tag, and a range loads as the
-//! array of its bounds does.
+//! is one `lock and` or `ldclral`; an ordering's maximum is one `ldsmaxalb`, or, without LSE, an
+//! LL/SC loop that masks nothing before it; and a duration's load moves its words as they are,
+//! seconds and nanoseconds, with no shift, as a layout's does its size and alignment. A loaded
+//! `Result`'s `is_ok` is one compare of its tag, and a range loads as the array of its bounds does.
 
 // Miri cannot run the compiler, and loom's atomics are not what ships.
 #![cfg(on_hardware)]
@@ -764,7 +764,10 @@ mod tests {
             ]),
         ),
         ("ipv4_and", InOrder(&["ldaxr", "and", "stlxr"])),
-        ("cmp_ordering_fetch_max", InOrder(&["ldaxrb", "cmp", "stlxrb"])),
+        (
+            "cmp_ordering_fetch_max",
+            Only(&["ldaxrb", "sxtb", "cmp", "csel", "stlxrb", "cbnz", "mov", "ret"]),
+        ),
         ("duration_load_rmw", InOrder(&["ldaxp", "cmp", "stxp", "stxp"])),
     ];
 

@@ -5,7 +5,7 @@ use core::cmp::{Ordering, Reverse};
 use core::convert::Infallible;
 use core::fmt::{Alignment as FormatAlignment, Error as FormatError};
 use core::marker::{PhantomData, PhantomPinned};
-use core::mem::{Alignment, ManuallyDrop, transmute};
+use core::mem::{Alignment, ManuallyDrop, transmute_copy};
 use core::num::{FpCategory, NonZero, Saturating, Wrapping};
 use core::ops::RangeFull;
 
@@ -173,7 +173,7 @@ impl AtomOrd for NonZero<char> {}
 
 // SAFETY: the repr is the ordering's discriminant, which its `#[repr(i8)]` documents as -1, 0 and
 // 1, a range through zero; `from_repr` decodes exactly those, by the repr alone, each as its
-// ordering, as the unchecked transmute does; an ordering holds no data, so it may cross threads.
+// ordering, as the unchecked copy does; an ordering holds no data, so it may cross threads.
 #[expect(unsafe_code, reason = "an `Atom` impl promises what loads rely on")]
 const unsafe impl Atom for Ordering {
     type Repr = i8;
@@ -197,12 +197,14 @@ const unsafe impl Atom for Ordering {
         }
     }
     // The default, `from_repr`'s unwrap, leaves a range check and a select after `fetch_max`'s
-    // `ldsmaxalb`, which `cmp_ordering_fetch_max`'s pin refuses.
+    // `ldsmaxalb`, which `cmp_ordering_fetch_max`'s pin refuses. A `transmute` tells LLVM the
+    // range, which at a CPU without LSE costs `fetch_max`'s LL/SC loop an `and` of its operand
+    // before it; a copy, its load promoted to a register, does not.
     #[inline]
     unsafe fn from_repr_unchecked(repr: i8) -> Self {
         // SAFETY: the caller's repr decodes, so it is -1, 0 or 1, a discriminant of `Ordering`'s
-        // documented `#[repr(i8)]`.
-        unsafe { transmute::<i8, Self>(repr) }
+        // documented `#[repr(i8)]`, and an `i8` and an `Ordering` are each one byte.
+        unsafe { transmute_copy::<i8, Self>(&repr) }
     }
 }
 
