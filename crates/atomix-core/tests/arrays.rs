@@ -222,6 +222,23 @@ mod tests {
     }
 
     #[test]
+    fn an_and_or_a_not_at_a_run_time_index_changes_that_element_alone() {
+        let start = [0x5A_u8, 0xC3, 0x0F, 0xF0];
+        for index in 0..start.len() {
+            for value in 0..=u8::MAX {
+                let bytes = Atomic::new(start);
+                bytes.element(index).and(value, Release);
+                let mut changed = start;
+                changed[index] &= value;
+                assert_eq!(bytes.load(Acquire), changed, "element {index} and {value}");
+                bytes.element(index).not(Relaxed);
+                changed[index] = !changed[index];
+                assert_eq!(bytes.load(Acquire), changed, "then its not");
+            }
+        }
+    }
+
+    #[test]
     #[should_panic(expected = "index out of bounds: the len is 4 but the index is 4")]
     fn an_index_past_the_end_panics() {
         let levels = Atomic::new([0_u8; 4]);
@@ -420,6 +437,24 @@ mod packed {
         assert_eq!(signs.load(Relaxed).to_repr(), 0b0001_0000, "and cleared again");
         signs.element(0).update(AcqRel, Acquire, |_| RangedI8::new(-1).expect("and -1"));
         assert_eq!(signs.load(Relaxed).to_repr(), 0b0001_0011, "below it, its own two bits");
+    }
+
+    #[test]
+    fn a_signed_last_elements_and_keeps_its_sign_above_it() {
+        let start = [-3_i8, 100, -128];
+        for index in 0..start.len() {
+            for value in i8::MIN..=i8::MAX {
+                let signs = Atomic::new(Packed::<_, u32>::new(start));
+                signs.element(index).and(value, Release);
+                let mut changed = start;
+                changed[index] &= value;
+                assert_eq!(
+                    signs.load(Acquire).to_repr(),
+                    Packed::<_, u32>::new(changed).to_repr(),
+                    "element {index} and {value}, the last's sign in the bits above it"
+                );
+            }
+        }
     }
 
     #[test]

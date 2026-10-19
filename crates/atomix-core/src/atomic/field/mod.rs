@@ -148,12 +148,27 @@ impl FieldPlacement {
     /// moved to the field's offset, and, where signed, extended up to the bits it governs.
     #[inline]
     const fn pack(self, bits: u128) -> u128 {
-        let bits = if self.signed {
+        self.shift_up(self.extend(bits) & mask(self.end.wrapping_sub(self.offset)))
+    }
+
+    /// The operand of an and that writes `bits`, of a repr of the field's value, to the field and
+    /// keeps every other bit: [`pack`](Self::pack)'s, every bit the field does not govern set,
+    /// built as the complement of the governed bits `bits` clear, which takes one shift, where
+    /// the packed bits or'd with the complement of the governed ones take two.
+    #[inline]
+    const fn and_operand(self, bits: u128) -> u128 {
+        !self.shift_up(!self.extend(bits) & mask(self.end.wrapping_sub(self.offset)))
+    }
+
+    /// `bits`, of a repr of the field's value, unsigned below its width or, where signed, extended
+    /// above it: the bits it stores, before they move to its offset.
+    #[inline]
+    const fn extend(self, bits: u128) -> u128 {
+        if self.signed {
             sign_extend(bits, self.width).cast_unsigned()
         } else {
             bits & mask(self.width)
-        };
-        self.shift_up(bits & mask(self.end.wrapping_sub(self.offset)))
+        }
     }
 
     /// The bits the field governs in the container's repr.
@@ -517,8 +532,7 @@ impl<P: FieldPath> AtomicField<P> {
     {
         let bits = value.to_repr().to_bits();
         let packed = if Self::IS_RUN_TIME {
-            let placement = self.run_time_placement();
-            placement.pack(bits) | !placement.governed()
+            self.run_time_placement().and_operand(bits)
         } else {
             pack::<P>(bits) | !governed::<P>()
         };

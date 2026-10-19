@@ -45,13 +45,16 @@
 //! Its element's, at an index known at run time, is a field's after a test of the index, whose
 //! one cold refusal saves no frame record on the fast path, and a shift of its slot's offset in the
 //! repr's own width: a `bool`'s test-and-set is `lock bts` with the index in a register, or
-//! `ldsetal`; unchecked it is the atomic's `bit_set` without its `and`, and at a constant index
-//! the field's, the position an immediate. The last element of an array whose slots fill the repr
-//! adds in place, `lock xadd` or `ldaddal`. A `Packed` element's is the same at its own width: a
-//! shift by twice the index, and a mask of its two bits. An array of `bool`s decodes eight from a
-//! byte by one multiply, and 64 from a word by a vector, `tbl; ushl; and` or `vpshufb; vpand`, and
-//! encodes them alike, by one multiply, or by `ushl; addp` or `vpsllw; vpmovmskb`: no loop over its
-//! bits.
+//! `ldsetal`; unchecked it is the atomic's `bit_set` without its `and`, and at a constant index the
+//! field's, the position an immediate. A byte's `and`, `not`, `fetch_and` and `fetch_not` are the
+//! same masks written by hand over core's `AtomicU32`, operand for operand: an `and` inverts the
+//! byte before its shift and the mask after, `bic` and `ldclr`, or `notb` and `lock and`, and a
+//! `not` is the byte's mask shifted, `ldeor` or `lock xor`. The last element of an array whose
+//! slots fill the repr adds in place, `lock xadd` or `ldaddal`. A `Packed` element's is the same at
+//! its own width: a shift by twice the index, and a mask of its two bits. An array of `bool`s
+//! decodes eight from a byte by one multiply, and 64 from a word by a vector, `tbl; ushl; and` or
+//! `vpshufb; vpand`, and encodes them alike, by one multiply, or by `ushl; addp` or
+//! `vpsllw; vpmovmskb`: no loop over its bits.
 //!
 //! A tuple's every operation is its repr's after its fields are joined, a shift and an or, and its
 //! field's a derived struct field's: `(u32, u32)`'s `or` is `lock orq` or `ldsetl`, its second
@@ -267,7 +270,8 @@ mod tests {
         ("u32_or", Only(&["ldsetl", "ret"])),
         ("bytes_compare_exchange", InOrder(&["casal", "cmp", "cset"])),
         ("byte_or", Refuses(&["cmp", "b.hs", "lsl", "and", "lsl", "ldsetl", "ret"])),
-        ("byte_and", Refuses(&["cmp", "b.hs", "lsl", "and", "lsl", "orn", "mvn", "ldclrl", "ret"])),
+        ("byte_and", Refuses(&["cmp", "b.hs", "mov", "bic", "lsl", "ldclrl", "ret"])),
+        ("byte_not", Refuses(&["cmp", "b.hs", "lsl", "mov", "lsl", "ldeorl", "ret"])),
         ("flag_set", Refuses(&["cmp", "b.hs", "mov", "lsl", "ldsetl", "ret"])),
         ("flag_clear", Refuses(&["cmp", "b.hs", "mov", "lsl", "ldclrl", "ret"])),
         (
@@ -281,6 +285,8 @@ mod tests {
         ("halves_last_fetch_add", Only(&["mov", "ldaddal", "ret"])),
         ("halves_last_fetch_add_discarded", Only(&["mov", "ldaddal", "ret"])),
         ("byte_fetch_or", Refuses(&["cmp", "b.hs", "lsl", "and", "lsl", "ldsetal", "ret"])),
+        ("byte_fetch_and", Refuses(&["cmp", "b.hs", "mov", "bic", "lsl", "ldclral", "ret"])),
+        ("byte_fetch_not", Refuses(&["cmp", "b.hs", "lsl", "mov", "lsl", "ldeoral", "ret"])),
         (
             "grid_test_and_set",
             Only(&[
@@ -708,8 +714,11 @@ mod tests {
         ("u32_or", InOrder(&["ldxr", "orr", "stlxr"])),
         ("bytes_compare_exchange", InOrder(&["ldaxr", "cmp", "stlxr"])),
         ("byte_or", InOrder(&["cmp", "b.hs", "ldxr", "orr", "stlxr", "bl"])),
-        ("byte_and", InOrder(&["cmp", "b.hs", "orn", "ldxr", "and", "stlxr", "bl"])),
+        ("byte_and", InOrder(&["cmp", "b.hs", "bic", "ldxr", "bic", "stlxr", "bl"])),
+        ("byte_not", InOrder(&["cmp", "b.hs", "ldxr", "eor", "stlxr", "bl"])),
         ("byte_fetch_or", InOrder(&["cmp", "b.hs", "ldaxr", "orr", "stlxr", "bl"])),
+        ("byte_fetch_and", InOrder(&["cmp", "b.hs", "bic", "ldaxr", "bic", "stlxr", "bl"])),
+        ("byte_fetch_not", InOrder(&["cmp", "b.hs", "ldaxr", "eor", "stlxr", "bl"])),
         ("byte_update", Retry(&["cmp", "b.hs", "ldar", "ldaxr", "cmp", "stlxr", "bl"])),
         ("flag_set", InOrder(&["cmp", "b.hs", "ldxr", "orr", "stlxr", "bl"])),
         ("flag_clear", InOrder(&["cmp", "b.hs", "ldxr", "bic", "stlxr", "bl"])),
@@ -1102,16 +1111,15 @@ mod tests {
                 "cmpq",
                 "jae",
                 "shll",
+                "notb",
                 "movzbl",
                 "shlxq",
-                "movl",
-                "shlxq",
                 "notl",
-                "orl",
                 "lock andl",
                 "retq",
             ]),
         ),
+        ("byte_not", Refuses(&["cmpq", "jae", "shll", "movl", "shlxq", "lock xorl", "retq"])),
         ("flag_load", Refuses(&["cmpq", "jae", "movq", "btq", "setb", "retq"])),
         ("flag_set", Refuses(&["cmpq", "jae", "movl", "shlxq", "lock orq", "retq"])),
         ("flag_clear", Refuses(&["cmpq", "jae", "movq", "rolq", "lock andq", "retq"])),
@@ -1433,14 +1441,29 @@ mod tests {
                 "jae",
                 "movq",
                 "shll",
+                "notb",
                 "movzbl",
                 "movl",
                 "shlq",
+                "notl",
+                "lock andl",
+                "addq",
+                "retq",
+            ]),
+        ),
+        (
+            "byte_not",
+            Refuses(&[
+                "subq",
+                "movq",
+                "cmpq",
+                "jae",
+                "movq",
+                "shll",
+                "movl",
                 "movl",
                 "shlq",
-                "notl",
-                "orl",
-                "lock andl",
+                "lock xorl",
                 "addq",
                 "retq",
             ]),
@@ -1566,47 +1589,64 @@ mod tests {
         ("alignment_load", Only(&["movzbl", "movl", "shlq", "retq"])),
     ];
 
+    /// Each probe's twin over core's atomics that is its probe's code on every target: a byte's
+    /// `and` and `not`, its bits masked by hand.
+    const TWINS: &[(&str, Lowering)] =
+        &[("core_byte_and", SameAs("byte_and")), ("core_byte_not", SameAs("byte_not"))];
+
+    /// The twins on `aarch64`, each its probe's code: of what only `aarch64` runs in one
+    /// instruction, a byte's `fetch_and` and `fetch_not`.
+    const AARCH64_TWINS: &[(&str, Lowering)] = &[
+        ("core_byte_fetch_and", SameAs("byte_fetch_and")),
+        ("core_byte_fetch_not", SameAs("byte_fetch_not")),
+    ];
+
     #[test]
     fn aarch64_linux_lowers_each_operation_to_its_instruction() {
-        let tables = [AARCH64, AARCH64_LSE, AARCH64_WITHOUT_LSE2, AARCH64_FLOOR];
+        let tables =
+            [AARCH64, AARCH64_LSE, AARCH64_WITHOUT_LSE2, AARCH64_FLOOR, TWINS, AARCH64_TWINS];
         lowers_as_expected(AARCH64_LINUX, None, &tables);
     }
 
     #[test]
     fn aarch64_linux_with_lse2_lowers_each_operation_to_its_instruction() {
-        let tables = [AARCH64, AARCH64_LSE, AARCH64_LSE2, AARCH64_LINUX_LSE2];
+        let tables = [AARCH64, AARCH64_LSE, AARCH64_LSE2, AARCH64_LINUX_LSE2, TWINS, AARCH64_TWINS];
         lowers_as_expected(AARCH64_LINUX, Some("neoverse-v1"), &tables);
     }
 
     #[test]
     fn aarch64_macos_lowers_each_operation_to_its_instruction() {
-        let tables = [AARCH64, AARCH64_LSE, AARCH64_LSE2, AARCH64_MACOS_LSE2];
+        let tables = [AARCH64, AARCH64_LSE, AARCH64_LSE2, AARCH64_MACOS_LSE2, TWINS, AARCH64_TWINS];
         lowers_as_expected(AARCH64_MACOS, None, &tables);
     }
 
     // `generic`, the target's default CPU, replaces the floor only if `RUSTFLAGS` names it.
     #[test]
     fn aarch64_android_at_its_default_cpu_lowers_each_operation_to_its_instruction_or_ll_sc_loop() {
-        let tables = [AARCH64, AARCH64_WITHOUT_LSE2, AARCH64_WITHOUT_LSE];
+        let tables = [AARCH64, AARCH64_WITHOUT_LSE2, AARCH64_WITHOUT_LSE, TWINS, AARCH64_TWINS];
         lowers_as_expected(AARCH64_ANDROID, Some("generic"), &tables);
     }
 
     #[test]
     fn x86_64_linux_lowers_each_operation_to_its_instruction() {
-        let tables = [X86_64, X86_64_AVX, X86_64_SYSTEM_V, X86_64_LINUX_PUSH];
+        let tables = [X86_64, X86_64_AVX, X86_64_SYSTEM_V, X86_64_LINUX_PUSH, TWINS];
         lowers_as_expected(X86_64_LINUX, None, &tables);
     }
 
     #[test]
     fn x86_64_macos_lowers_each_operation_to_its_instruction() {
-        let tables = [X86_64, X86_64_AVX, X86_64_SYSTEM_V, X86_64_MACOS_FRAME];
+        let tables = [X86_64, X86_64_AVX, X86_64_SYSTEM_V, X86_64_MACOS_FRAME, TWINS];
         lowers_as_expected(X86_64_MACOS, None, &tables);
     }
 
     // `x86-64` is the target's default CPU, to which its spec adds `cmpxchg16b`.
     #[test]
     fn x86_64_windows_at_its_default_cpu_lowers_each_operation_to_its_instruction() {
-        lowers_as_expected(X86_64_WINDOWS, Some("x86-64"), &[X86_64, X86_64_WINDOWS_DEFAULT]);
+        lowers_as_expected(
+            X86_64_WINDOWS,
+            Some("x86-64"),
+            &[X86_64, X86_64_WINDOWS_DEFAULT, TWINS],
+        );
     }
 
     /// Checks that `target`, an `x86_64` one, refuses each probe only `aarch64` has, each with its
