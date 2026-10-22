@@ -69,7 +69,7 @@ fn a_tuple_keeps_small_fields_in_its_pointers_clear_bits() {
 }
 // ANCHOR_END: beside_a_pointer
 
-#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+#[cfg(wide)]
 #[test]
 // ANCHOR: beside_a_function
 fn a_function_pointer_keeps_a_tuples_other_fields_in_a_word_of_their_own() {
@@ -120,7 +120,7 @@ fn cores_small_values_are_atomic_values() {
 }
 // ANCHOR_END: core_values
 
-#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+#[cfg(wide)]
 #[test]
 // ANCHOR: durations
 fn a_duration_keeps_its_seconds_above_its_nanoseconds() {
@@ -138,11 +138,7 @@ fn a_duration_keeps_its_seconds_above_its_nanoseconds() {
 }
 // ANCHOR_END: durations
 
-#[cfg(all(
-    unix,
-    feature = "std",
-    any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b")
-))]
+#[cfg(all(unix, feature = "std", wide))]
 #[test]
 // ANCHOR: std_values
 fn stds_values_come_with_the_std_feature() {

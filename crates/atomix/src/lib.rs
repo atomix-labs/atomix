@@ -5,7 +5,8 @@
 //! atomics are its aliases (`AtomicU64 = Atomic<u64>`), and any value implementing [`Atom`] is one
 //! more: a `NonZero`, a `char`, a float, a ranged integer, a shared reference, a function pointer,
 //! an array, a tuple, an IP address, a `Duration`, an `Ordering`, a `Result`, a range, an `Option`
-//! that spends a spare repr on `None`, and a struct or an enum that derives it.
+//! that spends a spare repr on `None`, and a struct or an enum that derives it. The locks built on
+//! these atomics are yet to come, in `atomix-lock`.
 //!
 //! A crate depends on `atomix-rs`, since crates.io's `atomix` is an unrelated 2017 placeholder:
 //!
@@ -442,7 +443,9 @@
 //! those for Android, Apple's other systems, FreeBSD, NetBSD, illumos, Solaris, Fuchsia, Redox,
 //! UEFI and bare metal among them. It needs a nightly Rust, `nightly-2026-09-28` or newer, for
 //! `const_trait_impl`, pattern types and the other unstable features its crates enable; that
-//! nightly's version, 1.101, is its `rust-version`.
+//! nightly's version, 1.101, is its `rust-version`. docs.rs documents each `x86_64` target at
+//! `x86-64-v3`, the workspace's floor, so its pages show the 16-byte atomics and their `Load`
+//! and `Store`.
 //!
 //! What an operation lowers to depends on the features a target turns on, which
 //! `rustc --print cfg --target <triple>` lists, not on its OS; what a target's default lacks, a
@@ -522,20 +525,30 @@
 //! [ucg-517]: https://github.com/rust-lang/unsafe-code-guidelines/issues/517
 
 // Where no atomic holds two words, no `DoubleWord` exists: its links lead to where one does.
-#![cfg_attr(
-    not(any(
-        target_arch = "aarch64",
-        target_arch = "arm64ec",
-        all(target_arch = "x86_64", target_feature = "cmpxchg16b")
-    )),
-    doc = "[`DoubleWord`]: #platforms"
-)]
+#![cfg_attr(not(wide), doc = "[`DoubleWord`]: #platforms")]
 #![no_std]
 #![feature(doc_cfg)]
-// No badge names `loom` or atomix-core's aliases `aarch64_code`, `wide`, `std_values` and
-// `wait_status`: a loom build is a model of this one, not a target of its own, and an item writes
-// out an alias's condition where its badge needs one.
-#![doc(auto_cfg(hide(loom, aarch64_code, wide, std_values, wait_status)))]
+// No badge names `loom` or an alias atomix-core's build script declares, `wide` among them, which
+// this crate's declares too: a loom build is a model of this one, not a target of its own, and an
+// item writes out an alias's condition where its badge needs one.
+#![doc(auto_cfg(hide(
+    loom,
+    aarch64_code,
+    avx2_bools,
+    core_atomic_u128,
+    dmb_ishst,
+    double_word_lock,
+    exit_status,
+    lock_bit_test,
+    neon_bools,
+    on_hardware,
+    std_values,
+    vector_bools,
+    wait_status,
+    wide,
+    wide_load_store,
+    x86_64_without_cmpxchg16b
+)))]
 
 #[doc(hidden)]
 pub use atomix_core::__private;
@@ -552,11 +565,12 @@ pub use atomix_core::{
     RangedU128, RangedUsize, RawAccess, ReadByExchange, ReprOf, ReprRange, Store, Swap, Then,
     TopField, Whole, compiler_fence, fence,
 };
-#[cfg(any(
+#[cfg(wide)]
+#[doc(cfg(any(
     target_arch = "aarch64",
     target_arch = "arm64ec",
     all(target_arch = "x86_64", target_feature = "cmpxchg16b")
-))]
+)))]
 pub use atomix_core::{AtomicI128, AtomicU128, DoubleWord, VtablePointer};
 #[doc(inline)]
 pub use atomix_core::{cell, hint, ordering, validity};

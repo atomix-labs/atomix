@@ -16,11 +16,7 @@ mod testing;
 mod tests {
     use core::ptr::NonNull;
 
-    #[cfg(any(
-        target_arch = "aarch64",
-        target_arch = "arm64ec",
-        target_feature = "cmpxchg16b"
-    ))]
+    #[cfg(wide)]
     use atomix::Primitive;
     use atomix::ordering::{AcqRel, Acquire, Relaxed, Release};
     use atomix::validity::ZeroValid;
@@ -91,7 +87,7 @@ mod tests {
 
     /// A hook beside whether it is armed: the struct of the tuple `(Option<Hook>, bool)`, its flag
     /// in a word of its own, since a function's code leaves no low bit clear.
-    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     #[derive(Clone, Copy, Atom)]
     #[atom(repr = u128)]
     struct Armed {
@@ -102,12 +98,12 @@ mod tests {
     }
 
     /// Twice `value`: a hook.
-    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     fn twice(value: u64) -> u64 {
         value.wrapping_mul(2)
     }
 
-    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     #[test]
     fn a_function_pointer_beside_a_flag_is_laid_out_as_the_struct_of_them() {
         let hook: Option<fn(u64) -> u64> = Some(twice);
@@ -155,7 +151,7 @@ mod tests {
         assert_eq!(book.load(Relaxed), Book { best: (99, 101), live: true }, "each alone changed");
     }
 
-    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     #[test]
     fn a_tuple_of_derived_values_projects_each_one() {
         // The quote's 64 bits are too many to share the head's word: two words, which change in

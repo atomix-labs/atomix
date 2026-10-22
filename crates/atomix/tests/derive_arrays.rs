@@ -370,7 +370,7 @@ mod pointer_words {
 }
 
 #[cfg(test)]
-#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+#[cfg(wide)]
 mod double_words {
     use core::ptr::NonNull;
 

@@ -34,6 +34,7 @@ use crate::validity::{Validity, ZeroValid};
 // and `Wide` each hold their bits as plain memory, and the marker has no bytes. That repr decodes,
 // as `ZeroValid` says, so the field INVARIANT holds.
 #[cfg(not(loom))]
+#[doc(cfg(feature = "bytemuck"))]
 unsafe impl<T: Atom> Zeroable for Atomic<T>
 where
     T::Validity: Validity<ZeroValidity = ZeroValid>,
@@ -44,16 +45,19 @@ where
 /// All zeros, where they are the array's.
 // SAFETY: `Packed` is `repr(transparent)` over the array, beside a marker of no bytes, so its bytes
 // are the array's.
+#[doc(cfg(feature = "bytemuck"))]
 unsafe impl<A: Zeroable, R> Zeroable for Packed<A, R> {}
 
 /// Its bytes, the array's.
 // SAFETY: `repr(transparent)` over the array, beside a marker of no bytes, which a shared
 // reference does not write: what the array promises, `Packed` keeps.
+#[doc(cfg(feature = "bytemuck"))]
 unsafe impl<A: NoUninit, R: 'static> NoUninit for Packed<A, R> {}
 
 /// Any bytes the array reads from, and so, as bytemuck gives each, `CheckedBitPattern` too.
 // SAFETY: `repr(transparent)` over the array, beside a marker of no bytes; every pattern of bytes
 // is an array, as `A`'s `AnyBitPattern` says, and so a `Packed`.
+#[doc(cfg(feature = "bytemuck"))]
 unsafe impl<A: AnyBitPattern, R: 'static> AnyBitPattern for Packed<A, R> {}
 
 /// Implements `NoUninit`, `CheckedBitPattern` and `Contiguous` for a ranged integer, `$name`, over
@@ -65,10 +69,12 @@ macro_rules! ranged {
         // layout: no padding, every byte initialized, and nothing a shared reference writes. It is
         // inhabited, since `MIN` is at most `MAX` wherever it exists: rustc refuses a pattern type
         // whose range wraps.
+        #[doc(cfg(feature = "bytemuck"))]
         unsafe impl<const MIN: $int, const MAX: $int> NoUninit for ranged::$name<MIN, MAX> {}
 
         #[doc = concat!("A `", stringify!($int), "`'s bytes, checked against the range.")]
         // SAFETY: it has the integer's layout, and each integer from `MIN` to `MAX` is a value.
+        #[doc(cfg(feature = "bytemuck"))]
         unsafe impl<const MIN: $int, const MAX: $int> CheckedBitPattern
             for ranged::$name<MIN, MAX>
         {
@@ -84,6 +90,7 @@ macro_rules! ranged {
         // SAFETY: it has the integer's size, which is not zero; `MIN` is at most `MAX`, since rustc
         // refuses a pattern type whose range wraps; each integer from `MIN` to `MAX` is one value,
         // no value is any other integer, and `from_integer` and `into_integer` are bytemuck's own.
+        #[doc(cfg(feature = "bytemuck"))]
         unsafe impl<const MIN: $int, const MAX: $int> Contiguous for ranged::$name<MIN, MAX> {
             type Int = $int;
             const MAX_VALUE: $int = MAX;

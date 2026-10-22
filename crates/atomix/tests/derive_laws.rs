@@ -1316,11 +1316,7 @@ mod tests {
     /// Derived values two words wide, which hold pointers, beside nodes of their own: a pointer
     /// beside tags no alignment holds, or beside the integer word `repr = u128` states, two
     /// pointers, a slice's pointer, and each shape in its own pointee.
-    #[cfg(any(
-        target_arch = "aarch64",
-        target_arch = "arm64ec",
-        all(target_arch = "x86_64", target_feature = "cmpxchg16b")
-    ))]
+    #[cfg(wide)]
     mod double_words {
         use core::ptr::NonNull;
 

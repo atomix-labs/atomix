@@ -467,6 +467,10 @@ mod exposed {
             }
 
             #[cfg(wide_load_store)]
+            #[doc(cfg(any(
+                target_feature = "lse2",
+                all(target_feature = "avx", target_feature = "cmpxchg16b")
+            )))]
             #[expect(unsafe_code, reason = "takes words back from the bits the cell holds")]
             $($constness)? impl<A: $([$constness])? Word, B: $([$constness])? Word> Load
                 for DoubleWord<A, B>
@@ -485,6 +489,10 @@ mod exposed {
             }
 
             #[cfg(wide_load_store)]
+            #[doc(cfg(any(
+                target_feature = "lse2",
+                all(target_feature = "avx", target_feature = "cmpxchg16b")
+            )))]
             $($constness)? impl<A: $([$constness])? Word, B: $([$constness])? Word> Store
                 for DoubleWord<A, B>
             {

@@ -14,6 +14,7 @@ use crate::ranged::{self, each_ranged_integer};
 /// Serializes the value a read gives, `Relaxed` as serde reads core's atomics, or `Acquire` where
 /// the value holds a reference: a load where the target has one, else the compare-exchange
 /// `load_rmw` is, as `Debug` reads, which writes the cache line.
+#[doc(cfg(feature = "serde"))]
 impl<T: Atom + Serialize> Serialize for Atomic<T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.load_or_exchange().serialize(serializer)
@@ -21,6 +22,7 @@ impl<T: Atom + Serialize> Serialize for Atomic<T> {
 }
 
 /// Deserializes a `T`, and holds it in a new atomic.
+#[doc(cfg(feature = "serde"))]
 impl<'de, T: Atom + Deserialize<'de>> Deserialize<'de> for Atomic<T> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         T::deserialize(deserializer).map(Self::from)
@@ -28,6 +30,7 @@ impl<'de, T: Atom + Deserialize<'de>> Deserialize<'de> for Atomic<T> {
 }
 
 /// Serializes the array, as serde serializes one: the integer it is packed in is no part of it.
+#[doc(cfg(feature = "serde"))]
 impl<A: Serialize, R> Serialize for Packed<A, R> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         (**self).serialize(serializer)
@@ -36,6 +39,7 @@ impl<A: Serialize, R> Serialize for Packed<A, R> {
 
 /// Deserializes an array, and packs it: every array of the elements is one, as each element's own
 /// impl reads only values.
+#[doc(cfg(feature = "serde"))]
 impl<'de, A: Deserialize<'de>, R> Deserialize<'de> for Packed<A, R> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         A::deserialize(deserializer).map(Self::new)
@@ -92,6 +96,7 @@ struct RangedVisitor<R>(
 macro_rules! ranged {
     ($name:ident($int:ident)) => {
         #[doc = concat!("Serializes the integer, as a `", stringify!($int), "`.")]
+        #[doc(cfg(feature = "serde"))]
         impl<const MIN: $int, const MAX: $int> Serialize for ranged::$name<MIN, MAX> {
             fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
                 self.get().serialize(serializer)
@@ -102,6 +107,7 @@ macro_rules! ranged {
         ///
         /// It refuses any other by the range, even one past the integer's type: a `RangedU8<1, 10>`
         /// refuses 300 with "invalid value: integer `300`, expected an integer in 1..=10".
+        #[doc(cfg(feature = "serde"))]
         impl<'de, const MIN: $int, const MAX: $int> Deserialize<'de> for ranged::$name<MIN, MAX> {
             fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
                 $int::deserialize_at_width(deserializer, RangedVisitor::<Self>(PhantomData))

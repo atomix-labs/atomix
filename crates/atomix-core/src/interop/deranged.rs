@@ -23,6 +23,7 @@ use crate::validity::{Partial, ZeroValid};
 // Each of deranged's ranged integers takes the impls atomix's own does, from the same macro: its
 // names, imported here, are deranged's.
 ranged_atom! {
+    #[doc(cfg(feature = "deranged-05"))]
     new: RangedU8(u8), RangedU16(u16), RangedU32(u32), RangedU64(u64), RangedUsize(usize);
     from_signed: RangedI8(i8), RangedI16(i16), RangedI32(i32), RangedI64(i64), RangedIsize(isize);
 }
@@ -30,6 +31,7 @@ ranged_atom! {
 // The 128-bit ones, where a 16-byte compare-exchange exists, as `u128` and `i128`.
 #[cfg(wide)]
 ranged_atom! {
+    #[doc(cfg(feature = "deranged-05"))]
     new: RangedU128(u128);
     from_signed: RangedI128(i128);
 }
@@ -43,6 +45,7 @@ ranged_atom! {
 macro_rules! convert {
     ($name:ident($int:ident)) => {
         /// Keeps the integer, which lies in deranged's range, since the bounds are the same.
+        #[doc(cfg(feature = "deranged-05"))]
         impl<const MIN: $int, const MAX: $int> From<ranged::$name<MIN, MAX>> for $name<MIN, MAX> {
             #[inline]
             fn from(value: ranged::$name<MIN, MAX>) -> Self {
@@ -51,6 +54,7 @@ macro_rules! convert {
         }
 
         /// Keeps the integer, which lies in atomix's range, since the bounds are the same.
+        #[doc(cfg(feature = "deranged-05"))]
         impl<const MIN: $int, const MAX: $int> From<$name<MIN, MAX>> for ranged::$name<MIN, MAX> {
             #[inline]
             fn from(value: $name<MIN, MAX>) -> Self {
@@ -105,6 +109,7 @@ macro_rules! optional {
         // other one; for `ZeroValid`, zero is `Some(0)` where `MIN` is zero, else the unsigned
         // `None`; an integer may cross threads. Nothing here rests on where deranged keeps `None`.
         #[expect(unsafe_code, reason = "an `Atom` impl promises what loads rely on")]
+        #[doc(cfg(feature = "deranged-05"))]
         const unsafe impl<const MIN: $int, const MAX: $int> Atom
             for $name<MIN, MAX>
         {

@@ -39,7 +39,7 @@ mod tagged_pointers;
 mod tuples_and_core_values;
 #[cfg(test)]
 #[cfg(all(not(loom), feature = "derive"))]
-#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+#[cfg(wide)]
 mod two_words;
 #[cfg(test)]
 #[cfg(all(not(loom), feature = "derive"))]

@@ -184,6 +184,10 @@ macro_rules! cells {
             }
         }
         #[cfg(wide_load_store)]
+        #[doc(cfg(any(
+            target_feature = "lse2",
+            all(target_feature = "avx", target_feature = "cmpxchg16b")
+        )))]
         const impl Load for $int {
             #[inline]
             fn load(cell: &Wide, order: CoreOrdering) -> Self {
@@ -191,6 +195,10 @@ macro_rules! cells {
             }
         }
         #[cfg(wide_load_store)]
+        #[doc(cfg(any(
+            target_feature = "lse2",
+            all(target_feature = "avx", target_feature = "cmpxchg16b")
+        )))]
         const impl Store for $int {
             #[inline]
             fn store(cell: &Wide, value: Self, order: CoreOrdering) {

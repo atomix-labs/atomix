@@ -22,8 +22,9 @@ check-loom:
 
 # macOS's aarch64 floor has LSE2, which Linux's lacks. x86_64's floor has AVX; x86-64-v2 has
 # `cmpxchg16b` but no AVX; x86-64 has neither, so no 128-bit atomics. The last two go through
-# `RUSTFLAGS`, which replaces the floor. docs.rs builds the docs at x86-64, where an item of 128 bits
-# or two words does not exist, so they build there too, each link resolving.
+# `RUSTFLAGS`, which replaces the floor. A dependent's `cargo doc` builds at x86-64, where an item of
+# 128 bits or two words does not exist, so the docs build there too, each link resolving; docs.rs
+# builds them at the floor, through each crate's `[package.metadata.docs.rs]`.
 
 # Lints every crate for aarch64 and x86_64 on Linux, macOS and Windows, for arm64ec, and for x86_64
 # with x86-64-v2 and x86-64; builds the docs for x86-64.

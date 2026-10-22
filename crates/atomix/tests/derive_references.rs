@@ -137,7 +137,7 @@ mod tests {
     }
 
     /// A quote's resting order.
-    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     #[derive(Debug)]
     struct Order {
         /// Its price.
@@ -146,7 +146,7 @@ mod tests {
 
     /// The best bid and ask, both resting orders, and whether the book is live: two references in
     /// two words, the tag in the first's low bits.
-    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     #[derive(Clone, Copy, Debug, Atom)]
     struct Best {
         /// The best bid.
@@ -158,7 +158,7 @@ mod tests {
     }
 
     /// The configuration in force and how often it changed: a reference beside an integer word.
-    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     #[derive(Clone, Copy, Debug, Atom)]
     #[atom(repr = u128)]
     struct Versioned {
@@ -170,7 +170,7 @@ mod tests {
 
     /// A handler of one feed, by its id: a function pointer beside an integer word, since no
     /// alignment of code leaves its low bits clear.
-    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     #[derive(Clone, Copy, Atom)]
     #[atom(repr = u128)]
     struct Handler {
@@ -181,12 +181,12 @@ mod tests {
     }
 
     /// Twice `value`: a handler.
-    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     fn twice(value: u64) -> u64 {
         value.wrapping_mul(2)
     }
 
-    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     #[test]
     fn two_words_hold_a_reference_beside_an_integer_another_reference_or_a_function_pointer() {
         static BID: Order = Order { price: 100 };
