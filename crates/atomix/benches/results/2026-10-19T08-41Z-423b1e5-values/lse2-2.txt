@@ -1,0 +1,33 @@
+operations             fastest       │ slowest       │ median        │ mean          │ samples │ iters
+├─ arrays                            │               │               │               │         │
+│  ├─ claim                          │               │               │               │         │
+│  │  ├─ Atomix        6.842 ns      │ 16.9 ns       │ 7.591 ns      │ 7.471 ns      │ 100     │ 51200
+│  │  ├─ BitSet        6.836 ns      │ 7.699 ns      │ 7.54 ns       │ 7.352 ns      │ 100     │ 51200
+│  │  ╰─ ByHand        6.869 ns      │ 7.816 ns      │ 7.655 ns      │ 7.504 ns      │ 100     │ 51200
+│  ├─ free                           │               │               │               │         │
+│  │  ├─ Atomix        6.779 ns      │ 6.828 ns      │ 6.799 ns      │ 6.802 ns      │ 100     │ 51200
+│  │  ├─ BitSet        6.672 ns      │ 6.889 ns      │ 6.752 ns      │ 6.759 ns      │ 100     │ 51200
+│  │  ╰─ ByHand        6.783 ns      │ 6.842 ns      │ 6.797 ns      │ 6.8 ns        │ 100     │ 51200
+│  ├─ load                           │               │               │               │         │
+│  │  ├─ AtomixDepths  0.836 ns      │ 0.852 ns      │ 0.844 ns      │ 0.844 ns      │ 100     │ 409600
+│  │  ╰─ CoreDepths    0.837 ns      │ 1.838 ns      │ 0.843 ns      │ 0.853 ns      │ 100     │ 409600
+│  ├─ slot_claim                     │               │               │               │         │
+│  │  ├─ AtomixRing    6.976 ns      │ 7.986 ns      │ 7.726 ns      │ 7.741 ns      │ 100     │ 51200
+│  │  ╰─ ByHandRing    6.863 ns      │ 7.84 ns       │ 7.611 ns      │ 7.47 ns       │ 100     │ 51200
+│  ├─ slot_length                    │               │               │               │         │
+│  │  ├─ AtomixRing    0.968 ns      │ 0.997 ns      │ 0.976 ns      │ 0.98 ns       │ 100     │ 409600
+│  │  ╰─ ByHandRing    0.967 ns      │ 1.929 ns      │ 0.979 ns      │ 0.99 ns       │ 100     │ 409600
+│  ╰─ store                          │               │               │               │         │
+│     ├─ AtomixDepths  2.038 ns      │ 2.114 ns      │ 2.09 ns       │ 2.089 ns      │ 100     │ 204800
+│     ╰─ CoreDepths    2.037 ns      │ 2.15 ns       │ 2.085 ns      │ 2.081 ns      │ 100     │ 204800
+╰─ references                        │               │               │               │         │
+   ├─ load                           │               │               │               │         │
+   │  ├─ Atomix        0.838 ns      │ 0.851 ns      │ 0.844 ns      │ 0.844 ns      │ 100     │ 409600
+   │  ╰─ Core          0.835 ns      │ 0.849 ns      │ 0.844 ns      │ 0.844 ns      │ 100     │ 409600
+   ├─ store                          │               │               │               │         │
+   │  ├─ Atomix        1.991 ns      │ 5.535 ns      │ 1.995 ns      │ 2.312 ns      │ 100     │ 102400
+   │  ╰─ Core          1.976 ns      │ 3.227 ns      │ 1.978 ns      │ 2.157 ns      │ 100     │ 204800
+   ╰─ swap                           │               │               │               │         │
+      ├─ Atomix        6.812 ns      │ 8.844 ns      │ 7.757 ns      │ 7.618 ns      │ 100     │ 51200
+      ╰─ Core          6.838 ns      │ 8.836 ns      │ 7.779 ns      │ 7.673 ns      │ 100     │ 51200
+

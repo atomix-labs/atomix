@@ -1,0 +1,17 @@
+error[E0080]: evaluation panicked: `atomix_core::atom::packed::Packed<[u8; 5], u32>`: its 5 elements take 40 bits, past the 32 of `u32`: state a wider integer, or pack fewer
+ --> $WORKSPACE/crates/atomix-core/src/atom/packed.rs
+  |
+  |         let (layout, width) = const { packed_layout::<T, N, R>() };
+  |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `<atomix::Packed<[u8; 5], u32> as atomix::Atom>::to_repr::{constant#0}` failed here
+
+note: erroneous constant encountered
+ --> $WORKSPACE/crates/atomix-core/src/atom/packed.rs
+  |
+  |         let (layout, width) = const { packed_layout::<T, N, R>() };
+  |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: the above error was encountered while instantiating `fn <Packed<[u8; 5], u32> as Atom>::to_repr`
+ --> $WORKSPACE/crates/atomix-core/src/atomic/mod.rs
+  |
+  |             cell: T::Validity::wrap::<T::Repr>(value.to_repr().into_cell()),
+  |                                                ^^^^^^^^^^^^^^^

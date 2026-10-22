@@ -1,0 +1,54 @@
+run-id  = "2026-10-19T08-41Z-423b1e5-values"
+purpose = "what the values cost on one thread: an array's element at a run-time index against its mask by hand and bit_set, four bytes against a u32, and a shared reference against AtomicPtr"
+
+[hardware]
+cpu        = "AWS Graviton4 (Arm Neoverse V2, CPU part 0xd4f), c8g.8xlarge"
+cores      = 32
+cache-line = 64
+
+[environment]
+kernel        = "Linux 6.12.53-69.119.amzn2023.aarch64"
+clocksource   = "arch_sys_counter"
+isolated-cpus = "6-31"
+placement     = "taskset -c 16"
+
+[toolchain]
+rustc   = "1.101.0-nightly (d080e7dff 2026-09-27)"
+profile = "bench: release's settings, fat LTO, one codegen unit, built to unwind"
+flags   = { floor = "the workspace's floor, +crc,+lse", lse2 = "RUSTFLAGS='-C target-cpu=neoverse-v2', which replaces the floor and has LSE2" }
+
+[parameters]
+command   = "taskset -c 16 <bench binary> --bench arrays references, the binary cargo bench -p atomix-rs --features derive --bench operations --no-run built, with --target-dir target/lse2 for lse2"
+library   = "atomix at 423b1e5, feat/values' tip, whose code for each operation the groups time is c66784e's, the base this lands on, as those operations' codegen pins show; the groups are the commit that adds them"
+timer     = "divan 0.1.21's, 30 ns precise, each sample a batch of operations"
+samples   = 100
+probes    = "each form an #[inline(never)] function of one signature, called from one generic closure; the worker is index 17 of 64 and the slot index 2 of 4, each through black_box, so known at run time alone"
+contended = "none: one thread"
+
+[notes]
+element-claim  = "atomix's element(index).test_and_set and its clear are the hand-masked fetch_or and fetch_and after the same check, instruction for instruction on the fast path: cmp #64; b.hs; mov; lsl; ldsetal; tst; cset, and cmp; b.hs; mov; lsl; ldclrl, with LSE2 too; the two differ in the cold call alone, atomix's refuse_index against assert!'s panic_fmt. bit_set masks its index and checks nothing: mov; lsl; ldsetal; tst; cset, a compare and a branch shorter, which the medians do not tell apart"
+element-fields = "a slot's written bit at a run-time index, element(index).fields().written.test_and_set, is cmp #4; b.hs; lsl; mov; lsl; ldsetal; tst; cset, and its length's load cmp; b.hs; mov; ldar; orr; lsr (ldapr with LSE2): each the hand mask's, instruction for instruction, the cold call apart"
+whole-array    = "[u8; 4]'s load and store are u32's, ldar and stlr (ldapr with LSE2): LLVM merged core's with atomix's, so both rows call one function, and their medians differ by the harness alone"
+reference      = "a reference's load, store and swap are AtomicPtr's, ldar, stlr and swpal (ldapr with LSE2): LLVM merged the stores, and the loads and swaps are byte for byte the same; a store is 2.0 or 3.2 ns, and a swap moves by up to 0.4 ns from run to run in either, and 0.6 between them, as integer-bimodal in 2026-10-12T17-47Z-4b25246-operations says"
+
+[results.median-ns.floor]
+arrays-claim       = { by-hand = [7.524, 7.334], atomix = [7.477, 7.295], bit-set = [7.314, 7.001] }
+arrays-free        = { by-hand = [6.792, 6.794], atomix = [6.796, 6.795], bit-set = [6.729, 6.744] }
+arrays-load        = { core = [0.779, 0.78], atomix = [0.78, 0.78] }
+arrays-slot-claim  = { by-hand = [7.647, 7.265], atomix = [7.463, 7.351] }
+arrays-slot-length = { by-hand = [0.985, 0.985], atomix = [0.983, 0.988] }
+arrays-store       = { core = [2.053, 2.036], atomix = [1.978, 1.997] }
+references-load    = { core = [0.778, 0.779], atomix = [0.778, 0.78] }
+references-store   = { core = [3.205, 1.979], atomix = [2.081, 1.995] }
+references-swap    = { core = [7.737, 7.754], atomix = [7.933, 8.339] }
+
+[results.median-ns.lse2]
+arrays-claim       = { by-hand = [7.353, 7.655], atomix = [7.643, 7.591], bit-set = [7.386, 7.54] }
+arrays-free        = { by-hand = [6.801, 6.797], atomix = [6.799, 6.799], bit-set = [6.749, 6.752] }
+arrays-load        = { core = [0.843, 0.843], atomix = [0.844, 0.844] }
+arrays-slot-claim  = { by-hand = [7.302, 7.611], atomix = [7.101, 7.726] }
+arrays-slot-length = { by-hand = [0.98, 0.979], atomix = [0.976, 0.976] }
+arrays-store       = { core = [2.09, 2.085], atomix = [2.093, 2.09] }
+references-load    = { core = [0.844, 0.844], atomix = [0.844, 0.844] }
+references-store   = { core = [1.979, 1.978], atomix = [1.995, 1.995] }
+references-swap    = { core = [7.351, 7.779], atomix = [7.723, 7.757] }

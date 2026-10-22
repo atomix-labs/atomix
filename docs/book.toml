@@ -26,7 +26,7 @@ additional-css = [
     "theme/details.css",
     "theme/logo.css",
 ]
-additional-js = ["api-link.js"]
+additional-js = ["mermaid.min.js", "mermaid-init.js", "api-link.js"]
 
 [output.html.fold]
 enable = true
@@ -45,3 +45,10 @@ no-css = true
 unstable-features = true
 base-url          = "/api"
 fail-on-warnings  = "always"
+
+# The API with every feature on, as docs.rs builds it, so the derive and each integration have pages.
+[preprocessor.rustdoc-links.build-options]
+all-features = true
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"

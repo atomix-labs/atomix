@@ -1,0 +1,89 @@
+run-id  = "2026-10-12T17-47Z-4b25246-operations"
+purpose = "what one operation costs on one thread: atomix's against core's, portable-atomic's, crossbeam's AtomicCell, the atomic crate's, atomig's and atomic_enum's, and against the same bits written by hand over core's atomics"
+
+[hardware]
+cpu        = "AWS Graviton4 (Arm Neoverse V2, CPU part 0xd4f), c8g.8xlarge"
+cores      = 32
+cache-line = 64
+
+[environment]
+kernel        = "Linux 6.12.53-69.119.amzn2023.aarch64"
+clocksource   = "arch_sys_counter"
+isolated-cpus = "6-31"
+placement     = "taskset -c 16"
+
+[toolchain]
+rustc   = "1.101.0-nightly (d080e7dff 2026-09-27)"
+profile = "bench: release's settings, fat LTO, one codegen unit, built to unwind"
+flags   = { floor = "the workspace's floor, +crc,+lse", lse2 = "RUSTFLAGS='-C target-cpu=neoverse-v2', which replaces the floor and has LSE2" }
+
+[parameters]
+command   = "taskset -c 16 <bench binary> --bench, the binary cargo bench -p atomix-rs --features derive --bench operations --no-run built, with --target-dir target/lse2 for lse2"
+library   = "atomix at 4b25246, origin/main; the bench is the commit that adds it"
+timer     = "divan 0.1.21's, 29 to 30 ns precise, each sample a batch of operations"
+samples   = 100
+probes    = "fields and tagged-pointer: each form an #[inline(never)] function of one signature, called from one generic closure; the other groups inline each form into one generic closure"
+contended = "none: one thread; contention is the contention run's"
+
+[notes]
+by-hand-merged     = "fields: LLVM merged each by-hand function with atomix's, the same code (set: mov; ldsetl; test-and-clear: mov; ldclral; ubfx; or: and; ldsetl; load: ldar; lsr; fetch-add: lsl; ldaddal; lsr), so both rows call one function; tagged-pointer's test-and-set too, mov; ldsetal; ubfx"
+loop-rows          = "fields' loop is core's update on the whole word: ldr or ldar, then a casl or casal loop, 1.3 to 2.4 ns more than one instruction; its load is a load, merged with the others"
+tagged-store       = "atomix's store is tst; b.ne; add; stlr, against orr; stlr by hand: the one test and branch a tagged pointer's encode costs, 0.10 to 0.13 ns"
+tagged-exchange    = "atomix's compare-exchange tests both pointers in one orr; tst; b.ne before casal: 0.27 to 0.30 ns"
+tagged-load        = "atomix's load is ldar; and; and; ubfx, with no ands and csel, which by hand's NonNull::new adds to test for null again; the two are equal at the floor, and with LSE2 atomix's is 0.3 ns slower though shorter, adding no instruction: the two differ in the order they write the returned tuple, by hand its bool with strb before its two words with stp, atomix after"
+enum-load          = "atomix: ldarb, no check; core by hand: ldarb; cmp #3; csel; atomig: ldarb; cmp #4; b.hs to a panic; atomic_enum: ldar of its usize; cmp #4; b.hs to a panic"
+integer-bimodal    = "a store is 2.0 or 3.2 ns, and a swap, fetch-add or compare-exchange moves by up to 0.8 ns, from run to run in every crate alike: the same instruction in each, so a row's spread is the machine's"
+crossbeam-exchange = "crossbeam's u64 compare-exchange is 0.6 to 0.8 ns slower than core's: AtomicCell's is a loop of core's weak one, which retries where the value found equals current but its bytes do not"
+packed-locks       = "the quote is 8 bytes aligned to 4: every operation of crossbeam's AtomicCell goes through its striped seqlock, a load reading optimistically and locking only where a write overlaps it, and every operation of the atomic crate takes its spinlock, load included"
+two-word-reads     = "atomix's read is load_rmw, caspa, at both floors; portable-atomic's load is a call through a pointer it sets at run time, to ldp and a barrier on a CPU with LSE2, as this one has; atomix's load, ldp and dmb ishld with LSE2, is no faster on one thread, 6.1 ns against load_rmw's 5.0"
+two-word-writes    = "atomix's write is store_rmw, a casp then a caspl loop; portable-atomic's store finds LSE2 at run time and is stp. With LSE2, atomix's store is portable-atomic's write loop byte for byte, dmb ish then stp, at 5.74 and 5.71 ns against 5.26 and 5.23: the gap is the harness's, and the two benches run alone with a fixed --sample-size of 256 to 409600 both read 5.2 to 5.3 ns. atomix's u128 loop compares with two eor and an orr where the double word's uses cmp and ccmp, 2.4% apart at the floor"
+
+[results.median-ns.floor]
+fieldless-enum-load             = { core = [0.78, 0.78], atomix = [0.759, 0.758], atomig = [0.818, 0.818], atomic-enum = [0.774, 0.778] }
+fields-fetch-add                = { by-hand = [6.932, 6.866], atomix = [6.896, 6.869], loop = [8.637, 8.653] }
+fields-load                     = { by-hand = [0.776, 0.796], atomix = [0.796, 0.797], loop = [0.794, 0.797] }
+fields-or                       = { by-hand = [8.031, 8.193], atomix = [8.008, 8.197], loop = [10.41, 10.41] }
+fields-set                      = { by-hand = [6.369, 6.369], atomix = [6.369, 6.371], loop = [8.678, 8.656] }
+fields-test-and-clear           = { by-hand = [6.531, 6.531], atomix = [6.533, 6.534], loop = [7.874, 8.137] }
+fields-update                   = { by-hand = [7.953, 7.973], atomix = [7.963, 7.957], loop = [7.947, 7.956] }
+integer-compare-exchange        = { core = [7.168, 7.202], atomix = [7.175, 7.201], portable-atomic = [7.17, 7.205], crossbeam = [7.992, 7.98], atomic = [7.168, 7.17], atomig = [7.204, 7.203] }
+integer-fetch-add               = { core = [7.75, 7.753], atomix = [7.748, 7.758], portable-atomic = [7.527, 7.755], crossbeam = [7.787, 7.757], atomic = [7.755, 7.763], atomig = [7.766, 7.766] }
+integer-load                    = { core = [0.759, 0.759], atomix = [0.759, 0.759], portable-atomic = [0.759, 0.759], crossbeam = [0.759, 0.759], atomic = [0.758, 0.759], atomig = [0.759, 0.758] }
+integer-store                   = { core = [2.008, 2.007], atomix = [2.007, 2.008], portable-atomic = [2.011, 2.007], crossbeam = [2.008, 2.007], atomic = [3.206, 2.007], atomig = [2.024, 2.009] }
+integer-swap                    = { core = [7.757, 7.714], atomix = [7.76, 7.746], portable-atomic = [7.749, 7.775], crossbeam = [7.758, 7.477], atomic = [7.75, 7.749], atomig = [7.756, 7.442] }
+packed-compare-exchange         = { core = [8.111, 8.113], atomix = [8.105, 8.107], crossbeam = [13.63, 13.62], atomic = [11.05, 11.05] }
+packed-load                     = { core = [0.751, 0.757], atomix = [0.75, 0.751], crossbeam = [21.07, 20.85], atomic = [8.361, 8.361] }
+packed-store                    = { core = [2.032, 2.118], atomix = [2.046, 3.207], crossbeam = [19.63, 19.64], atomic = [8.676, 8.676] }
+tagged-pointer-compare-exchange = { by-hand = [8.111, 8.117], atomix = [8.379, 8.386] }
+tagged-pointer-load             = { by-hand = [4.564, 4.57], atomix = [4.569, 4.571] }
+tagged-pointer-store            = { by-hand = [2.049, 2.057], atomix = [2.167, 2.153] }
+tagged-pointer-test-and-set     = { by-hand = [6.535, 6.531], atomix = [6.529, 6.535] }
+two-words-compare-exchange      = { atomix = [8.587, 8.57], atomix-u128 = [8.517, 8.501], portable-atomic = [8.582, 8.576], crossbeam = [13.26, 13.2] }
+two-words-read                  = { atomix = [5.029, 5.03], atomix-u128 = [5.029, 5.029], portable-atomic = [5.81, 5.205], crossbeam = [26.59, 26.14] }
+two-words-write                 = { atomix = [12.0, 11.99], atomix-u128 = [12.29, 12.29], portable-atomic = [5.09, 5.09], crossbeam = [19.78, 19.37] }
+
+[results.median-ns.lse2]
+fieldless-enum-load             = { core = [0.846, 0.816], atomix = [0.82, 0.79], atomig = [0.825, 0.881], atomic-enum = [0.844, 0.814] }
+fields-fetch-add                = { by-hand = [6.89, 6.865], atomix = [6.905, 6.839], loop = [8.81, 8.861] }
+fields-load                     = { by-hand = [0.832, 0.805], atomix = [0.834, 0.802], loop = [0.833, 0.804] }
+fields-or                       = { by-hand = [8.192, 8.045], atomix = [8.193, 8.17], loop = [10.42, 10.39] }
+fields-set                      = { by-hand = [6.422, 6.394], atomix = [6.42, 6.39], loop = [8.83, 8.775] }
+fields-test-and-clear           = { by-hand = [6.533, 6.501], atomix = [6.531, 6.503], loop = [8.143, 8.451] }
+fields-update                   = { by-hand = [8.067, 7.96], atomix = [7.978, 8.025], loop = [7.964, 7.951] }
+integer-compare-exchange        = { core = [6.764, 6.724], atomix = [7.031, 6.732], portable-atomic = [7.043, 6.732], crossbeam = [7.394, 7.467], atomic = [6.767, 6.73], atomig = [6.756, 6.73] }
+integer-fetch-add               = { core = [7.849, 7.712], atomix = [7.836, 7.72], portable-atomic = [7.537, 7.726], crossbeam = [7.09, 7.734], atomic = [7.18, 7.719], atomig = [7.109, 7.737] }
+integer-load                    = { core = [0.82, 0.791], atomix = [0.82, 0.79], portable-atomic = [0.82, 0.79], crossbeam = [0.82, 0.79], atomic = [0.82, 0.79], atomig = [0.82, 0.79] }
+integer-store                   = { core = [2.028, 2.0], atomix = [2.052, 2.004], portable-atomic = [2.029, 2.006], crossbeam = [2.033, 2.02], atomic = [2.047, 2.002], atomig = [2.028, 2.018] }
+integer-swap                    = { core = [7.415, 7.72], atomix = [7.219, 7.726], portable-atomic = [7.286, 7.717], crossbeam = [7.579, 7.719], atomic = [7.865, 7.829], atomig = [7.758, 7.655] }
+packed-compare-exchange         = { core = [8.107, 8.077], atomix = [8.129, 8.097], crossbeam = [12.7, 12.66], atomic = [11.18, 11.16] }
+packed-load                     = { core = [0.846, 0.816], atomix = [0.847, 0.816], crossbeam = [24.44, 24.36], atomic = [8.361, 8.333] }
+packed-store                    = { core = [2.036, 2.048], atomix = [2.047, 2.035], crossbeam = [19.3, 19.29], atomic = [8.864, 8.848] }
+tagged-pointer-compare-exchange = { by-hand = [8.141, 8.111], atomix = [8.437, 8.409] }
+tagged-pointer-load             = { by-hand = [4.174, 4.14], atomix = [4.489, 4.449] }
+tagged-pointer-store            = { by-hand = [2.057, 2.006], atomix = [2.166, 2.136] }
+tagged-pointer-test-and-set     = { by-hand = [6.531, 6.499], atomix = [6.533, 6.505] }
+two-words-load                  = { atomix = [6.174, 6.143] }
+two-words-store                 = { atomix = [5.738, 5.705] }
+two-words-compare-exchange      = { atomix = [8.939, 8.912], atomix-u128 = [8.926, 8.897], portable-atomic = [8.94, 8.859], crossbeam = [12.94, 12.83] }
+two-words-read                  = { atomix = [5.045, 5.058], atomix-u128 = [5.086, 5.057], portable-atomic = [6.17, 6.325], crossbeam = [25.32, 24.72] }
+two-words-write                 = { atomix = [8.875, 8.847], atomix-u128 = [8.878, 8.855], portable-atomic = [5.262, 5.227], crossbeam = [19.02, 19.63] }

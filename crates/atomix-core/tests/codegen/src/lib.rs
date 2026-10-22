@@ -9,18 +9,19 @@
 //! atomix-core's `deranged-05` feature is always on, for the probes of its conversions, and its
 //! `arbitrary-int` feature, for those of a field of an arbitrary-int integer. A bit's probes, at a
 //! position chosen at run time or by a constant, are in `bits`; an array's and its elements',
-//! beside an integer's and a byte's operations by hand over core's, in `arrays`; the field
-//! operations' in `fields`, over packed structs `tests/testing/packed.rs` writes out; a pointer
-//! word's in `pointer_words`, over words `tests/testing/pointer_word.rs` writes out; a double
-//! word's, a pair's and a slice pointer's, in `double_words`; a reference's and a function
-//! pointer's, beside a raw pointer's, in `references`; a tuple's and its fields', in `tuples`; and
-//! core's small values', in `core_values`.
+//! beside an integer's, in `arrays`; the field operations' in `fields`, over packed structs
+//! `tests/testing/packed.rs` writes out; a pointer word's in `pointer_words`, over words
+//! `tests/testing/pointer_word.rs` writes out; a double word's, a pair's and a slice pointer's, in
+//! `double_words`; a reference's and a function pointer's, beside a raw pointer's, in `references`;
+//! a tuple's and its fields', in `tuples`; core's small values', in `core_values`; and each probe's
+//! twin over core's atomics, in `twins`.
 //!
 //! The empty `[workspace]` in its manifest makes it a workspace of its own: the repository's does
 //! not list it, and the test builds it alone.
 
 #![no_std]
 #![feature(const_trait_impl, integer_widen_truncate, ptr_alignment_type)]
+#![cfg_attr(target_has_atomic = "128", feature(integer_atomics))]
 
 pub mod arrays;
 pub mod bits;
@@ -35,6 +36,7 @@ mod pointer_word;
 pub mod pointer_words;
 pub mod references;
 pub mod tuples;
+pub mod twins;
 #[cfg(feature = "x86-64-refused")]
 pub mod without_cmpxchg16b;
 

@@ -280,7 +280,8 @@ to every target, with a lock where a target has no instruction; crossbeam-utils'
 `AtomicCell` and the `atomic` crate's `Atomic` hold a value of any type, behind
 a lock where none of std's atomics fits it. atomix holds any value its derive
 can pack into one word or two, refuses as it compiles what a target cannot do in
-one instruction, and needs a nightly Rust on four targets to do it.
+one instruction, and needs a nightly Rust, on `aarch64` and `x86_64`, to do it.
+[How atomix Compares][compares] sets each beside atomix, with what each costs.
 
 ## Documentation
 
@@ -301,6 +302,7 @@ your option.
 
 [platforms]: https://atomix-labs.github.io/atomix/api/atomix/#platforms
 [book]: https://atomix-labs.github.io/atomix/
+[compares]: https://atomix-labs.github.io/atomix/how-atomix-compares.html
 [api-atomix-rs]: https://atomix-labs.github.io/atomix/api/atomix/
 [api-atomix-core]: https://atomix-labs.github.io/atomix/api/atomix_core/
 [api-atomix-derive]: https://atomix-labs.github.io/atomix/api/atomix_derive/

@@ -98,6 +98,9 @@ What a change here keeps, beyond what the checks hold it to.
   `toggle`; the forms that return it are `#[must_use]`, naming the short one,
   and no other is, as core's are not. So there is no `add`, `sub`, `max` or
   `min`: a dropped `fetch_add` is `lock add` already.
+- A claim that one form is faster cites the run under
+  `crates/atomix/benches/results/` that shows it: `tests/codegen.rs` pins what a
+  form lowers to, and a committed run what it costs.
 - Every packed struct the derive takes gets a projection, `QuoteFields<'a, P>`
   beside `Quote`, of its visibility: one `&'a AtomicField` per field, of the
   field's visibility and with its docs and `#[deprecated]`, and a tuple struct's
@@ -255,6 +258,13 @@ What a change here keeps, beyond what the checks hold it to.
   `atomix_core`.
 - Siblings are documented alike: every alias, validity and ordering has the same
   sections, and each feature's row reads the same on every page that lists it.
+- The book links an item to the facade's page, `api/atomix/…`, in a reference
+  definition at the foot of the page, never by its path: the links preprocessor
+  resolves a path to the crate that defines the item, `atomix_core`, while a
+  user imports it from `atomix`. lychee checks each link and its fragment. A
+  page includes a listing from a test under `crates/atomix/tests/book/`, a
+  refusal from a facade trybuild fixture, and a cookbook's structure from a
+  module that the loom models in `crates/atomix/tests/model.rs` take too.
 
 ### Checks Beyond `just check`
 

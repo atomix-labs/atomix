@@ -26,11 +26,17 @@ allowed_elements = [
 [MD024]
 siblings_only = true
 
+# A heading names the project in its own lower case, as "How atomix Compares".
+[MD063]
+ignore-words = ["atomix"]
+
 # GitHub's templates are the body of an issue or a pull request, which has its own title, and a
 # release's notes the body of a release. An mdBook summary titles each part of the book with a `#`
 # heading, which MD025's fix would demote, and a catalog's parts are named for its groups'
-# directories, which MD063's would capitalise.
+# directories, which MD063's would capitalise. The book's pages link the API at `api/`, which only
+# the built book holds, where lychee checks each link and its fragment.
 [per-file-ignores]
+"docs/src/*.md"                    = ["MD057"]
 ".github/ISSUE_TEMPLATE/*.md"      = ["MD041"]
 ".github/pull_request_template.md" = ["MD041"]
 ".github/release-notes.md"         = ["MD041"]

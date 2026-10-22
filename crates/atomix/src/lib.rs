@@ -11,7 +11,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! atomix-rs = { version = "0.1", features = ["derive"] }
+//! atomix-rs = { git = "https://github.com/atomix-labs/atomix", features = ["derive"] }
 //! ```
 //!
 //! and imports it as `atomix`:
@@ -490,7 +490,7 @@
 //!
 //! ```toml
 //! [target.'cfg(loom)'.dependencies]
-//! atomix-rs = { version = "0.1", features = ["loom"] }
+//! atomix-rs = { git = "https://github.com/atomix-labs/atomix", features = ["loom"] }
 //! ```
 //!
 //! Each model runs in `atomix::model::check`, and spawns with `atomix::model::{thread, Arc}`.

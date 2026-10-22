@@ -1,0 +1,71 @@
+error[E0080]: evaluation panicked: index out of bounds: the len is 4 but the index is 4
+ --> $WORKSPACE/crates/atomix-core/src/atomic/field/element.rs
+  |
+  |         const { assert_in_bounds(INDEX, A::LENGTH) };
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `atomix_core::atomic::field::element::<impl atomix::Atomic<[u8; 4]>>::place::<4>::{constant#0}` failed here
+
+note: erroneous constant encountered
+ --> $WORKSPACE/crates/atomix-core/src/atomic/field/element.rs
+  |
+  |         const { assert_in_bounds(INDEX, A::LENGTH) };
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: the above error was encountered while instantiating `fn atomix_core::atomic::field::element::<impl atomix::Atomic<[u8; 4]>>::place::<4>`
+ --> tests/compile_fail/element_place_past_the_end.rs:8:13
+  |
+8 |     let _ = levels.place::<4>().load(Acquire);
+  |             ^^^^^^^^^^^^^^^^^^^
+
+error[E0080]: evaluation panicked: index out of bounds: the len is 4 but the index is 4
+ --> $WORKSPACE/crates/atomix-core/src/atomic/field/element.rs
+  |
+  |         assert_in_bounds(INDEX, A::LENGTH);
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `atomix::Element::<[u8; 4], 4>::PLACEMENT` failed here
+
+note: erroneous constant encountered
+ --> $WORKSPACE/crates/atomix-core/src/atomic/field/element.rs
+  |
+  |     const IS_SIGNED: bool = Self::PLACEMENT.signed;
+  |                             ^^^^^^^^^^^^^^^
+
+note: erroneous constant encountered
+ --> $WORKSPACE/crates/atomix-core/src/atomic/field/element.rs
+  |
+  |     const OFFSET: u32 = Self::PLACEMENT.offset;
+  |                         ^^^^^^^^^^^^^^^
+
+note: erroneous constant encountered
+ --> $WORKSPACE/crates/atomix-core/src/atomic/field/mod.rs
+  |
+  |     let field = bits.unbounded_shr(P::OFFSET) & mask(P::WIDTH);
+  |                                    ^^^^^^^^^
+
+note: erroneous constant encountered
+ --> $WORKSPACE/crates/atomix-core/src/atomic/field/element.rs
+  |
+  |     const WIDTH: u32 = Self::PLACEMENT.width;
+  |                        ^^^^^^^^^^^^^^^
+
+note: erroneous constant encountered
+ --> $WORKSPACE/crates/atomix-core/src/atomic/field/mod.rs
+  |
+  |     let field = bits.unbounded_shr(P::OFFSET) & mask(P::WIDTH);
+  |                                                      ^^^^^^^^
+
+note: erroneous constant encountered
+ --> $WORKSPACE/crates/atomix-core/src/atomic/field/mod.rs
+  |
+  |     if P::IS_SIGNED {
+  |        ^^^^^^^^^^^^
+
+note: erroneous constant encountered
+ --> $WORKSPACE/crates/atomix-core/src/atomic/field/mod.rs
+  |
+  |         sign_extend(field, P::WIDTH).cast_unsigned()
+  |                            ^^^^^^^^
+
+note: the above error was encountered while instantiating `fn atomix_core::atomic::field::unpack::<atomix::Element<[u8; 4], 4>>`
+ --> $WORKSPACE/crates/atomix-core/src/atomic/field/mod.rs
+  |
+  |     unsafe { P::Value::from_repr_unchecked(Primitive::from_bits(unpack::<P>(bits))) }
+  |                                                                 ^^^^^^^^^^^^^^^^^

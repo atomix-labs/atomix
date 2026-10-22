@@ -1,0 +1,115 @@
+Timer precision: 30 ns
+operations               fastest       │ slowest       │ median        │ mean          │ samples │ iters
+├─ fieldless_enum                      │               │               │               │         │
+│  ╰─ load                             │               │               │               │         │
+│     ├─ AtomicEnum      0.774 ns      │ 0.782 ns      │ 0.778 ns      │ 0.778 ns      │ 100     │ 409600
+│     ├─ Atomig          0.808 ns      │ 0.963 ns      │ 0.818 ns      │ 0.837 ns      │ 100     │ 409600
+│     ├─ Atomix          0.743 ns      │ 1.823 ns      │ 0.758 ns      │ 0.767 ns      │ 100     │ 409600
+│     ╰─ Core            0.774 ns      │ 0.787 ns      │ 0.78 ns       │ 0.78 ns       │ 100     │ 409600
+├─ fields                              │               │               │               │         │
+│  ├─ fetch_add                        │               │               │               │         │
+│  │  ├─ Atomix          6.848 ns      │ 6.973 ns      │ 6.869 ns      │ 6.896 ns      │ 100     │ 51200
+│  │  ├─ ByHand          6.846 ns      │ 6.943 ns      │ 6.866 ns      │ 6.894 ns      │ 100     │ 51200
+│  │  ╰─ Loop            8.074 ns      │ 10.18 ns      │ 8.653 ns      │ 8.858 ns      │ 100     │ 51200
+│  ├─ load                             │               │               │               │         │
+│  │  ├─ Atomix          0.752 ns      │ 0.812 ns      │ 0.797 ns      │ 0.791 ns      │ 100     │ 409600
+│  │  ├─ ByHand          0.751 ns      │ 0.805 ns      │ 0.796 ns      │ 0.788 ns      │ 100     │ 409600
+│  │  ╰─ Loop            0.754 ns      │ 0.814 ns      │ 0.797 ns      │ 0.793 ns      │ 100     │ 409600
+│  ├─ or                               │               │               │               │         │
+│  │  ├─ Atomix          7.996 ns      │ 8.232 ns      │ 8.197 ns      │ 8.16 ns       │ 100     │ 51200
+│  │  ├─ ByHand          7.994 ns      │ 8.217 ns      │ 8.193 ns      │ 8.143 ns      │ 100     │ 51200
+│  │  ╰─ Loop            10.41 ns      │ 18.48 ns      │ 10.41 ns      │ 10.5 ns       │ 100     │ 51200
+│  ├─ set                              │               │               │               │         │
+│  │  ├─ Atomix          6.363 ns      │ 6.379 ns      │ 6.371 ns      │ 6.371 ns      │ 100     │ 51200
+│  │  ├─ ByHand          6.363 ns      │ 6.377 ns      │ 6.369 ns      │ 6.369 ns      │ 100     │ 51200
+│  │  ╰─ Loop            8.648 ns      │ 8.689 ns      │ 8.656 ns      │ 8.662 ns      │ 100     │ 51200
+│  ├─ test_and_clear                   │               │               │               │         │
+│  │  ├─ Atomix          6.519 ns      │ 6.545 ns      │ 6.534 ns      │ 6.533 ns      │ 100     │ 51200
+│  │  ├─ ByHand          6.519 ns      │ 6.551 ns      │ 6.531 ns      │ 6.533 ns      │ 100     │ 51200
+│  │  ╰─ Loop            7.576 ns      │ 8.822 ns      │ 8.137 ns      │ 8.267 ns      │ 100     │ 51200
+│  ╰─ update                           │               │               │               │         │
+│     ├─ Atomix          7.814 ns      │ 8.176 ns      │ 7.957 ns      │ 7.965 ns      │ 100     │ 51200
+│     ├─ ByHand          7.82 ns       │ 8.178 ns      │ 7.973 ns      │ 7.973 ns      │ 100     │ 51200
+│     ╰─ Loop            7.805 ns      │ 8.182 ns      │ 7.956 ns      │ 7.956 ns      │ 100     │ 51200
+├─ integer                             │               │               │               │         │
+│  ├─ compare_exchange                 │               │               │               │         │
+│  │  ├─ AtomicCrate     7.156 ns      │ 7.521 ns      │ 7.17 ns       │ 7.202 ns      │ 100     │ 51200
+│  │  ├─ Atomig          7.156 ns      │ 7.391 ns      │ 7.203 ns      │ 7.221 ns      │ 100     │ 51200
+│  │  ├─ Atomix          7.158 ns      │ 7.396 ns      │ 7.201 ns      │ 7.219 ns      │ 100     │ 51200
+│  │  ├─ Core            7.082 ns      │ 7.517 ns      │ 7.202 ns      │ 7.202 ns      │ 100     │ 51200
+│  │  ├─ Crossbeam       7.932 ns      │ 8.088 ns      │ 7.98 ns       │ 7.982 ns      │ 100     │ 51200
+│  │  ╰─ PortableAtomic  7.16 ns       │ 7.387 ns      │ 7.205 ns      │ 7.206 ns      │ 100     │ 51200
+│  ├─ fetch_add                        │               │               │               │         │
+│  │  ├─ AtomicCrate     6.808 ns      │ 15.87 ns      │ 7.763 ns      │ 7.816 ns      │ 100     │ 51200
+│  │  ├─ Atomig          6.812 ns      │ 8.305 ns      │ 7.766 ns      │ 7.687 ns      │ 100     │ 51200
+│  │  ├─ Atomix          6.808 ns      │ 8.308 ns      │ 7.758 ns      │ 7.683 ns      │ 100     │ 51200
+│  │  ├─ Core            6.814 ns      │ 8.275 ns      │ 7.753 ns      │ 7.637 ns      │ 100     │ 51200
+│  │  ├─ Crossbeam       6.812 ns      │ 8.33 ns       │ 7.757 ns      │ 7.696 ns      │ 100     │ 51200
+│  │  ╰─ PortableAtomic  6.812 ns      │ 8.307 ns      │ 7.755 ns      │ 7.649 ns      │ 100     │ 51200
+│  ├─ load                             │               │               │               │         │
+│  │  ├─ AtomicCrate     0.744 ns      │ 0.762 ns      │ 0.759 ns      │ 0.757 ns      │ 100     │ 409600
+│  │  ├─ Atomig          0.742 ns      │ 1.591 ns      │ 0.758 ns      │ 0.764 ns      │ 100     │ 409600
+│  │  ├─ Atomix          0.744 ns      │ 0.762 ns      │ 0.759 ns      │ 0.757 ns      │ 100     │ 409600
+│  │  ├─ Core            0.743 ns      │ 0.763 ns      │ 0.759 ns      │ 0.757 ns      │ 100     │ 409600
+│  │  ├─ Crossbeam       0.744 ns      │ 2.066 ns      │ 0.759 ns      │ 0.77 ns       │ 100     │ 409600
+│  │  ╰─ PortableAtomic  0.743 ns      │ 0.762 ns      │ 0.759 ns      │ 0.756 ns      │ 100     │ 409600
+│  ├─ store                            │               │               │               │         │
+│  │  ├─ AtomicCrate     1.977 ns      │ 3.225 ns      │ 2.007 ns      │ 2.088 ns      │ 100     │ 204800
+│  │  ├─ Atomig          1.977 ns      │ 3.226 ns      │ 2.009 ns      │ 2.345 ns      │ 100     │ 204800
+│  │  ├─ Atomix          1.978 ns      │ 3.227 ns      │ 2.008 ns      │ 2.25 ns       │ 100     │ 204800
+│  │  ├─ Core            1.977 ns      │ 3.506 ns      │ 2.007 ns      │ 2.023 ns      │ 100     │ 204800
+│  │  ├─ Crossbeam       1.977 ns      │ 2.052 ns      │ 2.007 ns      │ 2.007 ns      │ 100     │ 204800
+│  │  ╰─ PortableAtomic  1.977 ns      │ 3.227 ns      │ 2.007 ns      │ 2.215 ns      │ 100     │ 204800
+│  ╰─ swap                             │               │               │               │         │
+│     ├─ AtomicCrate     6.805 ns      │ 8.346 ns      │ 7.749 ns      │ 7.613 ns      │ 100     │ 51200
+│     ├─ Atomig          6.807 ns      │ 8.314 ns      │ 7.442 ns      │ 7.473 ns      │ 100     │ 51200
+│     ├─ Atomix          6.807 ns      │ 8.31 ns       │ 7.746 ns      │ 7.594 ns      │ 100     │ 51200
+│     ├─ Core            6.808 ns      │ 11.71 ns      │ 7.714 ns      │ 7.607 ns      │ 100     │ 51200
+│     ├─ Crossbeam       6.807 ns      │ 8.332 ns      │ 7.477 ns      │ 7.495 ns      │ 100     │ 51200
+│     ╰─ PortableAtomic  6.812 ns      │ 8.375 ns      │ 7.775 ns      │ 7.714 ns      │ 100     │ 51200
+├─ packed                              │               │               │               │         │
+│  ├─ compare_exchange                 │               │               │               │         │
+│  │  ├─ AtomicCrate     10.95 ns      │ 11.16 ns      │ 11.05 ns      │ 11.05 ns      │ 100     │ 51200
+│  │  ├─ Atomix          8.094 ns      │ 8.139 ns      │ 8.107 ns      │ 8.109 ns      │ 100     │ 51200
+│  │  ├─ Core            8.092 ns      │ 8.144 ns      │ 8.113 ns      │ 8.113 ns      │ 100     │ 51200
+│  │  ╰─ Crossbeam       12.97 ns      │ 14.58 ns      │ 13.62 ns      │ 13.68 ns      │ 100     │ 25600
+│  ├─ load                             │               │               │               │         │
+│  │  ├─ AtomicCrate     8.357 ns      │ 8.391 ns      │ 8.361 ns      │ 8.363 ns      │ 100     │ 51200
+│  │  ├─ Atomix          0.737 ns      │ 2.074 ns      │ 0.751 ns      │ 0.77 ns       │ 100     │ 409600
+│  │  ├─ Core            0.738 ns      │ 0.783 ns      │ 0.757 ns      │ 0.763 ns      │ 100     │ 409600
+│  │  ╰─ Crossbeam       18.62 ns      │ 29.52 ns      │ 20.85 ns      │ 21.3 ns       │ 100     │ 25600
+│  ╰─ store                            │               │               │               │         │
+│     ├─ AtomicCrate     8.668 ns      │ 8.693 ns      │ 8.676 ns      │ 8.677 ns      │ 100     │ 51200
+│     ├─ Atomix          1.995 ns      │ 3.242 ns      │ 3.207 ns      │ 2.854 ns      │ 100     │ 102400
+│     ├─ Core            1.993 ns      │ 3.964 ns      │ 2.118 ns      │ 2.517 ns      │ 100     │ 102400
+│     ╰─ Crossbeam       19.35 ns      │ 20.06 ns      │ 19.64 ns      │ 19.66 ns      │ 100     │ 25600
+├─ tagged_pointer                      │               │               │               │         │
+│  ├─ compare_exchange                 │               │               │               │         │
+│  │  ├─ Atomix          8.344 ns      │ 8.469 ns      │ 8.386 ns      │ 8.39 ns       │ 100     │ 51200
+│  │  ╰─ ByHand          8.099 ns      │ 8.141 ns      │ 8.117 ns      │ 8.118 ns      │ 100     │ 51200
+│  ├─ load                             │               │               │               │         │
+│  │  ├─ Atomix          4.49 ns       │ 4.627 ns      │ 4.571 ns      │ 4.565 ns      │ 100     │ 102400
+│  │  ╰─ ByHand          4.501 ns      │ 4.686 ns      │ 4.57 ns       │ 4.574 ns      │ 100     │ 102400
+│  ├─ store                            │               │               │               │         │
+│  │  ├─ Atomix          1.977 ns      │ 3.227 ns      │ 2.153 ns      │ 2.238 ns      │ 100     │ 204800
+│  │  ╰─ ByHand          2.007 ns      │ 5.479 ns      │ 2.057 ns      │ 2.144 ns      │ 100     │ 102400
+│  ╰─ test_and_set                     │               │               │               │         │
+│     ├─ Atomix          6.516 ns      │ 6.551 ns      │ 6.535 ns      │ 6.533 ns      │ 100     │ 51200
+│     ╰─ ByHand          6.517 ns      │ 6.545 ns      │ 6.531 ns      │ 6.532 ns      │ 100     │ 51200
+╰─ two_words                           │               │               │               │         │
+   ├─ compare_exchange                 │               │               │               │         │
+   │  ├─ Atomix          8.533 ns      │ 8.652 ns      │ 8.57 ns       │ 8.571 ns      │ 100     │ 51200
+   │  ├─ AtomixU128      8.365 ns      │ 8.777 ns      │ 8.501 ns      │ 8.536 ns      │ 100     │ 51200
+   │  ├─ Crossbeam       12.85 ns      │ 13.9 ns       │ 13.2 ns       │ 13.2 ns       │ 100     │ 25600
+   │  ╰─ PortableAtomic  8.49 ns       │ 8.783 ns      │ 8.576 ns      │ 8.584 ns      │ 100     │ 51200
+   ├─ read                             │               │               │               │         │
+   │  ├─ Atomix          5.027 ns      │ 5.748 ns      │ 5.03 ns       │ 5.053 ns      │ 100     │ 102400
+   │  ├─ AtomixU128      5.027 ns      │ 5.749 ns      │ 5.029 ns      │ 5.044 ns      │ 100     │ 102400
+   │  ├─ Crossbeam       18.03 ns      │ 40.27 ns      │ 26.14 ns      │ 26.57 ns      │ 100     │ 12800
+   │  ╰─ PortableAtomic  4.629 ns      │ 5.721 ns      │ 5.205 ns      │ 5.208 ns      │ 100     │ 102400
+   ╰─ write                            │               │               │               │         │
+      ├─ Atomix          11.72 ns      │ 12.13 ns      │ 11.99 ns      │ 11.96 ns      │ 100     │ 25600
+      ├─ AtomixU128      12.27 ns      │ 12.31 ns      │ 12.29 ns      │ 12.29 ns      │ 100     │ 25600
+      ├─ Crossbeam       12.12 ns      │ 22.19 ns      │ 19.37 ns      │ 18.83 ns      │ 100     │ 25600
+      ╰─ PortableAtomic  5.073 ns      │ 5.108 ns      │ 5.09 ns       │ 5.09 ns       │ 100     │ 102400
+

@@ -39,7 +39,30 @@ zerocopy-08   = ["atomix-core/zerocopy-08"]
 workspace = true
 
 [lib]
-name = "atomix"
+name  = "atomix"
+bench = false
+
+[[example]]
+name              = "free-list"
+required-features = ["derive"]
+
+[[example]]
+name              = "lock-word"
+required-features = ["derive"]
+
+[[example]]
+name              = "quote-book"
+required-features = ["derive"]
+
+[[bench]]
+name              = "operations"
+harness           = false
+required-features = ["derive"]
+
+[[bench]]
+name              = "contention"
+harness           = false
+required-features = ["derive"]
 
 [dependencies]
 # internal
@@ -48,15 +71,25 @@ atomix-derive = { path = "macros/derive", version = "=0.1.0", optional = true }
 
 [dev-dependencies]
 # external
-arbitrary     = { workspace = true }
-arbitrary-int = { workspace = true }
-bytemuck      = { workspace = true, features = ["derive"] }
-deranged      = { workspace = true }
-proptest      = { workspace = true }
-serde         = { workspace = true, features = ["derive"] }
-serde_json    = { workspace = true }
-trybuild      = { workspace = true }
-zerocopy      = { workspace = true }
+arbitrary       = { workspace = true }
+arbitrary-int   = { workspace = true }
+atomic          = { workspace = true }
+atomic_enum     = { workspace = true }
+atomig          = { workspace = true }
+bytemuck        = { workspace = true, features = ["derive"] }
+crossbeam-utils = { workspace = true }
+deranged        = { workspace = true }
+divan           = { workspace = true }
+portable-atomic = { workspace = true }
+proptest        = { workspace = true }
+serde           = { workspace = true, features = ["derive"] }
+serde_json      = { workspace = true }
+trybuild        = { workspace = true }
+zerocopy        = { workspace = true }
+
+[target.'cfg(not(target_arch = "arm64ec"))'.dev-dependencies]
+# external
+core_affinity = { workspace = true }
 
 [target.'cfg(any())'.dependencies]
 # internal
