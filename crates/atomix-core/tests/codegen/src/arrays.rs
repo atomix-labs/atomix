@@ -1,6 +1,7 @@
 //! An array's operations, each its repr's, beside an integer's of the same width: four bytes are a
 //! `u32`, sixty-four `bool`s a `u64`; and its elements', at an index chosen at run time, checked,
-//! unchecked or a constant, each the instruction a field's is, a `Packed` one's too.
+//! unchecked or a constant, each the instruction a field's is, a `Packed` one's too; and, in
+//! `by_hand`, a byte's bitwise operations written over core's atomics, each its probe's twin.
 
 use atomix_core::ordering::{AcqRel, Acquire, Relaxed, Release};
 use atomix_core::{Atomic, AtomicU32, Packed, RangedU8};
@@ -93,6 +94,11 @@ pub fn byte_and(atomic: &Atomic<[u8; 4]>, index: usize, value: u8) {
 }
 
 #[unsafe(no_mangle)]
+pub fn byte_not(atomic: &Atomic<[u8; 4]>, index: usize) {
+    atomic.element(index).not(Release);
+}
+
+#[unsafe(no_mangle)]
 pub fn byte_update(atomic: &Atomic<[u8; 4]>, index: usize) -> [u8; 4] {
     atomic.element(index).update(AcqRel, Acquire, |byte| byte.wrapping_add(1))
 }
@@ -163,6 +169,18 @@ pub fn byte_fetch_or(atomic: &Atomic<[u8; 4]>, index: usize, value: u8) -> [u8; 
     atomic.element(index).fetch_or(value, AcqRel)
 }
 
+#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", feature = "aarch64-only"))]
+#[unsafe(no_mangle)]
+pub fn byte_fetch_and(atomic: &Atomic<[u8; 4]>, index: usize, value: u8) -> [u8; 4] {
+    atomic.element(index).fetch_and(value, AcqRel)
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", feature = "aarch64-only"))]
+#[unsafe(no_mangle)]
+pub fn byte_fetch_not(atomic: &Atomic<[u8; 4]>, index: usize) -> [u8; 4] {
+    atomic.element(index).fetch_not(AcqRel)
+}
+
 /// Sixteen quarters, two bits each, in a `u32`.
 type Fill = Packed<[RangedU8<0, 3>; 16], u32>;
 
@@ -204,4 +222,59 @@ pub fn sixteen_bools_load(atomic: &Atomic<[bool; 16]>) -> [bool; 16] {
 #[unsafe(no_mangle)]
 pub fn sixteen_bools_store(atomic: &Atomic<[bool; 16]>, flags: [bool; 16]) {
     atomic.store(flags, Release);
+}
+
+pub mod by_hand {
+    //! A byte's `and`, `not`, `fetch_and` and `fetch_not` by hand over core's `AtomicU32`, as code
+    //! over core's atomics writes them, after the check of the index a slice's index makes: each
+    //! probe's twin, named for it with `core_` before, which `tests/codegen.rs` holds it to
+    //! instruction for instruction.
+
+    use core::sync::atomic::AtomicU32;
+    use core::sync::atomic::Ordering::{AcqRel, Release};
+
+    /// Panics as a slice's index does past its end, with std's message: the twins call it off their
+    /// fast path, as an element calls its own refusal. It is public, as atomix's is to the crate
+    /// that inlines an element, so LLVM keeps its length a parameter, passed as atomix's is.
+    #[cold]
+    #[inline(never)]
+    #[track_caller]
+    pub fn refuse_index(index: usize, length: usize) -> ! {
+        panic!("index out of bounds: the len is {length} but the index is {index}")
+    }
+
+    /// `index`, once checked against `length` as a slice's index checks it.
+    #[track_caller]
+    fn checked(index: usize, length: usize) -> usize {
+        if index >= length {
+            refuse_index(index, length);
+        }
+        index
+    }
+
+    #[unsafe(no_mangle)]
+    pub fn core_byte_and(atomic: &AtomicU32, index: usize, value: u8) {
+        let shift = checked(index, 4).wrapping_mul(8);
+        atomic.fetch_and(!(u64::from(!value) << shift).truncate::<u32>(), Release);
+    }
+
+    #[unsafe(no_mangle)]
+    pub fn core_byte_not(atomic: &AtomicU32, index: usize) {
+        let shift = checked(index, 4).wrapping_mul(8);
+        atomic.fetch_xor((u64::from(u8::MAX) << shift).truncate(), Release);
+    }
+
+    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
+    #[unsafe(no_mangle)]
+    pub fn core_byte_fetch_and(atomic: &AtomicU32, index: usize, value: u8) -> u32 {
+        let shift = checked(index, 4).wrapping_mul(8);
+        atomic.fetch_and(!(u64::from(!value) << shift).truncate::<u32>(), AcqRel)
+    }
+
+    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
+    #[unsafe(no_mangle)]
+    pub fn core_byte_fetch_not(atomic: &AtomicU32, index: usize) -> u32 {
+        let shift = checked(index, 4).wrapping_mul(8);
+        atomic.fetch_xor((u64::from(u8::MAX) << shift).truncate(), AcqRel)
+    }
 }
