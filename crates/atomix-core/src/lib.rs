@@ -27,9 +27,14 @@
 //! [`Packed`] packs an array at its elements' width in an integer it states: sixteen
 //! `RangedU8<0, 3>` in a `u32`.
 //!
-//! A tuple of one to twelve values is laid out as the derived struct of its fields would be, each
-//! field a place of its own: `(Option<NonNull<Node>>, bool)` is one word, its flag in the pointer's
-//! low bits, and `HEAD.fields().1.test_and_set(AcqRel)` is `lock bts`, or `ldsetal`, on it.
+//! A tuple of one to twelve values holds each field stored as bits in a slot as wide as its repr,
+//! as an array holds its elements, side by side from bit 0, the bits above them clear, and a
+//! pointer in a word of its own, the others in its low bits. Where each field fills its repr, that
+//! is the layout `#[derive(Atom)]` gives the struct of its fields; a field narrower than its repr,
+//! a two-variant enum or a ranged integer, takes its whole slot, where the struct packs it at its
+//! range's width. Each field is a place of its own: `(Option<NonNull<Node>>, bool)` is one word,
+//! its flag in the pointer's low bits, and `HEAD.fields().1.test_and_set(AcqRel)` is `lock bts`, or
+//! `ldsetal`, on it.
 //!
 //! Core's small values are atomic values, each its fields side by side in one integer: an
 //! `Ipv4Addr` is its octets in core's order, so `PEER.load(Acquire)` is a `u32`'s load with no byte

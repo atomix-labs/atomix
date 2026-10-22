@@ -39,17 +39,18 @@
 //!   forge, and a reference's operations take no ordering weaker than an `Acquire` read and a
 //!   `Release` write. An array `[T; N]` holds each element in a slot as wide as its repr, element 0
 //!   lowest: four bytes in a `u32`, their own bytes, and 64 `bool`s in a `u64`; [`Packed`] holds
-//!   each at the bits its range needs, in an integer it states. A tuple of one to twelve values is
-//!   laid out as the derived struct of its fields would be, its fields places through `fields().0`
-//!   and its kin. Two words hold two values stored as pointers, references among them, as a tuple
-//!   or an array, a pointer beside more tags than its word holds, a function pointer beside any,
-//!   and a pointer to a slice, a `str` or a trait object. With the `derive` feature, each derives:
-//!   `Atom` for a struct or an enum, a pointer word or a pointer enum among them, which keeps small
-//!   fields as tags in its pointer's low bits and the pointer's provenance, and each capability for
-//!   a newtype whose field has it. A pointer word takes two words where a second pointer, a wide
-//!   one or tags no alignment holds need them. [`RangedU64<MIN, MAX>`](RangedU64) and its siblings,
-//!   `RangedU8` to `RangedIsize`, hold an integer from `MIN` to `MAX`, and [`RangeError`] and
-//!   [`ParseRangeError`] say why one refused an integer or a text.
+//!   each at the bits its range needs, in an integer it states. A tuple of one to twelve values
+//!   holds each field in a slot as wide as its repr, as an array does, which is the derived struct
+//!   of its fields' layout where each field fills its repr; its fields are places through
+//!   `fields().0` and its kin. Two words hold two values stored as pointers, references among them,
+//!   as a tuple or an array, a pointer beside more tags than its word holds, a function pointer
+//!   beside any, and a pointer to a slice, a `str` or a trait object. With the `derive` feature,
+//!   each derives: `Atom` for a struct or an enum, a pointer word or a pointer enum among them,
+//!   which keeps small fields as tags in its pointer's low bits and the pointer's provenance, and
+//!   each capability for a newtype whose field has it. A pointer word takes two words where a
+//!   second pointer, a wide one or tags no alignment holds need them. [`RangedU64<MIN,
+//!   MAX>`](RangedU64) and its siblings, `RangedU8` to `RangedIsize`, hold an integer from `MIN` to
+//!   `MAX`, and [`RangeError`] and [`ParseRangeError`] say why one refused an integer or a text.
 //! - **Orderings.** The [`ordering`] types, each accepted only where it means something, and the
 //!   [`fence`](fn@fence) and [`compiler_fence`] they order.
 //! - **Primitives.** [`Primitive`], [`ExactBits`] where the bits are the whole value, a

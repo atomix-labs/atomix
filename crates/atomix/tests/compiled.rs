@@ -64,8 +64,9 @@ mod codegen {
     //! pointer's load. Its store and exchange test no tag bit, since a reference is aligned, so
     //! they have no refusal at all.
     //!
-    //! A tuple lowers as the struct of its fields does: `(NonNull<Node>, bool)`'s store, its flag's
-    //! test-and-set and its pointer's load are `Marked`'s, instruction for instruction.
+    //! A tuple whose fields fill their reprs lowers as the struct of its fields does:
+    //! `(NonNull<Node>, bool)`'s store, its flag's test-and-set and its pointer's load are
+    //! `Marked`'s, instruction for instruction.
 
     use crate::testing::codegen::Lowering::{
         self, InOrder, Only, Refuses, Retry, RetryOnly, SameAs,

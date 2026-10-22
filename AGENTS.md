@@ -123,22 +123,25 @@ What a change here keeps, beyond what the checks hold it to.
   provenance is no bits. `Packed<[T; N], R>` packs the elements at their range's
   width in the integer it states, as a packed struct packs its fields, and lends
   them alike.
-- A tuple of one to twelve values is laid out as `#[derive(Atom)]` lays out the
-  struct of its fields, by the hidden table of shapes in
+- A tuple of one to twelve values is laid out by the hidden table of shapes in
   `crates/atomix-core/src/atom/tuple/table.rs`, which `tests/tuples.rs` writes
   and checks: fields stored as bits side by side in slots of their reprs'
-  widths; one pointer, the others in its low bits up to 29 bits, else in an
-  integer word beside it; two pointers, the others in the first one's low bits.
-  Beside a function pointer, the others take an integer word whatever their
-  bits, since code leaves no low bit clear, which its repr's
-  `PointerRepr::Pointee` says by type, `Data` or `Code`, never by an alignment.
-  Every use of a tuple, its encode, decodes and projection, refuses one whose
-  first pointer leaves too few bits for them. A pointer field is set apart as a
-  `*mut ()` and rebuilt by its own repr's `PointerRepr::from_raw`, so a sealed
-  `ReprOf` keeps its seal. Its projection is a tuple of its fields' places,
-  `fields().0`, on the derive's own `Field` paths, and its last field adds in
-  place where the slots fill the repr and every repr of its slot decodes,
-  `Total`, as an array's last element asks `AtomAdd`.
+  widths, as an array's elements, the bits above them clear; one pointer, the
+  others in its low bits up to 29 bits, else in an integer word beside it; two
+  pointers, the others in the first one's low bits. That is the layout
+  `#[derive(Atom)]` gives the struct of its fields where each field fills its
+  repr: the struct packs a narrower field at its range's width, and extends a
+  narrower signed top field's sign above it. Beside a function pointer, the
+  others take an integer word whatever their bits, since code leaves no low bit
+  clear, which its repr's `PointerRepr::Pointee` says by type, `Data` or `Code`,
+  never by an alignment. Every use of a tuple, its encode, decodes and
+  projection, refuses one whose first pointer leaves too few bits for them. A
+  pointer field is set apart as a `*mut ()` and rebuilt by its own repr's
+  `PointerRepr::from_raw`, so a sealed `ReprOf` keeps its seal. Its projection
+  is a tuple of its fields' places, `fields().0`, on the derive's own `Field`
+  paths, and its last field adds in place where the slots fill the repr and
+  every repr of its slot decodes, `Total`, as an array's last element asks
+  `AtomAdd`.
 - A value of core's is stored as core lays it out where that costs no shift: an
   IP address as its octets in core's order, so a load swaps no byte, and with no
   `AtomOrd`, since a repr that ordered as the address would swap the bytes of

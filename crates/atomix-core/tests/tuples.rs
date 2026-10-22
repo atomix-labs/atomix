@@ -1,10 +1,10 @@
-//! A tuple as an atomic value, laid out as the struct of its fields would be: fields stored as bits
-//! side by side in slots of their reprs' widths; a pointer in a word of its own, the others in its
-//! low bits where they take 29 bits or fewer, else in an integer word beside it, as they take
-//! beside a function pointer whatever their bits; two pointers in two words; its validity, its
-//! range and `Option`'s niche; a reference's floor, which a tuple that holds one keeps; its fields
-//! as places, an array element's at a run-time index too; and the table its shapes come from, as
-//! its generator writes it.
+//! A tuple as an atomic value, each field in a slot as wide as its repr, the struct of its fields'
+//! layout where each fills its repr: fields stored as bits side by side in slots of their reprs'
+//! widths; a pointer in a word of its own, the others in its low bits where they take 29 bits or
+//! fewer, else in an integer word beside it, as they take beside a function pointer whatever their
+//! bits; two pointers in two words; its validity, its range and `Option`'s niche; a reference's
+//! floor, which a tuple that holds one keeps; its fields as places, an array element's at a
+//! run-time index too; and the table its shapes come from, as its generator writes it.
 
 #![feature(const_trait_impl)]
 #![cfg(not(loom))]
