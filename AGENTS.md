@@ -58,8 +58,9 @@ toolchain, with each target the tests and the lints build for, is the nightly
 The CPU floor is `.cargo/config.toml`'s: x86-64-v3, LSE on aarch64 beyond macOS,
 and the M1 on macOS. The tools are the versions `.config/mise/` pins. The
 justfile's top section holds the repository's own recipes: the loom models, the
-lints for each target and CPU, the codegen fixture's format, Miri, and the
-nightly build for every target rustup ships that the build script admits.
+lints for each target and CPU, the codegen fixture's format, Miri, the nightly
+build for every target rustup ships that the build script admits, and the
+nightly build of the docs as docs.rs builds them.
 `.github/workflows/platforms.yml` is the repository's own: the tests and the
 loom models on arm64 Linux, and on macOS and Windows, arm64 and x86_64, which
 `check.yml`, on x86_64 Linux, cannot run; and the tests on aarch64 Linux with

@@ -78,6 +78,45 @@ nightly-targets:
     done
     exit "$status"
 
+# Builds atomix-core's and the facade's docs as docs.rs does, on rustup's newest nightly, which
+# docs.rs follows, or on `toolchain`: from each package, outside the workspace, so no
+# `.cargo/config.toml` applies, for each target its `[package.metadata.docs.rs]` names, with every
+# feature and its `cargo-args`. The facade's docs for every target must hold the 16-byte atomics.
+[metadata("rust")]
+nightly-docs-rs toolchain="nightly":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    toolchain="{{ toolchain }}"
+    rustup toolchain install "$toolchain" --profile minimal --no-self-update
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+    cargo package --workspace --no-verify --allow-dirty --locked -q --target-dir "$work/target"
+    for crate in "$work"/target/package/*.crate; do tar -xzf "$crate" -C "$work"; done
+    # Each sibling comes from its package, since crates.io lacks it until it is published.
+    patch=()
+    for package in "$work"/*-[0-9]*/; do
+        name=$(basename "$package")
+        patch+=(--config "patch.crates-io.${name%-[0-9]*}.path=\"$package\"")
+    done
+    status=0
+    for package in "$work"/atomix-core-*/ "$work"/atomix-rs-*/; do
+        metadata=$(cd "$package" && cargo "+$toolchain" metadata --no-deps --format-version 1)
+        readarray -t targets < <(jq -r '.packages[0].metadata.docs.rs.targets[]' <<<"$metadata")
+        readarray -t extra < <(jq -r '.packages[0].metadata.docs.rs["cargo-args"][]' <<<"$metadata")
+        rustup target add --toolchain "$toolchain" "${targets[@]}"
+        for target in "${targets[@]}"; do
+            if ! (cd "$package" && cargo "+$toolchain" rustdoc --lib --all-features --target "$target" -q \
+                --config 'build.rustdocflags=["--cfg","docsrs"]' "${patch[@]}" "${extra[@]}" --target-dir "$work/docs"); then
+                echo "docs.rs: $(basename "$package") fails on $target"
+                status=1
+            elif [[ $(basename "$package") == atomix-rs-* && ! -f $work/docs/$target/doc/atomix/struct.DoubleWord.html ]]; then
+                echo "docs.rs: atomix-rs's $target page lacks DoubleWord"
+                status=1
+            fi
+        done
+    done
+    exit "$status"
+
 # macOS's aarch64 floor has LSE2, whose 128-bit load is `ldp`; Linux's floor reads with a
 # compare-exchange. x86_64's floor has AVX; x86-64-v2's 128-bit load is a compare-exchange. x86_64
 # macOS builds as x86_64 Linux does. Windows does too, but runs through Miri's shims of Windows,
