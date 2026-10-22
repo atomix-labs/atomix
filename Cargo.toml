@@ -9,6 +9,7 @@ rust-version = "1.101"
 license      = "MIT OR Apache-2.0"
 authors      = ["Atomix Labs"]
 repository   = "https://github.com/atomix-labs/atomix"
+homepage     = "https://atomix-labs.github.io/atomix/"
 
 [workspace.dependencies]
 # external
@@ -37,7 +38,7 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 trybuild           = { version = "1.0" }
 zerocopy           = { version = "0.8.59", default-features = false, features = ["derive"] }
 # internal
-atomix-core = { path = "crates/atomix-core", version = "0.1.0", default-features = false }
+atomix-core = { path = "crates/atomix-core", version = "=0.1.0", default-features = false }
 
 [workspace.lints]
 

@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace      = true
 authors.workspace      = true
 repository.workspace   = true
+homepage.workspace     = true
+keywords               = ["atomic", "derive", "bitfield", "tagged-pointer", "lock-free"]
+categories             = ["concurrency", "no-std"]
 
 [lints]
 workspace = true

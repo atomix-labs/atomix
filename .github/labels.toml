@@ -55,7 +55,7 @@ paths       = ["crates/atomix/macros/**", "crates/atomix/tests/**/derive_*"]
 [labels."area: docs"]
 color       = "c5def5"
 description = "The book, the READMEs and the guides"
-paths       = ["docs/**", "*.md", "crates/*/README.md"]
+paths       = ["docs/**", "*.md", "crates/**/README.md"]
 
 [labels."area: ci"]
 color       = "bfd4f2"
