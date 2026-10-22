@@ -18,7 +18,7 @@ atxp = { git = "https://github.com/atomix-labs/atxp", tag = "v0.22.0" }
 
 [[layers]]
 profile = "atxp/rust"
-features = ["agents", "nightly", "strict", "oss", "docs"]
+features = ["agents", "nightly", "strict", "oss", "docs", "publish"]
 
 [[layers]]
 profile = "atxp/vscode"

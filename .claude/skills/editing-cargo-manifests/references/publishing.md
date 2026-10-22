@@ -33,6 +33,9 @@ categories             = ["game-development", "graphics"]
 exclude                = ["benches/results/"]
 ```
 
+Held by `just check-cargo-publish`, which names each field a crate lacks and
+what to write.
+
 ## 2 `homepage`
 
 Where the project has a book, `homepage` is its URL, set once in
@@ -63,6 +66,10 @@ none unless one is there:
   README away from the repository: it never resolves a relative `srcset`, and it
   resolves a root README's relative links against the crate's own directory.
 
+Held by `just check-cargo-publish`, which refuses a crate with no README, and
+every relative `src`, `srcset`, `href` or Markdown link in one, with the URL to
+write.
+
 ## 4 `keywords`
 
 Up to five words a reader would search crates.io for, beyond the crate's name,
@@ -79,6 +86,8 @@ keywords = ["tiles", "a board of tiles", "board-game-engine-library", "c++"]
 ```toml
 keywords = ["board", "tile", "grid", "game"]
 ```
+
+Held by `just check-cargo-publish`.
 
 ## 5 `categories`
 
@@ -97,6 +106,9 @@ categories = ["games", "boards"]
 categories = ["game-development", "data-structures", "no-std"]
 ```
 
+Held by `just check-cargo-publish`, against
+`.just/cargo-publish/categories.txt`.
+
 ## 6 Licence Files
 
 Each licence `license` names asks its text to travel with every copy, and the
@@ -112,6 +124,9 @@ ln -s ../../LICENSE-APACHE crates/tiles-paint/LICENSE-APACHE
 `MIT OR Apache-2.0` names `LICENSE-MIT` and `LICENSE-APACHE`; a single licence,
 `LICENSE`. `license-file` is for a licence SPDX has no name for, never beside
 `license`.
+
+Held by `just check-cargo-publish`, which reads `cargo package --list` and gives
+the `ln -s` for each file it lacks.
 
 ## 7 `exclude`
 

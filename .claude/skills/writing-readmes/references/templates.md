@@ -6,10 +6,11 @@ repository builds, keep its order, fill each section from the code and a run,
 and drop a section with nothing to say. `<owner>` is the repository's owner on
 GitHub.
 
-Every link to a file of the repository is a relative path, since only GitHub
-shows the README.
+Every link to a file of the repository is absolute, since crates.io shows the
+README too.
 
-Contents: 1 Library · 2 Command Line · 3 Workspace · 4 Each Crate's Own README
+Contents: 1 Library · 2 Command Line · 3 Workspace · 4 Each Crate's Own README ·
+5 How Crates.io Shows a README
 
 ## 1 Library
 
@@ -77,10 +78,10 @@ Either [the MIT License][mit] or [the Apache License, Version 2.0][apache], at
 your option.
 
 [docs.rs]: https://docs.rs/tiles
-[changelog]: CHANGELOG.md
-[contributing]: CONTRIBUTING.md
-[mit]: LICENSE-MIT
-[apache]: LICENSE-APACHE
+[changelog]: https://github.com/<owner>/tiles/blob/main/CHANGELOG.md
+[contributing]: https://github.com/<owner>/tiles/blob/main/CONTRIBUTING.md
+[mit]: https://github.com/<owner>/tiles/blob/main/LICENSE-MIT
+[apache]: https://github.com/<owner>/tiles/blob/main/LICENSE-APACHE
 ````
 
 The minimum Rust is the workspace's `rust-version`, 1.98 where it is the
@@ -152,10 +153,10 @@ first.
 Either [the MIT License][mit] or [the Apache License, Version 2.0][apache], at
 your option.
 
-[changelog]: CHANGELOG.md
-[contributing]: CONTRIBUTING.md
-[mit]: LICENSE-MIT
-[apache]: LICENSE-APACHE
+[changelog]: https://github.com/<owner>/tiles/blob/main/CHANGELOG.md
+[contributing]: https://github.com/<owner>/tiles/blob/main/CONTRIBUTING.md
+[mit]: https://github.com/<owner>/tiles/blob/main/LICENSE-MIT
+[apache]: https://github.com/<owner>/tiles/blob/main/LICENSE-APACHE
 ````
 
 The output is pasted from a run of the build the README describes, never typed;
@@ -220,7 +221,7 @@ Both build with Rust 1.98 or later.
 (as in §1)
 
 [docs.rs]: https://docs.rs/tiles
-[changelog]: CHANGELOG.md
+[changelog]: https://github.com/<owner>/tiles/blob/main/CHANGELOG.md
 ````
 
 The pitch is the project's, and the table says which crate is which, since a
@@ -270,10 +271,10 @@ It builds with Rust 1.98 or later.
 Either [the MIT License][mit] or [the Apache License, Version 2.0][apache], at
 your option.
 
-[project]: ../../README.md
+[project]: https://github.com/<owner>/tiles
 [docs.rs]: https://docs.rs/tiles-geometry
-[mit]: ../../LICENSE-MIT
-[apache]: ../../LICENSE-APACHE
+[mit]: https://github.com/<owner>/tiles/blob/main/LICENSE-MIT
+[apache]: https://github.com/<owner>/tiles/blob/main/LICENSE-APACHE
 ````
 
 ````md
@@ -299,11 +300,112 @@ The binary is `tiles`, and it builds with Rust 1.98 or later.
 Either [the MIT License][mit] or [the Apache License, Version 2.0][apache], at
 your option.
 
-[project]: ../../README.md
-[mit]: ../../LICENSE-MIT
-[apache]: ../../LICENSE-APACHE
+[project]: https://github.com/<owner>/tiles
+[mit]: https://github.com/<owner>/tiles/blob/main/LICENSE-MIT
+[apache]: https://github.com/<owner>/tiles/blob/main/LICENSE-APACHE
 ````
 
 A crate's README has no header and no badges: the root README carries them. The
 opening paragraph names the crate a reader most likely wants where it is another
 one, as `tiles` is here, since crates.io lists every crate of the project alike.
+
+## 5 How Crates.io Shows a README
+
+### Every Image and Link Is Absolute Where Crates.io Shows the README
+
+crates.io shows, on each version's page, the README cargo uploaded when that
+version was published. It rewrites a relative `href` or `src` only where the
+manifest's `repository` is on github.com, gitlab.com or bitbucket.org, to that
+repository's default branch, `blob/HEAD/<path>` for a link and `raw/HEAD/<path>`
+for an image, and drops it on any other host. It joins the path to the README's
+directory within the repository as the package records it, and a README cargo
+copied in from outside the crate, through `readme = "../../README.md"`, is
+recorded in the crate's own directory: the root README's `docs/media/board.svg`
+becomes `crates/tiles/docs/media/board.svg`, which is no file. And it never
+rewrites a `<source srcset>`, so a relative dark image resolves against
+crates.io's own page. An absolute URL holds in every case, and wherever else the
+README is copied.
+
+```md
+<!-- Bad: on crates.io, the dark image and both links resolve to nothing. -->
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="docs/media/board-dark.svg"
+  >
+  <img
+    alt="A board of 8 by 8 squares, three of them tiled"
+    src="docs/media/board-light.svg"
+    width="480"
+  >
+</picture>
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first; the licence is
+[MIT](LICENSE-MIT).
+```
+
+```md
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="https://raw.githubusercontent.com/<owner>/tiles/main/docs/media/board-dark.svg"
+  >
+  <img
+    alt="A board of 8 by 8 squares, three of them tiled"
+    src="https://raw.githubusercontent.com/<owner>/tiles/main/docs/media/board-light.svg"
+    width="480"
+  >
+</picture>
+
+Read [CONTRIBUTING.md][contributing] first; the licence is [MIT][mit].
+
+[contributing]: https://github.com/<owner>/tiles/blob/main/CONTRIBUTING.md
+[mit]: https://github.com/<owner>/tiles/blob/main/LICENSE-MIT
+```
+
+Held by `just check-cargo-publish`, which reads the README each published crate
+packages, and refuses each relative `src`, `srcset`, `href` or Markdown link in
+it, with the URL to write. Whether the URL is right is review's.
+
+### Every Published Crate Has a README Crates.io Shows
+
+Cargo packages the file `readme` names, or, with no `readme`, a `README.md`,
+`README.txt` or `README` in the crate's own directory. A crate in
+`crates/<name>/` with neither is published with no README, and its page on
+crates.io shows none.
+
+```toml
+# Bad: no `readme`, and no README beside this file, so crates.io shows none.
+[package]
+name                   = "tiles"
+description            = "boards of tiles, and the moves across them."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[lints]
+workspace = true
+```
+
+```toml
+[package]
+name                   = "tiles"
+description            = "boards of tiles, and the moves across them."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+readme                 = "../../README.md"
+
+[lints]
+workspace = true
+```
+
+Held by `just check-cargo-publish`, which refuses a published crate with no
+README, and one whose `readme` names no file; `cargo package -p tiles --list`
+lists `README.md` where the crate has one.

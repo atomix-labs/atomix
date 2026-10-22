@@ -20,5 +20,6 @@ updates:
       - .github/workflows/check.yml
       - .github/workflows/labels.yml
       - .github/workflows/nightly.yml
+      - .github/workflows/release.yml
       - .github/workflows/title.yml
       - .github/workflows/watch.yml

@@ -252,6 +252,9 @@ and examples:
   `[package.metadata.cargo-shear]`, `ignored = ["<name>"]`.
 - `just check-cargo-deny`: advisories, licences, bans and sources, with every
   feature on, so an optional dependency answers to them too.
+- `just check-cargo-publish`: every crate crates.io will take, held to what its
+  page shows, packaged and built from its package, so a missing field, file or
+  version fails the change and not the release.
 - `just nightly-cargo-hack`: every feature builds alone.
 - `just check`: all of them.
 - By hand: `cargo tree -e features -i <crate>` says who turned a feature on

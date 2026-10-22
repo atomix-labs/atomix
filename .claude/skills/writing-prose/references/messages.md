@@ -296,7 +296,8 @@ covers.
 The changelog is written from the commit subjects at a release, grouped by type,
 so each subject is also a line a user reads there, with its first letter raised.
 
-A wrong line is fixed by rewording its commit, never by editing the changelog.
+How a wrong line is fixed, and how a release's migration notes are written, is
+`cutting-releases`'s.
 
 A line says what changed for the user, in the user's words, not the
 implementation's: "Refuse a grid with a ragged row, naming the row", not
