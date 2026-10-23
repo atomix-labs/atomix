@@ -3,7 +3,7 @@
 Add the crate, with its derive:
 
 ```sh
-cargo add --git https://github.com/atomix-labs/atomix atomix-rs --features derive
+cargo add atomix-rs --features derive
 ```
 
 The package is `atomix-rs`, and the library it adds is `atomix`: `use

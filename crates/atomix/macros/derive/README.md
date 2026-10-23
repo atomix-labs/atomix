@@ -10,7 +10,7 @@ crate.
 ## Install
 
 ```sh
-cargo add --git https://github.com/atomix-labs/atomix atomix-rs --features derive
+cargo add atomix-rs --features derive
 ```
 
 The package is `atomix-rs`, and the library it adds `atomix`. It needs a nightly
@@ -53,6 +53,6 @@ your option.
 
 [project]: https://github.com/atomix-labs/atomix
 [book]: https://atomix-labs.github.io/atomix/
-[api]: https://atomix-labs.github.io/atomix/api/atomix_derive/
+[api]: https://docs.rs/atomix-derive
 [mit]: https://github.com/atomix-labs/atomix/blob/main/LICENSE-MIT
 [apache]: https://github.com/atomix-labs/atomix/blob/main/LICENSE-APACHE
