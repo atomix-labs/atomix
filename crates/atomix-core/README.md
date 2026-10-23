@@ -9,7 +9,7 @@ all of it and adds `#[derive(Atom)]`.
 ## Install
 
 ```sh
-cargo add --git https://github.com/atomix-labs/atomix atomix-core
+cargo add atomix-core
 ```
 
 `atomix-core` needs a nightly Rust, `nightly-2026-09-28` or newer, and builds
@@ -50,8 +50,7 @@ fn main() {
 of that crate's traits, and `bytemuck` the array's `Zeroable`, `NoUninit` and
 `AnyBitPattern`.
 
-None is on by default: `cargo add --git https://github.com/atomix-labs/atomix
-atomix-core --features serde`.
+None is on by default: `cargo add atomix-core --features serde`.
 
 ## Documentation
 
@@ -66,7 +65,7 @@ your option.
 
 [project]: https://github.com/atomix-labs/atomix
 [book]: https://atomix-labs.github.io/atomix/
-[api]: https://atomix-labs.github.io/atomix/api/atomix_core/
+[api]: https://docs.rs/atomix-core
 [changelog]: https://github.com/atomix-labs/atomix/blob/main/CHANGELOG.md
 [mit]: https://github.com/atomix-labs/atomix/blob/main/LICENSE-MIT
 [apache]: https://github.com/atomix-labs/atomix/blob/main/LICENSE-APACHE

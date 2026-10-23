@@ -7,7 +7,7 @@ calls it. To derive `Atom`, depend on `atomix-rs` with its `derive` feature, and
 not on this crate:
 
 ```sh
-cargo add --git https://github.com/atomix-labs/atomix atomix-rs --features derive
+cargo add atomix-rs --features derive
 ```
 
 ## License

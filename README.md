@@ -40,7 +40,7 @@ built on these atomics are yet to come, in `atomix-lock`.
 ## Install
 
 ```sh
-cargo add --git https://github.com/atomix-labs/atomix atomix-rs --features derive
+cargo add atomix-rs --features derive
 ```
 
 The package is `atomix-rs`, since crates.io's `atomix` is an unrelated
@@ -272,8 +272,7 @@ has them.
 of that crate's traits, and `bytemuck` the array's `Zeroable`, `NoUninit` and
 `AnyBitPattern`.
 
-None is on by default: `cargo add --git https://github.com/atomix-labs/atomix
-atomix-rs --features derive,serde`.
+None is on by default: `cargo add atomix-rs --features derive,serde`.
 
 ## How It Compares
 
@@ -302,12 +301,12 @@ first, and report a vulnerability as [SECURITY.md][security] says.
 Either [the MIT License][mit] or [the Apache License, Version 2.0][apache], at
 your option.
 
-[platforms]: https://atomix-labs.github.io/atomix/api/atomix/#platforms
+[platforms]: https://docs.rs/atomix-rs/latest/atomix/#platforms
 [book]: https://atomix-labs.github.io/atomix/
 [compares]: https://atomix-labs.github.io/atomix/how-atomix-compares.html
-[api-atomix-rs]: https://atomix-labs.github.io/atomix/api/atomix/
-[api-atomix-core]: https://atomix-labs.github.io/atomix/api/atomix_core/
-[api-atomix-derive]: https://atomix-labs.github.io/atomix/api/atomix_derive/
+[api-atomix-rs]: https://docs.rs/atomix-rs
+[api-atomix-core]: https://docs.rs/atomix-core
+[api-atomix-derive]: https://docs.rs/atomix-derive
 [changelog]: https://github.com/atomix-labs/atomix/blob/main/CHANGELOG.md
 [contributing]: https://github.com/atomix-labs/atomix/blob/main/CONTRIBUTING.md
 [security]: https://github.com/atomix-labs/atomix/blob/main/SECURITY.md
