@@ -518,8 +518,9 @@
 //! `serde`, `zerocopy-08` and `arbitrary` each give a [`Packed`] what its array has of that crate's
 //! traits, and `bytemuck` the array's `Zeroable`, `NoUninit` and `AnyBitPattern`.
 //!
-//! atomix holds `atomix-derive`, which `derive` adds, at its own version whether the feature is
-//! on or not, so the code a derive writes always calls the hidden items it was written against.
+//! atomix holds `atomix-core`, and `atomix-derive`, which `derive` adds, at its own version whether
+//! the feature is on or not, so the code a derive writes always calls the hidden items it was
+//! written against.
 //!
 //! [portable-atomic]: https://docs.rs/portable-atomic
 //! [ucg-517]: https://github.com/rust-lang/unsafe-code-guidelines/issues/517

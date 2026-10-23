@@ -7,6 +7,11 @@ rust-version.workspace = true
 license.workspace      = true
 authors.workspace      = true
 repository.workspace   = true
+homepage.workspace     = true
+readme                 = "../../README.md"
+keywords               = ["atomic", "lock-free", "tagged-pointer", "bitfield", "no-std"]
+categories             = ["concurrency", "data-structures", "hardware-support", "no-std", "no-std::no-alloc"]
+exclude                = ["benches/results/", "tests/"]
 
 [package.metadata.cargo-shear]
 ignored-paths = ["tests/compile_fail/*.rs", "tests/compile_pass/*.rs"]

@@ -7,6 +7,10 @@ rust-version.workspace = true
 license.workspace      = true
 authors.workspace      = true
 repository.workspace   = true
+homepage.workspace     = true
+keywords               = ["atomic", "lock-free", "tagged-pointer", "ranged-integer", "no-std"]
+categories             = ["concurrency", "hardware-support", "no-std", "no-std::no-alloc"]
+exclude                = ["tests/"]
 
 [package.metadata.cargo-shear]
 ignored-paths = ["tests/compile_fail/**/*.rs", "tests/compile_pass/*.rs"]
