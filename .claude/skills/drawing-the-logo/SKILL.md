@@ -95,11 +95,12 @@ edited by hand.
 5. **Apply it**, setting the variables that show it, as `using-devset` says:
 
    ```sh
-   devset apply --var logo=docs/src/media/logo
+   devset apply --var logo=https://raw.githubusercontent.com/<owner>/<repo>/main/docs/src/media/logo
    devset apply --var book_logo=media/mark --var book_social=media/social.png
    ```
 
-   `logo` is a path in the repository, since only GitHub shows the README.
+   `logo` is a URL, since crates.io shows the README, and resolves no relative
+   image in it, as `writing-readmes` says.
 6. **Hand the owner the social card**: GitHub shows it only once it is uploaded
    in Settings, General, Social preview, which needs the repository's admin.
 

@@ -101,6 +101,23 @@ the README is final. This skill does not repeat them.
 The crate page, its examples and each manifest's `description` are
 `writing-rustdoc`'s.
 
+### Each Published Crate
+
+1. **Every crate crates.io publishes has a README there: the crate the `crate`
+   variable names takes the root README, with `readme = "../../README.md"` after
+   the keys it inherits, and every other has a `README.md` beside its
+   `Cargo.toml`, which Cargo finds**, since the header's crates.io and docs.rs
+   badges point to that crate, the library by default, and a crate in
+   `crates/<name>/` with neither has no README on crates.io.
+2. **A crate's own README says first which crate it is and where it sits: its
+   name as the title; one paragraph on what it holds, its place in the project,
+   and a link to the project; then its install line, for this crate and no
+   other; its first use; its docs on docs.rs; and the licence**, as
+   `references/templates.md` §4 has it whole, since a reader on crates.io lands
+   on one crate of several and must know, before the first example, whether it
+   is the one to depend on. It has no header and no badges: the root README
+   carries them.
+
 ### Links and Images
 
 1. **A long URL is a reference definition at the bottom, `[docs.rs]:
@@ -109,10 +126,23 @@ The crate page, its examples and each manifest's `description` are
 2. **An image says in its alt text what it shows, and a picture drawn for a
    theme is a `<picture>` with a dark `<source>` and a light `<img>`**, since a
    reader on the other theme would see the wrong one.
-3. **Every link to a file of the repository is a relative path, since only
-   GitHub shows the README**: GitHub resolves it against the branch it is read
-   on, as its documentation recommends, and it holds in a clone, so `just
-   check-lychee`, which runs offline, can check it.
+3. **Every image and every link to a file of the repository is absolute, since
+   crates.io shows the README too**: an image at
+   `https://raw.githubusercontent.com/<owner>/<repo>/main/<path>`, a file at
+   `https://github.com/<owner>/<repo>/blob/main/<path>`. crates.io shows the
+   README cargo uploaded: it drops a relative link where `repository` is on a
+   host other than GitHub, GitLab or Bitbucket, resolves a root README's against
+   the crate's own directory, and never resolves a `<source srcset>`.
+   `references/templates.md` has the detail, and `just check-cargo-publish`
+   refuses a relative one in any README a published crate packages; `just
+   check-lychee` runs offline, so it follows none of these URLs, and `just
+   nightly-lychee` does.
+4. **The starter's links to CONTRIBUTING.md and the licences become absolute,
+   and `logo` is a URL, `devset apply --var
+   logo=https://raw.githubusercontent.com/<owner>/<repo>/main/docs/src/media/logo`**,
+   since the starter writes paths GitHub resolves, and the block writes `logo`
+   into `src` and `srcset` as given, which crates.io leaves relative, drops, or
+   resolves in the crate's directory.
 
 ## Steps
 
@@ -129,8 +159,12 @@ Read `references/templates.md` whole before writing a README or a section.
 3. **Reviewing a README**: check each claim against the manifest and a run:
    every command pasted into a fresh directory, every output against what it
    printed, every link opened, every version against the current one.
+4. **A crate crates.io shows**: its README chosen as the rules say, holding what
+   a crate's own README holds, every URL in it absolute, and `cargo package -p
+   <crate> --list` listing `README.md`.
 
-Before finishing, read the page as it renders, on GitHub.
+Before finishing, read the page as it renders, on GitHub, and for a crate as
+crates.io will.
 
 Then run `just fix`, and the checks below.
 
@@ -143,6 +177,8 @@ Then run `just fix`, and the checks below.
 - `just check-markdown`: rumdl, headings in title case among its rules.
 - `just check-devset`: every file and block devset manages, as the profiles
   render them.
+- `just check-cargo-publish`: every published crate has a README, and every link
+  and image in it is absolute. What the README says is review's.
 - `just check-lychee`: every link into the repository, offline; `just
   nightly-lychee` checks the absolute ones too, against the web.
 
@@ -153,7 +189,8 @@ Then run `just fix`, and the checks below.
 | "The block's title wants a capital"           | The block is devset's: change the variable it renders.       |
 | "The old title can stay above the block"      | The block goes to the top, whole; the old title goes.        |
 | "A tagline and badges under the block"        | The block has both.                                          |
-| "An absolute URL, to be safe"                 | A relative path: only GitHub shows it, on any branch.        |
+| "`docs/media/board.svg` renders on GitHub"    | crates.io shows the README too: an absolute URL.             |
+| "A crate's README can be one line and a link" | Its name, place, install line, first use, docs and licence.  |
 | "`cargo install tiles`"                       | The package, `cargo install --locked tiles-cli`.             |
 | "`tiles = "0.3"` under `[dependencies]`"      | `cargo add tiles`, which takes the newest.                   |
 | "`cargo add --git …` works, so it can stay"   | Once released, `cargo add tiles`, from crates.io.            |
@@ -169,6 +206,7 @@ Read every reference a task touches before writing, and read them again after
 compaction: this body is the summary, and the templates are there.
 
 - `references/templates.md`: before a README or any section of one: a library's,
-  a command line's and a workspace's, whole, each crate's own README.
+  a command line's and a workspace's, whole, each crate's own README, and how
+  crates.io resolves a README's links.
 - `references/sources.md`: before citing a source for a rule, or adapting text
   from one.

@@ -1,0 +1,144 @@
+# Publishes a release from its tag, `v<version>`: builds what every `package-*` recipe packages on
+# each platform the locks cover, attests it, publishes the GitHub Release, git-cliff's notes for the
+# tag and every archive with its sha256, then runs every `publish-*` recipe, which puts the release
+# in a registry. `just release` wrote the changelog and the versions before the tag; RELEASE.md says how.
+# Every job installs its tools afresh and builds from nothing: a release restores no cache that
+# another ref wrote.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+# One release at a time, and none cancelled halfway.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  MISE_LOCKED: "1"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      package: ${{ steps.plan.outputs.package }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.13
+          install_args: just
+          cache: false
+      - id: plan
+        run: |
+          recipes=$(just --summary | tr ' ' '\n')
+          has() { if grep -q "$1" <<< "$recipes"; then echo true; else echo false; fi; }
+          {
+            echo "package=$(has '^package-')"
+            echo "publish=$(has '^publish-')"
+          } >> "$GITHUB_OUTPUT"
+
+  package:
+    needs: plan
+    if: needs.plan.outputs.package == 'true'
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+    name: package (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # just, and before it the toolchain the preinstall hook installs; a release builds uncached.
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.13
+          install_args: just
+          cache: false
+      - run: RELEASE_VERSION=${GITHUB_REF_NAME#v} just package
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-${{ matrix.runner }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    needs: [plan, package]
+    if: always() && needs.plan.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.package.result)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # create the release
+      id-token: write # sign the attestation, with a certificate for this workflow
+      attestations: write # store it
+      artifact-metadata: write # record the archives it covers
+    steps:
+      # The whole history: git-cliff reads the tags.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.13
+          install_args: git-cliff
+          cache: false
+      - if: needs.package.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      # Build provenance for every file the release attaches: `gh attestation verify` checks one.
+      - if: needs.package.result == 'success'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 .just/github-release/notes.py "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" > notes.md
+          shopt -s nullglob
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md dist/*
+
+  publish:
+    needs: [plan, release]
+    # `package` is skipped where nothing is packaged, as in a library's repository, and a skipped job
+    # skips every job below it, however far down, whose condition calls no status function.
+    if: always() && needs.release.result == 'success' && needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The environment a registry's trusted publisher names, so that only this job can publish.
+    environment: release
+    permissions:
+      contents: read
+      id-token: write # a registry's short-lived token for this workflow, by trusted publishing
+    # The recipes run on what the job installs: `mise exec` would install every locked tool first.
+    env:
+      MISE_EXEC_AUTO_INSTALL: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # just and Python, and before them the toolchain the preinstall hook installs.
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.13
+          install_args: just python
+          cache: false
+      # A crates.io token for 30 minutes, revoked when the job ends.
+      - id: crates-io
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+      - env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io.outputs.token }}
+        run: just publish

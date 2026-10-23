@@ -97,6 +97,9 @@ process, where it enters, and who controls it:
   own or the workspace's it inherits, is `false`.
 - **A dependency** runs its code with the program's authority.
 
+Here, cargo-publish publishes each crate whose `publish` is not `false` at every
+release.
+
 For each, name what its sender must not reach: a file outside what the input may
 name, the process's memory, its work for others, a secret it holds, or a command
 beyond the one meant. An input with nothing to reach crosses no boundary.

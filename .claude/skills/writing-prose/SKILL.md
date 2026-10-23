@@ -179,7 +179,8 @@ A Rust test's names and messages follow `writing-rust-tests`.
 The changelog is written from the subjects at a release, so a subject is also
 its changelog line.
 
-A wrong line is fixed by rewording its commit.
+How a wrong line is fixed, and how release and migration notes are written, is
+`cutting-releases`'s.
 
 ## Steps
 

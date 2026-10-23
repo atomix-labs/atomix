@@ -20,6 +20,18 @@ decision = "written"
 [scaffolds."git-changelog/changelog".files]
 "CHANGELOG.md" = "CHANGELOG.md"
 
+[scaffolds."github-release/notes"]
+decision = "written"
+
+[scaffolds."github-release/notes".files]
+".github/release-notes.md" = ".github/release-notes.md"
+
+[scaffolds."github-release/release"]
+decision = "written"
+
+[scaffolds."github-release/release".files]
+"RELEASE.md" = "RELEASE.md"
+
 [scaffolds."lychee/lychee"]
 decision = "written"
 
@@ -39,21 +51,25 @@ decision = "written"
 exact = "9ccdf435877abe0b89c73c81ff6f3b32ec371f502eaef1e62dd71bd1e1286e2b"
 canonical = "9ccdf435877abe0b89c73c81ff6f3b32ec371f502eaef1e62dd71bd1e1286e2b"
 
+[files.".claude/skills/cutting-releases/SKILL.md"]
+exact = "2acf04792570ce4ea00de694d4de90e3d78889c89b8a136491b13cd0fa3258ad"
+canonical = "2acf04792570ce4ea00de694d4de90e3d78889c89b8a136491b13cd0fa3258ad"
+
 [files.".claude/skills/drawing-the-logo/SKILL.md"]
-exact = "5f19eb08f80b7a659848893da7d029f1de4163f21013eb82451d42cc804dc947"
-canonical = "5f19eb08f80b7a659848893da7d029f1de4163f21013eb82451d42cc804dc947"
+exact = "011683d3905cad89093178ced24b7b9b8ce7c2b66749f8656f628c0d068657d0"
+canonical = "011683d3905cad89093178ced24b7b9b8ce7c2b66749f8656f628c0d068657d0"
 
 [files.".claude/skills/drawing-the-logo/scripts/draw.py"]
 exact = "208bc5f70ccca475c18da227153b122822866fdf7f6df67537164f16540a04fc"
 canonical = "208bc5f70ccca475c18da227153b122822866fdf7f6df67537164f16540a04fc"
 
 [files.".claude/skills/editing-cargo-manifests/SKILL.md"]
-exact = "257a8a3c120fdf35b18746c15bd2564a253c6dc7964ebc4f8f1554bb58aa6aa5"
-canonical = "257a8a3c120fdf35b18746c15bd2564a253c6dc7964ebc4f8f1554bb58aa6aa5"
+exact = "35e87fd0cd5310328b6f6a96c83a81d0ec2eb282ea5b8d3183d73bb8a79e89b7"
+canonical = "35e87fd0cd5310328b6f6a96c83a81d0ec2eb282ea5b8d3183d73bb8a79e89b7"
 
 [files.".claude/skills/editing-cargo-manifests/references/publishing.md"]
-exact = "805d581c052e100af99c4611aeb465044c5765bdd8885b4073dd962b34b65d61"
-canonical = "805d581c052e100af99c4611aeb465044c5765bdd8885b4073dd962b34b65d61"
+exact = "b14735ea8d036614e292a9fb66591b0536b13addaa9471f85030dca53a922f58"
+canonical = "b14735ea8d036614e292a9fb66591b0536b13addaa9471f85030dca53a922f58"
 
 [files.".claude/skills/editing-cargo-manifests/references/sources.md"]
 exact = "225679cb4054f7eb0d15e904228103d89b07fe34c68d3d0b7aacebfd9c96ed6b"
@@ -72,8 +88,8 @@ exact = "7baa60eaed457e424d6694b65bfc598a4cb8383088efe307c88a61c525af68e9"
 canonical = "7baa60eaed457e424d6694b65bfc598a4cb8383088efe307c88a61c525af68e9"
 
 [files.".claude/skills/preparing-a-release-for-open-source/SKILL.md"]
-exact = "72ca8187bab70921d5c499222c972704b358133361227f2e1121353fba2488b6"
-canonical = "72ca8187bab70921d5c499222c972704b358133361227f2e1121353fba2488b6"
+exact = "7418fe49bda43b26ea1ffe94052a4343ed87afef4901251800164cac60964af2"
+canonical = "7418fe49bda43b26ea1ffe94052a4343ed87afef4901251800164cac60964af2"
 
 [files.".claude/skills/review-names/SKILL.md"]
 exact = "a1a7327c14a79789c3ce73aeafc42f10c249abcb80c1fc172cc250b1c69caa5d"
@@ -84,8 +100,8 @@ exact = "85d02a2207c96ba2ebc4c2a7efb6e818de40ef8bdd9eaf0936cf1ffe34b1c555"
 canonical = "85d02a2207c96ba2ebc4c2a7efb6e818de40ef8bdd9eaf0936cf1ffe34b1c555"
 
 [files.".claude/skills/review-security/SKILL.md"]
-exact = "4bfae0104f6225f46e12ad25fece1e026a2a0904666b67fea62f07ae324a1462"
-canonical = "4bfae0104f6225f46e12ad25fece1e026a2a0904666b67fea62f07ae324a1462"
+exact = "29f2f81b4fff43e24149f0c9f682d7a62ac6e67771b8bbc8d33cb8a30b967053"
+canonical = "29f2f81b4fff43e24149f0c9f682d7a62ac6e67771b8bbc8d33cb8a30b967053"
 
 [files.".claude/skills/review-security/references/attack-classes.md"]
 exact = "2866885a58a10c0e4446dc71ba5a2565b7a19ec218cb2012900456352a02f8b4"
@@ -128,16 +144,16 @@ exact = "76bd0e2921620997ce87ae94edacf744a1f471a6d419d3bd29527ec32b178307"
 canonical = "76bd0e2921620997ce87ae94edacf744a1f471a6d419d3bd29527ec32b178307"
 
 [files.".claude/skills/writing-prose/SKILL.md"]
-exact = "120dbace7272c424a2877a6d0dc02b8d7fcbac4c3260c8461e130b437580cddc"
-canonical = "120dbace7272c424a2877a6d0dc02b8d7fcbac4c3260c8461e130b437580cddc"
+exact = "d4b2c68e29930ca6799bc2fe95c1753277ab0ee7c39880175669b0a79f5cb8c1"
+canonical = "d4b2c68e29930ca6799bc2fe95c1753277ab0ee7c39880175669b0a79f5cb8c1"
 
 [files.".claude/skills/writing-prose/references/comments.md"]
 exact = "55c52ecb4b0a3c53bb229274210b1590f09c8fec5a6429e45153bcc6d37dc588"
 canonical = "55c52ecb4b0a3c53bb229274210b1590f09c8fec5a6429e45153bcc6d37dc588"
 
 [files.".claude/skills/writing-prose/references/messages.md"]
-exact = "385a70fe1004bd72668f46951c4e7b5d89f0325d96ae11a9d83100510aca4bbb"
-canonical = "385a70fe1004bd72668f46951c4e7b5d89f0325d96ae11a9d83100510aca4bbb"
+exact = "f192a93f04c9706740fab254e3aaa14f40f322a5096cd66903032acdb2d09a40"
+canonical = "f192a93f04c9706740fab254e3aaa14f40f322a5096cd66903032acdb2d09a40"
 
 [files.".claude/skills/writing-prose/references/sources.md"]
 exact = "8f709dba87991aac7afa74af88e6be6c0d44ef8569e0153e0a3c91b1c2432363"
@@ -168,16 +184,16 @@ exact = "b83856cc07babc17e7419d0d5e50d8c2dbf4189e34d41abe2ba5a84af6ac3384"
 canonical = "b83856cc07babc17e7419d0d5e50d8c2dbf4189e34d41abe2ba5a84af6ac3384"
 
 [files.".claude/skills/writing-readmes/SKILL.md"]
-exact = "b3bbbe1d19d224e05167c17ba96181dd44be7f4e712a932e35b515f9a911a942"
-canonical = "b3bbbe1d19d224e05167c17ba96181dd44be7f4e712a932e35b515f9a911a942"
+exact = "af3fca1b2b75dc539edee6343eb671c9e85b8896d11a37bd1de7d94bfb2158d3"
+canonical = "af3fca1b2b75dc539edee6343eb671c9e85b8896d11a37bd1de7d94bfb2158d3"
 
 [files.".claude/skills/writing-readmes/references/sources.md"]
 exact = "d39d8d8ead7d8d9dd7f88926b9ec50f526390de89968fd8b3f0a282c88c1ec6a"
 canonical = "d39d8d8ead7d8d9dd7f88926b9ec50f526390de89968fd8b3f0a282c88c1ec6a"
 
 [files.".claude/skills/writing-readmes/references/templates.md"]
-exact = "81629306845c4c1113553921e58710af084f3e1eb17e194e8548a18cdd263240"
-canonical = "81629306845c4c1113553921e58710af084f3e1eb17e194e8548a18cdd263240"
+exact = "d57bd8a49a469cf5f7347109ba7ace4493d8ca9fd58d9e328e3cd71089274fbf"
+canonical = "d57bd8a49a469cf5f7347109ba7ace4493d8ca9fd58d9e328e3cd71089274fbf"
 
 [files.".claude/skills/writing-rust-tests/SKILL.md"]
 exact = "246245970c9bc688679e1efdef8a1050a6563b67424e02757c961ef95aa8b109"
@@ -424,13 +440,18 @@ exact = "badcb39b58a8dae35da9f2a8daa9f11ff3e1a78db95f9571ca76df5626d682cc"
 canonical = "badcb39b58a8dae35da9f2a8daa9f11ff3e1a78db95f9571ca76df5626d682cc"
 
 [files.".github/dependabot.yml"]
-exact = "5ba93fdee95e2f39e397130e8961ddc75812633cef4104ab2088aed863b37053"
-canonical = "5ba93fdee95e2f39e397130e8961ddc75812633cef4104ab2088aed863b37053"
+exact = "17033d4863c885cacf80ec4ad8d9cbb7a06a2c822820f2893b5b6234ae1974d2"
+canonical = "17033d4863c885cacf80ec4ad8d9cbb7a06a2c822820f2893b5b6234ae1974d2"
 policy = "merge"
 
 [files.".github/pull_request_template.md"]
 exact = "2662523c489fd93f8c2023219f7ccb8a77d4816ce278656bae4d6e8c2f8f1421"
 canonical = "2662523c489fd93f8c2023219f7ccb8a77d4816ce278656bae4d6e8c2f8f1421"
+policy = "once"
+
+[files.".github/release-notes.md"]
+exact = "31be0595e9d909a2fd4521caf69c6e51d2397df9d432c27b8e6c4f8ea713cb7f"
+canonical = "31be0595e9d909a2fd4521caf69c6e51d2397df9d432c27b8e6c4f8ea713cb7f"
 policy = "once"
 
 [files.".github/scripts/automation.js"]
@@ -460,6 +481,10 @@ canonical = "3b09611ae913272ce0f0efd481b67c53106acb54fc0f0d6b1fa1d2536da83351"
 [files.".github/workflows/nightly.yml"]
 exact = "99a7a45294443e9acd7b1eb55195da3302fce23e2333572c4dc46924ebad4f2a"
 canonical = "99a7a45294443e9acd7b1eb55195da3302fce23e2333572c4dc46924ebad4f2a"
+
+[files.".github/workflows/release.yml"]
+exact = "82007c3e5fb08e908b1223d8154afe2f485656e33dc8725c037b90365928d2ae"
+canonical = "82007c3e5fb08e908b1223d8154afe2f485656e33dc8725c037b90365928d2ae"
 
 [files.".github/workflows/title.yml"]
 exact = "643a01dfe059d360339ad719ac6deb5ea7aa2f28465099aa23f9d7cae8a3c82b"
@@ -501,6 +526,18 @@ canonical = "d910f91b6d8c691d341bbc55b5982d32f0a31fa1d890fb094966e487d8fed729"
 exact = "db26e5319b1cccde8a7b17f2da57a5b7e8a4912554357885d837fb5bb59419d5"
 canonical = "db26e5319b1cccde8a7b17f2da57a5b7e8a4912554357885d837fb5bb59419d5"
 
+[files.".just/cargo-publish.just"]
+exact = "b41c78f4dea694d1803c821ae929dd6a65cc749ffb0450e9d70a30ad78cf5b6a"
+canonical = "b41c78f4dea694d1803c821ae929dd6a65cc749ffb0450e9d70a30ad78cf5b6a"
+
+[files.".just/cargo-publish.py"]
+exact = "894dadc202f3467fc417850f64afb25c63dcb57040bbbf05d634de5a8d93c234"
+canonical = "894dadc202f3467fc417850f64afb25c63dcb57040bbbf05d634de5a8d93c234"
+
+[files.".just/cargo-publish/categories.txt"]
+exact = "5c341b5c51f3f5f501b090bb7fe307c30fc1ffbdd66084ab495d101d5f655c26"
+canonical = "5c341b5c51f3f5f501b090bb7fe307c30fc1ffbdd66084ab495d101d5f655c26"
+
 [files.".just/cargo-unused.just"]
 exact = "a3f2a5d103e228695ba41d0ac23718582adec40d119cf6d8f298a146c1374900"
 canonical = "a3f2a5d103e228695ba41d0ac23718582adec40d119cf6d8f298a146c1374900"
@@ -532,6 +569,14 @@ canonical = "80bc9b320d6a0b3efa0ba0ff62560792791ffdc9116af74939ff31333761b758"
 [files.".just/github-labels/labels.py"]
 exact = "39dac38b1948dae5f230d83d1a482f68e41f2985dedbebba52b3482dbdcf62d6"
 canonical = "39dac38b1948dae5f230d83d1a482f68e41f2985dedbebba52b3482dbdcf62d6"
+
+[files.".just/github-release.just"]
+exact = "5725d6e917eda552a6a2764d96d982860ae0ba5ed116c81ba862cfb828fa254c"
+canonical = "5725d6e917eda552a6a2764d96d982860ae0ba5ed116c81ba862cfb828fa254c"
+
+[files.".just/github-release/notes.py"]
+exact = "865a90d1ed704c6d7eba9b32a4cafd9d6414a94fbdbd61af569356502fa82dd9"
+canonical = "865a90d1ed704c6d7eba9b32a4cafd9d6414a94fbdbd61af569356502fa82dd9"
 
 [files.".just/github-workflow-lint.just"]
 exact = "0c2d08e020c16a193f7536edb88e8d3505a204aec849a061573d30d4902209cf"
@@ -638,6 +683,11 @@ policy = "once"
 [files.LICENSE-MIT]
 exact = "15f274312fc7bf14131cba4956659d61f1f706cdf2ee77297d61bfd18830dd5f"
 canonical = "15f274312fc7bf14131cba4956659d61f1f706cdf2ee77297d61bfd18830dd5f"
+policy = "once"
+
+[files."RELEASE.md"]
+exact = "f4cb729d1b29a476fd59f33500cb43040726e9097c429f82cfdb7717c128de46"
+canonical = "f4cb729d1b29a476fd59f33500cb43040726e9097c429f82cfdb7717c128de46"
 policy = "once"
 
 [files."SECURITY.md"]
@@ -1074,8 +1124,8 @@ canonical = "97ae3bed43a289ecb77fd9f99ed84523563adf60c44f27a624f9f62308af2744"
 
 [parts."README.md".project]
 scope = "block"
-exact = "1f462d503a566e72ba34d21914187444365b2fc84614e5c75f0ada4ab53d2e4e"
-canonical = "1f462d503a566e72ba34d21914187444365b2fc84614e5c75f0ada4ab53d2e4e"
+exact = "1c3b5fdbc97c6397763e85e19337010a43b69519e6ef117120d181561eb9d88a"
+canonical = "1c3b5fdbc97c6397763e85e19337010a43b69519e6ef117120d181561eb9d88a"
 
 [parts."clippy.toml".rust-clippy]
 scope = "keys"
@@ -1118,8 +1168,8 @@ policy = "merge"
 
 [parts.justfile.just]
 scope = "block"
-exact = "c67719bcf4fd0276c413cdc3f5eba41291588bda503d0c5ff678907de01f1baf"
-canonical = "451d1ec09d793d1d04cfef80e4a055fed85f4b0d0272a6f4457f1e202d9f24b7"
+exact = "7e3ab8f301f9dababfaac1ab7e2848e175d598836a0eb93308515d1952f27f34"
+canonical = "bff508845d87f7696038e516b4b0300e5c4a1e838588faafd050585036368cc0"
 
 [parts."rust-toolchain.toml".rust-toolchain]
 scope = "keys"

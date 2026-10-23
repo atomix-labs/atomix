@@ -1,6 +1,6 @@
 ---
 name: preparing-a-release-for-open-source
-description: Use when a repository is about to go public or cut its first public release, when asked whether a project is ready to open-source, or when a first release went out and its pages are to be checked; also when GitHub's description, topics, website, social preview, labels or release environment are to be set. Covers everything a stranger meets, from the README, the book and the logo to GitHub's settings, what only the owner can set, and the checks once the release is out.
+description: Use when a repository is about to go public or cut its first public release, when asked whether a project is ready to open-source or to publish to crates.io, or when a first release went out and its pages are to be checked; also when GitHub's description, topics, website, social preview, labels or release environment are to be set. Covers everything a stranger meets, from the README, each crate's metadata, the book and the logo to GitHub's settings and crates.io's trusted publishing, what only the owner can set, and the checks once the release is out.
 ---
 
 # Preparing a Release for Open Source
@@ -28,10 +28,15 @@ with its value, never skipped.
 
 ## Before the Release
 
-### The README
+### The README and Each Crate
 
 - **The README holds what `writing-readmes` says**, in its order, every command
   run as shown, its install line taking the project from where it is released.
+- **Every published crate shows a README on crates.io**, the root README for the
+  one crate it is for and its own for every other, every link and image in it
+  absolute, and carries its `homepage`, `keywords`, `categories` and licence
+  files: `just check-cargo-publish` holds each.
+- **Why each field is there** is `editing-cargo-manifests`'s.
 
 ### The Book
 
@@ -71,6 +76,12 @@ gh repo edit atomix-labs/atomix --description "<description>" --homepage <websit
 - **The social preview is `social.png`**, uploaded in Settings, General, Social
   preview, since GitHub reads no file of the repository for it and has no API to
   set it.
+- **The release environment is named exactly `release`**, as `release.yml`'s
+  `environment:` names it, in Settings, Environments, and so is the one each
+  trusted publisher names: GitHub makes a bare `release` on the first run where
+  there is none, without the rules set on one named otherwise, as `releases`,
+  and crates.io refuses a token to a run whose environment its publisher does
+  not name.
 - **The labels say where a change lands**: a workspace adds an `area: <crate>`
   label for each crate, and `area: docs`, `area: ci` and `area: performance`
   where they fit, each with the `paths` it covers, in `.github/labels.toml`,
@@ -99,6 +110,27 @@ gh repo edit atomix-labs/atomix --description "<description>" --homepage <websit
   paths       = ["crates/*/benches/**"]
   ```
 
+### Crates.io
+
+- **The first version of each crate is published by hand, by the owner**, since
+  crates.io trusts a workflow only for a crate it has: from the release commit,
+  once it is on the default branch and before the tag, each crate after those it
+  depends on, with a token of the owner's from crates.io's API tokens.
+
+  ```sh
+  cargo publish -p <crate>
+  ```
+
+- **Each crate's trusted publisher is set** in its settings on crates.io, and
+  only then is the tag pushed, so the release's `publish` job takes its token
+  and finds every version published:
+
+  ```text
+  Repository   atomix-labs/atomix
+  Workflow     release.yml
+  Environment  release
+  ```
+
 ### Files Written Once
 
 - **Each file devset wrote once carries today's values**: the release notes'
@@ -115,6 +147,16 @@ Once the release run is done, open each page a stranger lands on:
 - **The GitHub Release has its notes**: `gh release view <tag>`.
 - **A shared link shows the card**: the repository's URL, pasted where a link
   unfurls, shows `social.png`.
+- **Each crate's page on crates.io shows its README**, every image in it, and
+  its description, keywords, categories, homepage, repository and licence:
+
+  ```sh
+  curl -fsS -A 'atomix-labs/atomix release check' https://crates.io/api/v1/crates/<crate> \
+      | jq '.crate | {max_version, description, homepage, repository, keywords, categories}'
+  ```
+
+- **docs.rs built each crate**: its builds page,
+  `https://docs.rs/crate/<crate>/<version>/builds`, shows the build succeeded.
 - **The book is deployed**, with its logo and favicon, from the default branch's
   last `check` run:
 
@@ -134,9 +176,13 @@ Once the release run is done, open each page a stranger lands on:
 5. **Walk After the Release**, and report to the owner each page that falls
    short, with what it shows.
 
+The release itself is `cutting-releases`'s, which ends with After the Release.
+
 ## Checks
 
 - `just check`: every check, as CI runs them.
+- `just check-cargo-publish`: each crate's README, links, metadata and licence
+  files.
 - `just check-mdbook`: the book builds, and runs its examples.
 - `just check-github-labels`: the labels and their paths.
 
@@ -151,3 +197,5 @@ meets it: each is opened and read.
 | "A description of our own reads better"         | The tagline, word for word: one source.             |
 | "The release run passed, so the pages are fine" | Open each page a stranger lands on.                 |
 | "The book can follow in a later release"        | It is where the README's badge sends readers.       |
+| "Push the tag, then set crates.io's publisher"  | The trusted publisher first, or `publish` fails.    |
+| "Publish the first version from a branch"       | From the release commit, on the default branch.     |
