@@ -958,7 +958,7 @@ mod tagged_pointer {
 /// `load` and `store`, which it dispatches at run time where the floor lacks LSE2 or AVX. atomix's
 /// `load` and `store`, one instruction each, need either.
 #[cfg(not(loom))]
-#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+#[cfg(wide)]
 mod two_words {
     use core::hint::black_box;
     use core::ptr::{self, NonNull};

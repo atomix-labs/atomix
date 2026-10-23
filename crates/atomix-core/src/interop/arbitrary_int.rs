@@ -30,6 +30,7 @@ macro_rules! unsigned {
         // exactly those, each as itself, by the repr alone, and `new_unchecked` builds the same
         // value from each; zero is a value, as `ZeroValid` promises; an integer may cross threads.
         #[expect(unsafe_code, reason = "an `Atom` impl promises what loads rely on")]
+        #[doc(cfg(feature = "arbitrary-int"))]
         const unsafe impl<const BITS: usize> Atom for UInt<$int, BITS> {
             type Repr = $int;
             type Validity = ZeroValid;
@@ -53,6 +54,7 @@ macro_rules! unsigned {
         }
 
         /// Ordered as its integer, which the base's unsigned order is.
+        #[doc(cfg(feature = "arbitrary-int"))]
         impl<const BITS: usize> AtomOrd for UInt<$int, BITS> {}
 
         /// And, or, xor and not on the `BITS` bits a field stores it in are its own.
@@ -65,6 +67,7 @@ macro_rules! unsigned {
         // `BITS` bits.
         #[diagnostic::do_not_recommend]
         #[expect(unsafe_code, reason = "bitwise operations write any pattern of a field's bits")]
+        #[doc(cfg(feature = "arbitrary-int"))]
         unsafe impl<const BITS: usize> FieldBitwise for UInt<$int, BITS> {}
 
         /// Wrapping add and subtract on the `BITS` bits a field stores it in are its own.
@@ -75,6 +78,7 @@ macro_rules! unsigned {
         // modulo 2^BITS, as its `wrapping_add` and `wrapping_sub` do.
         #[diagnostic::do_not_recommend]
         #[expect(unsafe_code, reason = "a field's add writes any pattern of its bits")]
+        #[doc(cfg(feature = "arbitrary-int"))]
         unsafe impl<const BITS: usize> FieldAdd for UInt<$int, BITS> {}
     )+};
 }
@@ -96,6 +100,7 @@ macro_rules! signed {
         // itself, by the repr alone, and `new_unchecked` builds the same value from each; zero is a
         // value, as `ZeroValid` promises; an integer may cross threads.
         #[expect(unsafe_code, reason = "an `Atom` impl promises what loads rely on")]
+        #[doc(cfg(feature = "arbitrary-int"))]
         const unsafe impl<const BITS: usize> Atom for Int<$int, BITS> {
             type Repr = $int;
             type Validity = ZeroValid;
@@ -122,6 +127,7 @@ macro_rules! signed {
         }
 
         /// Ordered as its integer, which the base's signed order is.
+        #[doc(cfg(feature = "arbitrary-int"))]
         impl<const BITS: usize> AtomOrd for Int<$int, BITS> {}
 
         /// And, or, xor and not on the `BITS` bits a field stores it in are its own.
@@ -133,6 +139,7 @@ macro_rules! signed {
         // and `not`, so on those bits they are its own `&`, `|`, `^` and `!`.
         #[diagnostic::do_not_recommend]
         #[expect(unsafe_code, reason = "bitwise operations write any pattern of a field's bits")]
+        #[doc(cfg(feature = "arbitrary-int"))]
         unsafe impl<const BITS: usize> FieldBitwise for Int<$int, BITS> {}
 
         /// Wrapping add and subtract on the `BITS` bits a field stores it in are its own.
@@ -143,6 +150,7 @@ macro_rules! signed {
         // modulo 2^BITS, which in two's complement is its `wrapping_add` and `wrapping_sub`.
         #[diagnostic::do_not_recommend]
         #[expect(unsafe_code, reason = "a field's add writes any pattern of its bits")]
+        #[doc(cfg(feature = "arbitrary-int"))]
         unsafe impl<const BITS: usize> FieldAdd for Int<$int, BITS> {}
     )+};
 }

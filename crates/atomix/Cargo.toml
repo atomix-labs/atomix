@@ -12,15 +12,23 @@ repository.workspace   = true
 ignored-paths = ["tests/compile_fail/*.rs", "tests/compile_pass/*.rs"]
 
 [package.metadata.docs.rs]
-features = [
-    "arbitrary",
-    "arbitrary-int",
-    "bytemuck",
-    "deranged-05",
-    "derive",
-    "serde",
-    "std",
-    "zerocopy-08",
+all-features = true
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "arm64ec-pc-windows-msvc",
+]
+cargo-args = [
+    "--config",
+    'target.x86_64-unknown-linux-gnu.rustflags = ["-C", "target-cpu=x86-64-v3"]',
+    "--config",
+    'target.x86_64-apple-darwin.rustflags = ["-C", "target-cpu=x86-64-v3"]',
+    "--config",
+    'target.x86_64-pc-windows-msvc.rustflags = ["-C", "target-cpu=x86-64-v3"]',
 ]
 
 [features]
@@ -86,6 +94,10 @@ serde           = { workspace = true, features = ["derive"] }
 serde_json      = { workspace = true }
 trybuild        = { workspace = true }
 zerocopy        = { workspace = true }
+
+[build-dependencies]
+# external
+cfg_aliases = { workspace = true }
 
 [target.'cfg(not(target_arch = "arm64ec"))'.dev-dependencies]
 # external

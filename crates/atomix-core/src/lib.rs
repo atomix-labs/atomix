@@ -148,7 +148,24 @@
 )]
 // No badge names `loom` or an alias `build.rs` declares: a loom build is a model of this one, not
 // a target of its own, and an item writes out an alias's condition where its badge needs one.
-#![doc(auto_cfg(hide(loom, aarch64_code, wide, wide_load_store, std_values, wait_status)))]
+#![doc(auto_cfg(hide(
+    loom,
+    aarch64_code,
+    avx2_bools,
+    core_atomic_u128,
+    dmb_ishst,
+    double_word_lock,
+    exit_status,
+    lock_bit_test,
+    neon_bools,
+    on_hardware,
+    std_values,
+    vector_bools,
+    wait_status,
+    wide,
+    wide_load_store,
+    x86_64_without_cmpxchg16b
+)))]
 
 #[cfg(all(loom, not(feature = "loom")))]
 compile_error!(concat!(

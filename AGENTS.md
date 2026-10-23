@@ -78,11 +78,17 @@ What a change here keeps, beyond what the checks hold it to.
 - Imports, never paths: neither a body nor an attribute names `core::`,
   `crate::` or another crate's path. A doc link may.
 - A cfg that repeats is one alias in `crates/atomix-core/build.rs`, as `wide`
-  is. rustdoc names an alias as it is written, so `lib.rs` hides each alias a
-  public item uses from the badges, and a public type writes its condition out
-  in a `doc(cfg)`. A cfg of aarch64 code is the alias `aarch64_code`, which
-  takes in arm64ec, never `target_arch = "aarch64"` alone; outside
-  `atomix-core`, which no alias reaches, it names both architectures.
+  is. rustdoc names an alias as it is written, so each crate's `lib.rs` hides
+  every alias that build script declares from the badges, and an item that needs
+  a badge writes its condition out in a `doc(cfg)`, an integration's impl its
+  feature too, since a crate that inlines the impl never sees its module's cfg.
+  A cfg of aarch64 code is the alias `aarch64_code`, which takes in arm64ec,
+  never `target_arch = "aarch64"` alone; outside `atomix-core`, which no alias
+  but `wide` reaches, it names both architectures. The facade's build script
+  declares `wide` as `atomix-core`'s does: rustdoc gets no `rustflags`, so a
+  `target_feature` the facade tested itself would answer for the target's
+  default CPU, where an alias, which a build script sets from the flags cargo
+  builds with, answers for the build's.
 - Every name is whole words, never a fragment such as `at`, `by` or `held`.
 - The facade has no code of its own: it re-exports each item by name, and an
   item `atomix-core` makes public is re-exported in the same change.

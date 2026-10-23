@@ -117,7 +117,7 @@ fn a_reference_keeps_its_tags_in_the_bits_its_alignment_leaves_clear() {
 }
 // ANCHOR_END: tags
 
-#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec", target_feature = "cmpxchg16b"))]
+#[cfg(wide)]
 #[test]
 // ANCHOR: function_tags
 fn a_function_pointer_keeps_its_tags_in_a_word_of_their_own() {

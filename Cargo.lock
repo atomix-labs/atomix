@@ -117,6 +117,7 @@ dependencies = [
  "atomix-core",
  "atomix-derive",
  "bytemuck",
+ "cfg_aliases",
  "core_affinity",
  "crossbeam-utils",
  "deranged",

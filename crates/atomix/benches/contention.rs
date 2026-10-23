@@ -44,9 +44,9 @@ mod harness {
     use std::thread;
     use std::time::Instant;
 
-    #[cfg(any(target_arch = "aarch64", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     use atomix::AtomicU128;
-    #[cfg(any(target_arch = "aarch64", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     use atomix::ordering::Acquire;
     use atomix::ordering::{AcqRel, Relaxed, Release};
     use atomix::{Atom, Atomic, AtomicU64};
@@ -99,7 +99,7 @@ mod harness {
     /// A count per thread, each in a line of its own.
     static PADDED: [CachePadded<AtomicU64>; 8] = [const { CachePadded::new(AtomicU64::new(0)) }; 8];
     /// The 16 bytes every thread reads.
-    #[cfg(any(target_arch = "aarch64", target_feature = "cmpxchg16b"))]
+    #[cfg(wide)]
     static WIDE: CachePadded<AtomicU128> = CachePadded::new(AtomicU128::new(7));
     /// The quote every thread claims.
     static QUOTE: Twins<CoreU64, Atomic<Quote>> = Twins {
@@ -150,17 +150,14 @@ mod harness {
                 }
             },
         },
-        #[cfg(all(
-            any(target_arch = "aarch64", target_feature = "cmpxchg16b"),
-            any(target_feature = "lse2", target_feature = "avx")
-        ))]
+        #[cfg(all(wide, any(target_feature = "lse2", target_feature = "avx")))]
         Case {
             name: "wide-read/load",
             operation: |_| {
                 black_box(WIDE.load(Acquire));
             },
         },
-        #[cfg(any(target_arch = "aarch64", target_feature = "cmpxchg16b"))]
+        #[cfg(wide)]
         Case {
             name: "wide-read/load-rmw",
             operation: |_| {

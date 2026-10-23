@@ -16,11 +16,13 @@ use crate::validity::Partial;
 ///
 /// `$name` is the type of that name where the macro is called: atomix's own here, and deranged's in
 /// `interop/deranged.rs`. Each keeps its integer from `MIN` to `MAX`, and has `new`,
-/// `new_unchecked` and `get` alike.
+/// `new_unchecked` and `get` alike. The attributes the call opens with go on every impl it
+/// writes, deranged's `doc(cfg)` among them, since a crate that inlines an impl never sees its
+/// module's cfg.
 ///
 /// Neither `AtomAdd` nor `AtomBitwise`: a sum or an or of two values in the range can leave it.
 macro_rules! ranged_atom {
-    ($($constructor:ident: $($name:ident($int:ident)),+);+ $(;)?) => {$($(
+    (@each [$(#[$attribute:meta])*] $constructor:ident $name:ident $int:ident) => {
         /// Stored as its integer, from `MIN` to `MAX`.
         // SAFETY: the repr is the integer, which the type keeps from `MIN` to `MAX`, so within
         // `REPRS`, which holds the bits of each integer from `MIN` to `MAX` in its own order, signed
@@ -28,6 +30,7 @@ macro_rules! ranged_atom {
         // `new_unchecked` builds the same value from each; `Partial` promises nothing; an integer
         // may cross threads.
         #[expect(unsafe_code, reason = "an `Atom` impl promises what loads rely on")]
+        $(#[$attribute])*
         const unsafe impl<const MIN: $int, const MAX: $int> Atom for $name<MIN, MAX> {
             type Repr = $int;
             type Validity = Partial;
@@ -50,8 +53,18 @@ macro_rules! ranged_atom {
         }
 
         /// Ordered as its integer.
+        $(#[$attribute])*
         impl<const MIN: $int, const MAX: $int> AtomOrd for $name<MIN, MAX> {}
+    };
+    (@list $attributes:tt $($constructor:ident: $($name:ident($int:ident)),+);+) => {$($(
+        ranged_atom!(@each $attributes $constructor $name $int);
     )+)+};
+    (
+        $(#[$attribute:meta])*
+        $($constructor:ident: $($name:ident($int:ident)),+);+ $(;)?
+    ) => {
+        ranged_atom!(@list [$(#[$attribute])*] $($constructor: $($name($int)),+);+);
+    };
 }
 
 #[cfg(feature = "deranged-05")]
