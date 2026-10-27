@@ -71,7 +71,7 @@ dependencies = [
 
 [[package]]
 name = "atomix"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arbitrary",
  "arbitrary-int",
@@ -96,7 +96,7 @@ dependencies = [
 
 [[package]]
 name = "atomix-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arbitrary",
  "arbitrary-int",
@@ -115,7 +115,7 @@ dependencies = [
 
 [[package]]
 name = "atomix-derive"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "atomix-core",
  "atomix-derive-impl",
@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "atomix-derive-impl"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -11,7 +11,7 @@ On any other target, the build script stops the build before rustc compiles a
 line, with one error:
 
 ```text
-error: atomix-core@0.1.0: atomix builds for `aarch64`, `arm64ec` and `x86_64`, little-endian with 64-bit pointers, not for `i686-unknown-linux-gnu`: on another target, an operation it promises as one instruction could be a compare-exchange loop, as a 64-bit add is on 32-bit x86
+error: atomix-core@0.2.0: atomix builds for `aarch64`, `arm64ec` and `x86_64`, little-endian with 64-bit pointers, not for `i686-unknown-linux-gnu`: on another target, an operation it promises as one instruction could be a compare-exchange loop, as a 64-bit add is on 32-bit x86
 ```
 
 `crates/atomix-core/tests/unsupported_target.rs` holds the build to that message
