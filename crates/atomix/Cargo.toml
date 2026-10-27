@@ -79,7 +79,7 @@ required-features = ["derive"]
 [dependencies]
 # internal
 atomix-core   = { workspace = true }
-atomix-derive = { path = "macros/derive", version = "=0.1.0", optional = true }
+atomix-derive = { path = "macros/derive", version = "=0.2.0", optional = true }
 
 [dev-dependencies]
 # external
@@ -109,4 +109,4 @@ core_affinity = { workspace = true }
 
 [target.'cfg(any())'.dependencies]
 # internal
-atomix-derive = { path = "macros/derive", version = "=0.1.0" }
+atomix-derive = { path = "macros/derive", version = "=0.2.0" }

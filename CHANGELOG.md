@@ -3,6 +3,14 @@
 Every release, newest first, written by [git-cliff](https://git-cliff.org) from the commits.
 [BREAKING-CHANGES.md](BREAKING-CHANGES.md) says how to move across a breaking change.
 
+## [0.2.0](https://github.com/atomix-labs/atomix/releases/tag/v0.2.0) - 2026-10-27
+
+### Miscellaneous
+
+- [9def808](https://github.com/atomix-labs/atomix/commit/9def8082468f84c4ea64523c9fd6bc1fb49da42f) Publish the facade as atomix, in place of atomix-rs ([#47](https://github.com/atomix-labs/atomix/pull/47)) **breaking**
+
+**Full Changelog**: <https://github.com/atomix-labs/atomix/compare/v0.1.0...v0.2.0>
+
 ## [0.1.0](https://github.com/atomix-labs/atomix/releases/tag/v0.1.0) - 2026-10-23
 
 ### Features
