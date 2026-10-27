@@ -3,11 +3,11 @@
 The logic of the derives of [atomix][project]: it reads a type's definition, and
 writes its impls or the errors that refuse it. It is a library of its own so
 that its tests run without a compiler's proc-macro context; `atomix-derive`
-calls it. To derive `Atom`, depend on `atomix-rs` with its `derive` feature, and
+calls it. To derive `Atom`, depend on `atomix` with its `derive` feature, and
 not on this crate:
 
 ```sh
-cargo add atomix-rs --features derive
+cargo add atomix --features derive
 ```
 
 ## License

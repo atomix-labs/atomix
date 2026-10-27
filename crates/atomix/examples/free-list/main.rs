@@ -2,7 +2,7 @@
 //! one packed head; then every node is checked back, once. Prints the operations a second.
 //!
 //! ```text
-//! cargo run --release -p atomix-rs --features derive --example free-list
+//! cargo run --release -p atomix --features derive --example free-list
 //! ```
 
 #![cfg_attr(not(loom), expect(clippy::print_stdout, reason = "an example prints what it measured"))]

@@ -3,7 +3,7 @@
 //! and taken, which match.
 //!
 //! ```text
-//! cargo run --release -p atomix-rs --features derive --example quote-book
+//! cargo run --release -p atomix --features derive --example quote-book
 //! ```
 
 #![cfg_attr(not(loom), expect(clippy::print_stdout, reason = "an example prints what it counted"))]

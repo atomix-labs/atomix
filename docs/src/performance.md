@@ -210,8 +210,8 @@ The benches are divan's `operations`, on one thread, and `contention`, a harness
 of its own that pins each thread to a core:
 
 ```sh
-cargo bench -p atomix-rs --features derive --bench operations
-cargo bench -p atomix-rs --features derive --bench contention
+cargo bench -p atomix --features derive --bench operations
+cargo bench -p atomix --features derive --bench contention
 ```
 
 A name after `--` runs the `operations` benches it matches, as `-- fields`. For
@@ -221,8 +221,8 @@ the run to cores the kernel keeps other work off, ones that `isolcpus` and
 pins its threads to the cores of its mask, eight or more:
 
 ```sh
-cargo bench -p atomix-rs --features derive --bench contention --no-run
-taskset -c 20-27 cargo bench -p atomix-rs --features derive --bench contention
+cargo bench -p atomix --features derive --bench contention --no-run
+taskset -c 20-27 cargo bench -p atomix --features derive --bench contention
 ```
 
 The CPU flags change what a build has, so a run names its own: `RUSTFLAGS='-C

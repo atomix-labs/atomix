@@ -3,8 +3,8 @@
 The typed atomic of [atomix][project], the values it holds, and the orderings
 and primitives under it: `Atomic<T>` and its aliases, the `Atom` trait and its
 impls for core's types, the ranged integers, the fences, and the loom-shaped
-cell. It is `no_std`. Most users want [`atomix-rs`][project], which re-exports
-all of it and adds `#[derive(Atom)]`.
+cell. It is `no_std`. Most users want [`atomix`][project], which re-exports all
+of it and adds `#[derive(Atom)]`.
 
 ## Install
 

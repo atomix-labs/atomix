@@ -18,8 +18,8 @@
 //! Each operation is a call through a pointer; the first row, an empty operation, times it alone.
 //!
 //! ```text
-//! cargo bench -p atomix-rs --features derive --bench contention --no-run
-//! taskset -c 20-27 cargo bench -p atomix-rs --features derive --bench contention
+//! cargo bench -p atomix --features derive --bench contention --no-run
+//! taskset -c 20-27 cargo bench -p atomix --features derive --bench contention
 //! ```
 
 /// Loom's atomics exist only inside a model, so a loom build has nothing to time; and the pinning

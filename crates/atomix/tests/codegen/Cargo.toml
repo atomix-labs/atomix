@@ -10,6 +10,6 @@ x86-64-refused = []
 
 [dependencies]
 # internal
-atomix = { package = "atomix-rs", path = "../..", features = ["derive"] }
+atomix = { path = "../..", features = ["derive"] }
 
 [workspace]

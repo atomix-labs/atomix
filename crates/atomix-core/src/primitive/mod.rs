@@ -370,7 +370,7 @@ pub impl(crate) const trait Swap: CompareExchange {
 /// # Examples
 /// [`#[derive(Atom)]`'s example][generic] states it in generic code over a field.
 ///
-/// [generic]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-a-field-through-generic-code
+/// [generic]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-a-field-through-generic-code
 // A value's `AtomAdd` names this bound first, so only a field's add, whose value may be a 128-bit
 // container's field, reaches this message.
 #[diagnostic::on_unimplemented(
@@ -439,7 +439,7 @@ pub impl(crate) const trait Bitwise:
 /// [`#[derive(Atom)]`'s example][generic] states [`BitTest`], which implies it, in generic code
 /// over a field.
 ///
-/// [generic]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-a-field-through-generic-code
+/// [generic]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-a-field-through-generic-code
 // An integer is its own mask; a pointer's is its address's.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` has no bitwise operation without a compare-exchange loop on this target",
@@ -503,7 +503,7 @@ pub impl(crate) const trait MaskBitwise:
 /// # Examples
 /// [`#[derive(Atom)]`'s example][generic] states it in generic code over a field.
 ///
-/// [generic]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-a-field-through-generic-code
+/// [generic]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-a-field-through-generic-code
 // Above the target-neutral attribute, so the target's notes come before its fallback.
 #[cfg_attr(
     target_arch = "x86_64",

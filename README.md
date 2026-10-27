@@ -12,8 +12,8 @@
 
 <p align="center">
   <a href="https://github.com/atomix-labs/atomix/actions/workflows/check.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/atomix-labs/atomix/check.yml?branch=main&amp;style=flat-square&amp;label=check"></a>
-  <a href="https://crates.io/crates/atomix-rs"><img alt="crates.io" src="https://img.shields.io/crates/v/atomix-rs?style=flat-square"></a>
-  <a href="https://docs.rs/atomix-rs"><img alt="docs.rs" src="https://img.shields.io/docsrs/atomix-rs?style=flat-square"></a>
+  <a href="https://crates.io/crates/atomix"><img alt="crates.io" src="https://img.shields.io/crates/v/atomix?style=flat-square"></a>
+  <a href="https://docs.rs/atomix"><img alt="docs.rs" src="https://img.shields.io/docsrs/atomix?style=flat-square"></a>
   <a href="https://atomix-labs.github.io/atomix/"><img alt="Book" src="https://img.shields.io/badge/book-read-blue?style=flat-square"></a>
   <a href="https://github.com/atomix-labs/devset"><img alt="managed with devset" src="https://img.shields.io/badge/managed_with-devset-0969da?style=flat-square&amp;logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHRpdGxlPmRldnNldDwvdGl0bGU+PHBhdGggZmlsbD0iI2YwZjZmYyIgZD0ibTE2IDMgMTMgNi41TDE2IDE2IDMgOS41WiIvPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2YwZjZmYyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBzdHJva2Utd2lkdGg9IjIuNSIgZD0ibTMgMTYgMTMgNi41TDI5IDE2TTMgMjIuNSAxNiAyOWwxMy02LjUiLz48L3N2Zz4K"></a>
 </p>
@@ -33,24 +33,22 @@ built on these atomics are yet to come, in `atomix-lock`.
 
 | Crate           | What it holds                                                                    |
 | --------------- | -------------------------------------------------------------------------------- |
-| `atomix-rs`     | everything: `atomix-core` at its root, and `atomix-derive` with `derive`         |
+| `atomix`        | everything: `atomix-core` at its root, and `atomix-derive` with `derive`         |
 | `atomix-core`   | the typed atomic, the values it holds, and the orderings and primitives under it |
 | `atomix-derive` | `#[derive(Atom)]`, and the read-modify-writes a newtype takes from its field     |
 
 ## Install
 
 ```sh
-cargo add atomix-rs --features derive
+cargo add atomix --features derive
 ```
 
-The package is `atomix-rs`, since crates.io's `atomix` is an unrelated
-placeholder, and the library it adds is `atomix`: `use atomix::Atomic;`. atomix
-needs a nightly Rust, `nightly-2026-09-28` or newer, and builds for `aarch64`
-and `x86_64`, little-endian with 64-bit pointers, on any OS, and for Windows'
-`arm64ec`; CI tests it on Linux, macOS and Windows. It is `no_std`. Some
-operations need a CPU feature a target's default lacks, such as `cmpxchg16b` for
-two words on `x86_64` Linux, which a flag adds: [Platforms][platforms] lists
-each.
+atomix needs a nightly Rust, `nightly-2026-09-28` or newer, and builds for
+`aarch64` and `x86_64`, little-endian with 64-bit pointers, on any OS, and for
+Windows' `arm64ec`; CI tests it on Linux, macOS and Windows. It is `no_std`.
+Some operations need a CPU feature a target's default lacks, such as
+`cmpxchg16b` for two words on `x86_64` Linux, which a flag adds:
+[Platforms][platforms] lists each.
 
 ## Quick Start
 
@@ -272,7 +270,7 @@ has them.
 of that crate's traits, and `bytemuck` the array's `Zeroable`, `NoUninit` and
 `AnyBitPattern`.
 
-None is on by default: `cargo add atomix-rs --features derive,serde`.
+None is on by default: `cargo add atomix --features derive,serde`.
 
 ## How It Compares
 
@@ -287,7 +285,7 @@ one instruction, and needs a nightly Rust, on `aarch64` and `x86_64`, to do it.
 ## Documentation
 
 - [The book][book]: what atomix is, and how to use it.
-- The API: [`atomix-rs`][api-atomix-rs], [`atomix-core`][api-atomix-core] and
+- The API: [`atomix`][api-atomix], [`atomix-core`][api-atomix-core] and
   [`atomix-derive`][api-atomix-derive].
 - [CHANGELOG.md][changelog]: what changed in each release.
 
@@ -301,10 +299,10 @@ first, and report a vulnerability as [SECURITY.md][security] says.
 Either [the MIT License][mit] or [the Apache License, Version 2.0][apache], at
 your option.
 
-[platforms]: https://docs.rs/atomix-rs/latest/atomix/#platforms
+[platforms]: https://docs.rs/atomix/latest/atomix/#platforms
 [book]: https://atomix-labs.github.io/atomix/
 [compares]: https://atomix-labs.github.io/atomix/how-atomix-compares.html
-[api-atomix-rs]: https://docs.rs/atomix-rs
+[api-atomix]: https://docs.rs/atomix
 [api-atomix-core]: https://docs.rs/atomix-core
 [api-atomix-derive]: https://docs.rs/atomix-derive
 [changelog]: https://github.com/atomix-labs/atomix/blob/main/CHANGELOG.md

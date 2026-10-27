@@ -60,7 +60,7 @@ it takes core's. The `counters` example times both:
 ```
 
 ```sh
-cargo run --release -p atomix-rs --example counters
+cargo run --release -p atomix --example counters
 ```
 
 Counts side by side slow each other as threads are added, and counts in their

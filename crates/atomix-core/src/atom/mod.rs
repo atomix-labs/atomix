@@ -240,7 +240,7 @@ pub trait AtomBitwise: Atom<Validity = Total, Repr: Bitwise> {}
 /// [atomix's example][facade] ors a flag into a quote's field of flags, a `u8`, whose
 /// [`AtomBitwise`] gives it this.
 ///
-/// [facade]: https://docs.rs/atomix-rs/latest/atomix/#changing-one-field
+/// [facade]: https://docs.rs/atomix/latest/atomix/#changing-one-field
 #[diagnostic::on_unimplemented(
     message = "`{Self}` has no bitwise operations in a field",
     label = "`and`, `or`, `xor`, `not` and their `fetch_` forms on a field need `FieldBitwise`",
@@ -289,7 +289,7 @@ unsafe impl<T: Atom<Repr: const ExactBits, Validity: FieldPatternsDecode<T>>> Fi
 /// [`#[derive(Atom)]`'s example][derive] counts a slot's readers in a field at the top of its
 /// word, a `u32`, whose [`AtomAdd`] gives it this.
 ///
-/// [derive]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-one-field
+/// [derive]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-one-field
 #[diagnostic::on_unimplemented(
     message = "`{Self}` has no atomic add in a field",
     label = "`fetch_add` and `fetch_sub` on a field need `FieldAdd`",

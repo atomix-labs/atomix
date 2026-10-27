@@ -3,14 +3,12 @@
 Add the crate, with its derive:
 
 ```sh
-cargo add atomix-rs --features derive
+cargo add atomix --features derive
 ```
 
-The package is `atomix-rs`, and the library it adds is `atomix`: `use
-atomix::Atomic;`. atomix needs a nightly Rust, `nightly-2026-09-28` or newer,
-for the unstable features [Rust Version](platforms-and-features.md#rust-version)
-names, and a `rust-toolchain.toml` beside the crate's `Cargo.toml` pins one for
-every build:
+atomix needs a nightly Rust, `nightly-2026-09-28` or newer, for the unstable
+features [Rust Version](platforms-and-features.md#rust-version) names, and a
+`rust-toolchain.toml` beside the crate's `Cargo.toml` pins one for every build:
 
 ```toml
 [toolchain]
@@ -44,10 +42,10 @@ In a checkout of the repository, four examples run a structure on threads and
 print what they measured:
 
 ```sh
-cargo run --release -p atomix-rs --features derive --example free-list
-cargo run --release -p atomix-rs --features derive --example lock-word
-cargo run --release -p atomix-rs --features derive --example quote-book
-cargo run --release -p atomix-rs --example counters
+cargo run --release -p atomix --features derive --example free-list
+cargo run --release -p atomix --features derive --example lock-word
+cargo run --release -p atomix --features derive --example quote-book
+cargo run --release -p atomix --example counters
 ```
 
 `free-list` takes nodes from [a free list](a-free-list.md) and gives them back;
@@ -59,5 +57,5 @@ that each have one, as [Values and Places](values-and-places.md) shows.
 Every listing in this book runs as a test too:
 
 ```sh
-cargo test -p atomix-rs --all-features --test book
+cargo test -p atomix --all-features --test book
 ```

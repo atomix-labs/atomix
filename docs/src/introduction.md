@@ -38,13 +38,12 @@ name.
 
 | Crate             | What it holds                                                                    |
 | ----------------- | -------------------------------------------------------------------------------- |
-| [`atomix-rs`]     | everything: `atomix-core` at its root, and `atomix-derive` with `derive`         |
+| [`atomix`]        | everything: `atomix-core` at its root, and `atomix-derive` with `derive`         |
 | [`atomix-core`]   | the typed atomic, the values it holds, and the orderings and primitives under it |
 | [`atomix-derive`] | `#[derive(Atom)]`, and the read-modify-writes a newtype takes from its field     |
 
-A program depends on `atomix-rs`, the facade, since crates.io's `atomix` is an
-unrelated placeholder, and imports its library as `atomix`. The locks built on
-these atomics are yet to come, in `atomix-lock`.
+A program depends on `atomix`, the facade. The locks built on these atomics are
+yet to come, in `atomix-lock`.
 
 ## What It Leaves Out
 
@@ -81,7 +80,7 @@ same files.
 
 [`atomix-core`]: api/atomix_core/index.html
 [`atomix-derive`]: api/atomix_derive/index.html
-[`atomix-rs`]: api/atomix/index.html
+[`atomix`]: api/atomix/index.html
 [`Atom`]: api/atomix/trait.Atom.html
 [`AtomicField`]: api/atomix/struct.AtomicField.html
 [`AtomicU64`]: api/atomix/type.AtomicU64.html

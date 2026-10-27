@@ -8,17 +8,11 @@
 //! that spends a spare repr on `None`, and a struct or an enum that derives it. The locks built on
 //! these atomics are yet to come, in `atomix-lock`.
 //!
-//! A crate depends on `atomix-rs`, since crates.io's `atomix` is an unrelated 2017 placeholder:
+//! A crate depends on atomix, with the `derive` feature where it derives `Atom`:
 //!
 //! ```toml
 //! [dependencies]
-//! atomix-rs = { version = "0.1", features = ["derive"] }
-//! ```
-//!
-//! and imports it as `atomix`:
-//!
-//! ```
-//! use atomix::{Atom, Atomic};
+//! atomix = { version = "0.2", features = ["derive"] }
 //! ```
 //!
 //! # Types
@@ -493,7 +487,7 @@
 //!
 //! ```toml
 //! [target.'cfg(loom)'.dependencies]
-//! atomix-rs = { version = "0.1", features = ["loom"] }
+//! atomix = { version = "0.2", features = ["loom"] }
 //! ```
 //!
 //! Each model runs in `atomix::model::check`, and spawns with `atomix::model::{thread, Arc}`.

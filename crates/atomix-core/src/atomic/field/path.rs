@@ -24,7 +24,7 @@ type Invariant<T> = PhantomData<fn(T) -> T>;
 /// # Examples
 /// [`#[derive(Atom)]`'s example][derive] names no path: its projection lends each field's place.
 ///
-/// [derive]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-one-field
+/// [derive]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-one-field
 // Clone and Copy are derived: every container and value is `Copy`. Debug is written out, so it
 // names the field rather than its marker.
 #[derive(Clone, Copy)]
@@ -42,7 +42,7 @@ impl<C, const INDEX: u32, V> fmt::Debug for Field<C, INDEX, V> {
 /// In [`#[derive(Atom)]`'s example][derive], `ORDER.fields().flags.fields().halted`, a field of a
 /// field, is a place of `Then<Field<Order, 0, Flags>, Field<Flags, 0, bool>>`.
 ///
-/// [derive]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-a-field-through-generic-code
+/// [derive]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-a-field-through-generic-code
 // As `Field`'s.
 #[derive(Clone, Copy)]
 pub struct Then<A, B>(Invariant<(A, B)>);
@@ -60,7 +60,7 @@ impl<A, B> fmt::Debug for Then<A, B> {
 /// fields, each at its own [`Field`].
 ///
 /// [`Atomic::fields`]: crate::Atomic::fields
-/// [derive]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-one-field
+/// [derive]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-one-field
 // Whole's rule: no place of it reaches code but `ProjectFields::project` and `Array::project`. Its
 // bits are every bit of the repr, more than `FieldBitwise` and `FieldAdd` promise decode, so a
 // place of it would `not` a `UInt<u8, 4>` to a repr past its 4 bits. It has no constructor, and
@@ -96,7 +96,7 @@ impl<C> fmt::Debug for Whole<C> {
 /// [`#[derive(Atom)]`'s example][derive] lends each field of a packed struct as a place, its path
 /// a [`Field`].
 ///
-/// [derive]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-one-field
+/// [derive]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-one-field
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is no path to a field of a packed value",
     label = "expected a path to a field, such as `Field<Quote, 2, bool>`"
@@ -138,7 +138,7 @@ pub impl(crate) const trait FieldPath: Copy {
 /// [`#[derive(Atom)]`'s example][derive] lends the field `written` of an atomic `Slot` as a place
 /// of `Join<Whole<Slot>, Field<Slot, 0, bool>>`, which is `Field<Slot, 0, bool>`.
 ///
-/// [derive]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-one-field
+/// [derive]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-one-field
 pub type Join<P, B> = <P as FieldPath>::Join<B>;
 
 /// A field that ends at its container repr's top bit, so a carry out of it leaves the word as it
@@ -154,7 +154,7 @@ pub type Join<P, B> = <P as FieldPath>::Join<B>;
 /// [`#[derive(Atom)]`'s example][derive] counts a slot's readers in its top field with
 /// `fetch_add`.
 ///
-/// [derive]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-one-field
+/// [derive]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-one-field
 #[diagnostic::on_unimplemented(
     message = "`{Self}` does not end at its container's top bit",
     label = "a carry out of this field would reach the bits above it",

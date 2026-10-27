@@ -1124,8 +1124,8 @@ canonical = "97ae3bed43a289ecb77fd9f99ed84523563adf60c44f27a624f9f62308af2744"
 
 [parts."README.md".project]
 scope = "block"
-exact = "1c3b5fdbc97c6397763e85e19337010a43b69519e6ef117120d181561eb9d88a"
-canonical = "1c3b5fdbc97c6397763e85e19337010a43b69519e6ef117120d181561eb9d88a"
+exact = "ebeca6aed7d283cec966f4507bce2dc481f50e51a3c4bace09c68135f19f070f"
+canonical = "ebeca6aed7d283cec966f4507bce2dc481f50e51a3c4bace09c68135f19f070f"
 
 [parts."clippy.toml".rust-clippy]
 scope = "keys"
