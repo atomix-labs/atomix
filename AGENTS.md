@@ -40,11 +40,9 @@ with the profile, on `devset update`. Never edit `.devset/`.
 A Cargo workspace of crates under `crates/`: `atomix-core` holds the typed
 atomic (`Atom`, `Atomic`, the orderings, validity, the primitives, the fences,
 the cell and the loom seam) and the ranged integers, each on a pattern-type
-field; the facade re-exports both. It is published as `atomix-rs`, since
-crates.io's `atomix` is an unrelated 2017 placeholder; its library is `atomix`,
-so a `cargo -p` names `atomix-rs` and code names `atomix`. `atomix-core`'s
-`src/interop/` holds the integrations with other crates, a file per crate, each
-behind its feature; zerocopy's are derives on the types themselves.
+field; the facade, `atomix`, re-exports both. `atomix-core`'s `src/interop/`
+holds the integrations with other crates, a file per crate, each behind its
+feature; zerocopy's are derives on the types themselves.
 `crates/atomix/macros/derive`, `atomix-derive`, is the proc macro of
 `#[derive(Atom)]` and the capabilities' derives, and
 `crates/atomix/macros/derive-impl`, `atomix-derive-impl`, its logic; the derive
@@ -287,7 +285,7 @@ What a change here keeps, beyond what the checks hold it to.
   adds notes. What x86_64 without `cmpxchg16b` refuses, which trybuild's floor
   cannot build, the codegen fixtures' `x86-64-refused` probes pin. A new
   toolchain may reword a message; `TRYBUILD=overwrite cargo test -p atomix-core
-  --test trybuild`, and `TRYBUILD=overwrite cargo test -p atomix-rs --features
+  --test trybuild`, and `TRYBUILD=overwrite cargo test -p atomix --features
   derive --test compiled trybuild` for the derive's, write it again, to be read
   before it is committed.
 - The checks of a value's repr, validity and decodes, the `Atom` laws, and the

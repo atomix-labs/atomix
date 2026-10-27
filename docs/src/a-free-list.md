@@ -73,7 +73,7 @@ under loom, as [Testing with Loom and Miri](testing-with-loom-and-miri.md)
 shows:
 
 ```sh
-cargo run --release -p atomix-rs --features derive --example free-list
+cargo run --release -p atomix --features derive --example free-list
 ```
 
 [`Atomic::try_update`]: api/atomix/struct.Atomic.html#method.try_update

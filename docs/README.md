@@ -15,7 +15,7 @@ Every listing is included from code the tests build, under
 as they are. The book's own tests, under `crates/atomix/tests/book/`, run with:
 
 ```sh
-cargo test -p atomix-rs --all-features --test book
+cargo test -p atomix --all-features --test book
 ```
 
 A page links an item of the API to the facade's page, `api/atomix/…`, in a

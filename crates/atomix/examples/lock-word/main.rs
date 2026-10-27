@@ -3,7 +3,7 @@
 //! so the total shows the lock kept them apart. Prints the count and the turns a second.
 //!
 //! ```text
-//! cargo run --release -p atomix-rs --features derive --example lock-word
+//! cargo run --release -p atomix --features derive --example lock-word
 //! ```
 
 #![cfg_attr(not(loom), expect(clippy::print_stdout, reason = "an example prints what it measured"))]

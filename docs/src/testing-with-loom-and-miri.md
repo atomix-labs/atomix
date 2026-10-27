@@ -16,7 +16,7 @@ crate models its own code with this dependency, and `RUSTFLAGS="--cfg loom"`:
 
 ```toml
 [target.'cfg(loom)'.dependencies]
-atomix-rs = { version = "0.1", features = ["loom"] }
+atomix = { version = "0.2", features = ["loom"] }
 ```
 
 A model runs in `atomix::model::check`, and spawns its threads with

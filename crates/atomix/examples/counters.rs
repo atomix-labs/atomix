@@ -6,7 +6,7 @@
 //! `contention` pins each, for figures that hold still.
 //!
 //! ```text
-//! cargo run --release -p atomix-rs --example counters
+//! cargo run --release -p atomix --example counters
 //! ```
 
 #![expect(clippy::print_stdout, reason = "an example prints what it measured")]

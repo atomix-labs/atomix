@@ -18,7 +18,7 @@ check-loom:
     cargo clippy --workspace --all-targets --all-features {{ loom }} --target x86_64-unknown-linux-gnu -- -D warnings
     RUSTFLAGS='--cfg loom -C target-cpu=x86-64' cargo clippy --workspace --all-targets --all-features --target x86_64-unknown-linux-gnu --target-dir target/loom-x86-64 -- -D warnings
     cargo test -p atomix-core --features loom {{ loom }} --test model
-    cargo test -p atomix-rs --features derive,loom {{ loom }} --test model
+    cargo test -p atomix --features derive,loom {{ loom }} --test model
 
 # macOS's aarch64 floor has LSE2, which Linux's lacks. x86_64's floor has AVX; x86-64-v2 has
 # `cmpxchg16b` but no AVX; x86-64 has neither, so no 128-bit atomics. The last two go through
@@ -71,8 +71,8 @@ nightly-targets:
     export RUSTFLAGS=
     # Each build runs whether one before it failed, and `--keep-going` builds every target of one.
     status=0
-    cargo build -p atomix-rs --lib --all-features --locked --keep-going --target-dir target/targets {{ prepend("--target ", hosted_targets) }} || status=1
-    cargo build -p atomix-rs --lib --features arbitrary-int,bytemuck,deranged-05,derive,serde,zerocopy-08 --locked --keep-going --target-dir target/targets {{ prepend("--target ", bare_metal_targets) }} || status=1
+    cargo build -p atomix --lib --all-features --locked --keep-going --target-dir target/targets {{ prepend("--target ", hosted_targets) }} || status=1
+    cargo build -p atomix --lib --features arbitrary-int,bytemuck,deranged-05,derive,serde,zerocopy-08 --locked --keep-going --target-dir target/targets {{ prepend("--target ", bare_metal_targets) }} || status=1
     for fixture in atomix-core atomix; do
         cargo build --release --keep-going --manifest-path "crates/$fixture/tests/codegen/Cargo.toml" --config "resolver.lockfile-path='target/targets/$fixture-codegen/Cargo.lock'" --target-dir target/targets {{ prepend("--target ", hosted_targets + " " + bare_metal_targets) }} || status=1
     done
@@ -99,7 +99,7 @@ nightly-docs-rs toolchain="nightly":
         patch+=(--config "patch.crates-io.${name%-[0-9]*}.path=\"$package\"")
     done
     status=0
-    for package in "$work"/atomix-core-*/ "$work"/atomix-rs-*/; do
+    for package in "$work"/atomix-core-*/ "$work"/atomix-[0-9]*/; do
         metadata=$(cd "$package" && cargo "+$toolchain" metadata --no-deps --format-version 1)
         readarray -t targets < <(jq -r '.packages[0].metadata.docs.rs.targets[]' <<<"$metadata")
         readarray -t extra < <(jq -r '.packages[0].metadata.docs.rs["cargo-args"][]' <<<"$metadata")
@@ -109,8 +109,8 @@ nightly-docs-rs toolchain="nightly":
                 --config 'build.rustdocflags=["--cfg","docsrs"]' "${patch[@]}" "${extra[@]}" --target-dir "$work/docs"); then
                 echo "docs.rs: $(basename "$package") fails on $target"
                 status=1
-            elif [[ $(basename "$package") == atomix-rs-* && ! -f $work/docs/$target/doc/atomix/struct.DoubleWord.html ]]; then
-                echo "docs.rs: atomix-rs's $target page lacks DoubleWord"
+            elif [[ $(basename "$package") == atomix-[0-9]* && ! -f $work/docs/$target/doc/atomix/struct.DoubleWord.html ]]; then
+                echo "docs.rs: atomix's $target page lacks DoubleWord"
                 status=1
             fi
         done

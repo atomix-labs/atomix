@@ -1,5 +1,5 @@
 [package]
-name                   = "atomix-rs"
+name                   = "atomix"
 description            = "typed atomics for any value that fits one atomic, and the locks built on them."
 version.workspace      = true
 edition.workspace      = true
@@ -52,7 +52,6 @@ zerocopy-08   = ["atomix-core/zerocopy-08"]
 workspace = true
 
 [lib]
-name  = "atomix"
 bench = false
 
 [[example]]

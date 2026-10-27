@@ -51,7 +51,7 @@ Four takers race for one quote, and one takes it whole:
 {{#include ../../crates/atomix/tests/book/fields.rs:book}}
 ```
 
-`cargo run --release -p atomix-rs --features derive --example quote-book` runs a
+`cargo run --release -p atomix --features derive --example quote-book` runs a
 feed and three takers through a million posts.
 
 ## What Each Field Takes

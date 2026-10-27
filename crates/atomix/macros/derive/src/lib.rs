@@ -1,11 +1,11 @@
 //! The derives of atomix: `Atom`, and `AtomAdd`, `AtomOrd` and `AtomBitwise`, the
 //! read-modify-writes a newtype takes from its field.
 //!
-//! atomix re-exports each under its `derive` feature: depend on `atomix-rs`, not on this crate.
+//! atomix re-exports each under its `derive` feature: depend on `atomix`, not on this crate.
 //! The logic is `atomix-derive-impl`'s; this crate renders its errors as the compiler's. It needs a
 //! nightly Rust, as [atomix's Platforms][platforms] say.
 //!
-//! [platforms]: https://docs.rs/atomix-rs/latest/atomix/#platforms
+//! [platforms]: https://docs.rs/atomix/latest/atomix/#platforms
 
 #![feature(allow_internal_unstable, proc_macro_def_site, proc_macro_diagnostic)]
 #![expect(
@@ -92,9 +92,9 @@ use proc_macro::{Diagnostic, Level, Span, TokenStream};
 /// Generic code takes a place as `&AtomicField<P>`, and states what each operation asks of the
 /// container's repr: [`BitTest`], [`MaskBitwise`] or [`FetchAdd`].
 ///
-/// [`BitTest`]: https://docs.rs/atomix-rs/latest/atomix/trait.BitTest.html
-/// [`FetchAdd`]: https://docs.rs/atomix-rs/latest/atomix/trait.FetchAdd.html
-/// [`MaskBitwise`]: https://docs.rs/atomix-rs/latest/atomix/trait.MaskBitwise.html
+/// [`BitTest`]: https://docs.rs/atomix/latest/atomix/trait.BitTest.html
+/// [`FetchAdd`]: https://docs.rs/atomix/latest/atomix/trait.FetchAdd.html
+/// [`MaskBitwise`]: https://docs.rs/atomix/latest/atomix/trait.MaskBitwise.html
 ///
 /// # Repr
 /// A newtype's is its field's, a fieldless enum's the integer its `#[repr]` names, or C's `int`
@@ -520,7 +520,7 @@ use proc_macro::{Diagnostic, Level, Span, TokenStream};
 ///
 /// ```toml
 /// [dependencies]
-/// atomics = { package = "atomix-rs", version = "0.1", features = ["derive"] }
+/// atomics = { package = "atomix", version = "0.2", features = ["derive"] }
 /// ```
 ///
 /// names it in `crate`, since the impl's paths start at `::atomix` otherwise:

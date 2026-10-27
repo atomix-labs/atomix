@@ -88,5 +88,5 @@ jobs:
           --config 'target."cfg(all())".rustflags=["--cfg","loom"]' --target-dir target/loom
       - if: "!matrix.cpu"
         run: >-
-          cargo test -p atomix-rs --features derive,loom --test model --locked
+          cargo test -p atomix --features derive,loom --test model --locked
           --config 'target."cfg(all())".rustflags=["--cfg","loom"]' --target-dir target/loom

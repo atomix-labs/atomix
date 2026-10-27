@@ -13,8 +13,8 @@
 //! row times the same harness around its operation. What contention costs is `contention`'s.
 //!
 //! ```text
-//! cargo bench -p atomix-rs --features derive --bench operations --no-run
-//! taskset -c 16 cargo bench -p atomix-rs --features derive --bench operations
+//! cargo bench -p atomix --features derive --bench operations --no-run
+//! taskset -c 16 cargo bench -p atomix --features derive --bench operations
 //! ```
 
 #[cfg(not(loom))]

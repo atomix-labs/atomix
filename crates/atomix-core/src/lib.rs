@@ -87,13 +87,13 @@
 //! `serde`, `zerocopy-08` and `arbitrary` each give a [`Packed`] what its array has of that crate's
 //! traits, and `bytemuck` the array's `Zeroable`, `NoUninit` and `AnyBitPattern`.
 //!
-//! [platforms]: https://docs.rs/atomix-rs/latest/atomix/#platforms
+//! [platforms]: https://docs.rs/atomix/latest/atomix/#platforms
 
 // Where no atomic holds two words, no `DoubleWord` exists: its links lead to where one does.
 #![cfg_attr(
     not(wide),
     doc = "",
-    doc = "[`DoubleWord`]: https://docs.rs/atomix-rs/latest/atomix/#platforms"
+    doc = "[`DoubleWord`]: https://docs.rs/atomix/latest/atomix/#platforms"
 )]
 #![no_std]
 #![feature(
@@ -170,9 +170,9 @@
 #[cfg(all(loom, not(feature = "loom")))]
 compile_error!(concat!(
     "atomix: `--cfg loom` needs the `loom` feature: depend with `[target.'cfg(loom)'.dependencies] \
-     atomix-rs = { version = \"",
+     atomix = { version = \"",
     env!("CARGO_PKG_VERSION"),
-    "\", features = [\"loom\"] }`, or pass `--features atomix-rs/loom`, or `atomix-core/loom` \
+    "\", features = [\"loom\"] }`, or pass `--features atomix/loom`, or `atomix-core/loom` \
      where atomix-core is the dependency"
 ));
 

@@ -44,7 +44,7 @@ paths       = ["crates/atomix-core/**"]
 
 [labels."area: facade"]
 color       = "0e8a16"
-description = "atomix-rs: the facade's re-exports"
+description = "atomix: the facade's re-exports"
 paths       = ["crates/atomix/**"]
 
 [labels."area: derive"]

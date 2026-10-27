@@ -70,6 +70,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "atomix"
+version = "0.1.0"
+dependencies = [
+ "arbitrary",
+ "arbitrary-int",
+ "atomic",
+ "atomic_enum",
+ "atomig",
+ "atomix-core",
+ "atomix-derive",
+ "bytemuck",
+ "cfg_aliases",
+ "core_affinity",
+ "crossbeam-utils",
+ "deranged",
+ "divan",
+ "portable-atomic",
+ "proptest",
+ "serde",
+ "serde_json",
+ "trybuild",
+ "zerocopy",
+]
+
+[[package]]
 name = "atomix-core"
 version = "0.1.0"
 dependencies = [
@@ -103,31 +128,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
-]
-
-[[package]]
-name = "atomix-rs"
-version = "0.1.0"
-dependencies = [
- "arbitrary",
- "arbitrary-int",
- "atomic",
- "atomic_enum",
- "atomig",
- "atomix-core",
- "atomix-derive",
- "bytemuck",
- "cfg_aliases",
- "core_affinity",
- "crossbeam-utils",
- "deranged",
- "divan",
- "portable-atomic",
- "proptest",
- "serde",
- "serde_json",
- "trybuild",
- "zerocopy",
 ]
 
 [[package]]

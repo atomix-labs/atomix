@@ -39,7 +39,7 @@ mod path;
 /// # Examples
 /// [`#[derive(Atom)]`'s example][derive] projects an atomic ring buffer slot onto its fields.
 ///
-/// [derive]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-one-field
+/// [derive]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-one-field
 #[diagnostic::on_unimplemented(
     message = "`{Self}` has no fields an atomic projects onto",
     label = "`fields` needs a packed struct that derives `Atom`",
@@ -286,7 +286,7 @@ impl<C: Atom> Atomic<C> {
     /// # Examples
     /// [`#[derive(Atom)]`'s example][derive] claims a ring buffer slot through its fields.
     ///
-    /// [derive]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-one-field
+    /// [derive]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-one-field
     // `F`, rather than the projection in the return type, which rustc would resolve before the
     // bound, so a value without fields reports `ProjectFields`' message.
     #[expect(unsafe_code, reason = "lends the place of the whole value to the projection")]
@@ -368,7 +368,7 @@ where
 /// [`#[derive(Atom)]`'s example][derive] claims a ring buffer slot with one field's
 /// `test_and_set`, and counts its readers with another's `fetch_add`.
 ///
-/// [derive]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-one-field
+/// [derive]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-one-field
 #[repr(C)]
 pub struct AtomicField<P: FieldPath> {
     /// The atomic the field lies in.
@@ -570,7 +570,7 @@ impl<P: FieldPath> AtomicField<P> {
     /// # Examples
     /// [`#[derive(Atom)]`'s example][derive] halts an order through a field of its field.
     ///
-    /// [derive]: https://docs.rs/atomix-rs/latest/atomix/derive.Atom.html#changing-a-field-through-generic-code
+    /// [derive]: https://docs.rs/atomix/latest/atomix/derive.Atom.html#changing-a-field-through-generic-code
     // `F`, as in `Atomic::fields`.
     #[inline]
     #[must_use]

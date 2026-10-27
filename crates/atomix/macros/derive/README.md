@@ -3,20 +3,18 @@
 The derives of [atomix][project]: `Atom`, which lays a struct or an enum out in
 one atomic word or two as the crate compiles, and refuses one that cannot fit;
 and `AtomAdd`, `AtomOrd` and `AtomBitwise`, the read-modify-writes a newtype
-takes from its field. The code each writes names `atomix`, so depend on
-`atomix-rs` with its `derive` feature, which re-exports them, and not on this
-crate.
+takes from its field. The code each writes names `atomix`, so depend on `atomix`
+with its `derive` feature, which re-exports them, and not on this crate.
 
 ## Install
 
 ```sh
-cargo add atomix-rs --features derive
+cargo add atomix --features derive
 ```
 
-The package is `atomix-rs`, and the library it adds `atomix`. It needs a nightly
-Rust, `nightly-2026-09-28` or newer, and builds for `aarch64` and `x86_64`,
-little-endian with 64-bit pointers, on any OS, and for Windows' `arm64ec`; CI
-tests it on Linux, macOS and Windows.
+atomix needs a nightly Rust, `nightly-2026-09-28` or newer, and builds for
+`aarch64` and `x86_64`, little-endian with 64-bit pointers, on any OS, and for
+Windows' `arm64ec`; CI tests it on Linux, macOS and Windows.
 
 ## Quick Start
 

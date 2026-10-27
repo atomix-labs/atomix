@@ -77,7 +77,7 @@ atomic has neither zerocopy's traits nor `Zeroable`.
 | `loom`          | loom's types under `--cfg loom`; nothing without the cfg                   |
 
 That is the facade's table; atomix-core has every feature but `derive`. A
-feature is named with `cargo add`, as `cargo add atomix-rs --features
+feature is named with `cargo add`, as `cargo add atomix --features
 derive,serde`. [Working with Other Crates](working-with-other-crates.md) shows
 each integration at work, and
 [Testing with Loom and Miri](testing-with-loom-and-miri.md) the `loom` feature.
